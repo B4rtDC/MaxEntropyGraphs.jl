@@ -1,0 +1,4 @@
+name = "fastmaxent"
+uuid = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"
+authors = ["Bart De Clerck <declerck.bart@pm.me>"]
+version = "0.1.0"
