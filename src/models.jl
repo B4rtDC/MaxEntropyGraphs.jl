@@ -60,7 +60,7 @@ end
 			if isequal(initial, :nodes)
 				x0 = κ ./ P(sqrt(length(κ)))
 			elseif isequal(initial, :links)
-				x0 = κ ./ P(get(kwargs, :L, length(κ)))
+				x0 = κ ./ P(sqrt(2 * get(kwargs, :L, length(κ))))
 			elseif isequal(initial, :random)
 				x0 = rand(P, length(κ))
 			end

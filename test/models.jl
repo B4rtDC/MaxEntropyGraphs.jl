@@ -18,8 +18,15 @@
 end
 @testset "UBCM - configuration setting" begin
     k = collect(1:10000)
+    # test solution methods
     @test_throws ArgumentError UBCM(k, compact=false, method=:somethingillegal)
+    # testing starting condition
     @test_throws DimensionMismatch UBCM(k, compact=false, initial=collect(1:length(k)÷2))
+    @test_throws ArgumentError UBCM(k, compact=false, initial=:somethingillegal)
+    @test UBCM(k, compact=false, initial=:nodes).x0 == k ./sqrt(length(k))
+    @test UBCM(k, compact=false, initial=:links).x0 == k ./sqrt(2*length(k))
+    L = 20.
+    @test UBCM(k, compact=false, initial=:links, L=L).x0 == k ./sqrt(2*L)
 end
 @testset "UBCM - solutions" begin
     
