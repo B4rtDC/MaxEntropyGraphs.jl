@@ -15,7 +15,7 @@ Maximum entropy model with a fixed degree sequence.
 mutable struct UBCM{T,N} <: AbstractMaxEntropyModel where {T<:Real, N<:UInt}
     idx::Vector{N}
     κ::Vector{T}
-    f::Dict{T,T}
+    f::Vector{T} #Dict{T,T}
     method::Symbol
     x0::Vector{T} # initial guess
     F::Vector{T}  # buffer for solution
@@ -41,12 +41,13 @@ end
 		if compact
 			idxtype = length(unique(k)) < typemax(UInt8) ? UInt8 : length(unique(k)) < typemax(UInt16) ? UInt16 : UInt32 # limited to 4.29e9 nodes
 			idx, κ = IndirectArray{idxtype}(k).index, IndirectArray{idxtype}(k).values
-			f = countmap(k,ones(P, size(k)))
+			f = countmap(k, ones(P, size(k))) # using weight vector for proper type inference
+            f = [f[v] for v in κ] # addition
 		else
 			κ = k
 			idxtype = length(κ) < typemax(UInt8) ? UInt8 : length(κ) < typemax(UInt16) ? UInt16 : UInt32 # limited to 4.29e9 nodes
 			idx = collect(one(idxtype):idxtype(length(κ)))
-			f = Dict(v => one(P) for v in κ)
+			f = ones(P,length(κ)) #     Dict(v => one(P) for v in κ)
 		end
 
 		# initial vector

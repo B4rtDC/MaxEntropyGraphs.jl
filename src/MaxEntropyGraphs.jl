@@ -8,16 +8,16 @@ module MaxEntropyGraphs
 import Base: show
 #import Graphs: degree
 #import LinearAlgebra: diagind
-#import StatsBase: countmap
+import StatsBase: countmap
 
 using Graphs
 # using SimpleWeightedGraphs
 
 using NLsolve
 using IndirectArrays
-
+using LoopVectorization
 # MODELS
-#export UBCM, UBCMCompact, solve!
+export UBCM #, UBCMCompact, solve!
 
 # METRICS
 #export degree
