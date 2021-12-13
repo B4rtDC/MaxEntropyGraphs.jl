@@ -1,21 +1,20 @@
-module fastmaxent
+module MaxEntropyGraphs
 
 import Base: show
 
-import LightGraphs: degree
+import Graphs: degree
 import LinearAlgebra: diagind
 import StatsBase: countmap
 #=
 import Base:
     +
 
-import LightGraphs:
+import Graphs:
     degree, strength
 =#
-using LightGraphs
+using Graphs
 using SimpleWeightedGraphs
 using NLsolve
-using LightGraphs
 using IndirectArrays
 
 # MODELS
