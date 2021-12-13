@@ -1,4 +1,4 @@
-module MaxEntropyGraphs
+module fastmaxent
 
 import Base: show
 

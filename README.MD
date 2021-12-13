@@ -1,7 +1,11 @@
-# Fastmaxent
+[![Build status (Github Actions)](https://github.com/B4rtDC/MaxEntropyGraphs.jl/workflows/CI/badge.svg)](https://github.com/B4rtDC/MaxEntropyGraphs.jl/actions)
+[![codecov.io](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl/coverage.svg?branch=main)](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl?branch=main)
 
 
-A Julia package to use maximum entropy networks based on the JuliaGraphs ecosystem (LightGraphs & SimpleWeightedGraphs).
+# MaxEntropyGraphs
+
+
+A Julia package to use maximum entropy networks using the JuliaGraphs ecosystem (LightGraphs & SimpleWeightedGraphs).
 
 
 It provides the following functionalities:

@@ -1,4 +1,5 @@
-using fastmaxent
+using Test
+using MaxEntropyGraphs
 
 println("Testing Models...")
 t = @elapsed include("ModelsTest.jl")
