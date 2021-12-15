@@ -15,7 +15,7 @@ Public = false
 
 ```@docs
 MaxEntropyGraphs
-∂UBCM_∂x!
+MaxEntropyGraphs.∂UBCM_∂x!
 ```
 
 ```@autodocs
