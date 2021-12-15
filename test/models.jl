@@ -29,10 +29,18 @@ end
     @test UBCM(k, compact=false, initial=:links, L=L).x0 == k ./sqrt(2*L)
 end
 @testset "UBCM - solutions" begin
-    
+    #=using PyCall
+    using Graphs
+    nemtropy = pyimport("NEMtropy")
+	np = pyimport("numpy")
+    # generate Graph to work on 
+    G = barabasi_albert!(cycle_graph(2), 20, 2);
+	K = degree(G)
+    =#
 end
-end
-end
+
+end # end UBCM
+end # end MODELS
 
 #=
 #rng = MersenneTwister(1)

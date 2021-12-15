@@ -124,6 +124,17 @@ function iterative_cm!(F::Vector{T}, x::Vector{T}, κ::Vector{T}, f::Vector{T}) 
     return F
 end
 
+function solve(model::T; kwargs...) where T <: AbstractMaxEntropyModel
+	if isequal(model.method, :newton)
+		df = OnceDifferentiable(model.f!, model.x0, model.F)
+		res = nlsolve(df, model.x0; kwargs...)
+	elseif isequal(model.method, :fixedpoint)
+		res = fixedpoint(model.f!, model.x0; kwargs...)
+	end
+		
+	return res
+end
+
 
 
 """

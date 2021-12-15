@@ -15,10 +15,4 @@ Public = false
 
 ```@docs
 MaxEntropyGraphs
-MaxEntropyGraphs.∂UBCM_∂x!
-```
-
-```@autodocs
-Modules = [MaxEntropyGraphs]
-Order   = [:function]
 ```
