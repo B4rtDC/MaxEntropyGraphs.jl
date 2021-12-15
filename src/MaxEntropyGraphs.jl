@@ -17,7 +17,7 @@ using NLsolve
 using IndirectArrays
 using LoopVectorization
 # MODELS
-export UBCM #, UBCMCompact, solve!
+export #UBCM #, UBCMCompact, solve!
 
 # METRICS
 #export degree

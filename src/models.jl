@@ -12,6 +12,7 @@ abstract type AbstractMaxEntropyModel end
 # Undirected Binary Configuration Model (UBCM)
 Maximum entropy model with a fixed degree sequence. Uses the model where ``x_i = e^{-\\theta_i}```
 
+See also: [AbstractMaxEntropyModel](@ref)
 """
 mutable struct UBCM{T,N} <: AbstractMaxEntropyModel where {T<:Real, N<:UInt}
     idx::Vector{N}

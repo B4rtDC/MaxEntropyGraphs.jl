@@ -20,7 +20,7 @@ It provides the following functionalities:
 ```
 
 ## Documenation
-[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://B4rtDC.github.io/MaxEntropyGraphs.jl/)
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://B4rtDC.github.io/MaxEntropyGraphs.jl/dev/)
 
 ## To do list:
 - [x] add direct mapping to compact model for usability
