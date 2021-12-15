@@ -10,7 +10,8 @@ abstract type AbstractMaxEntropyModel end
     UBCM{T,N} <: AbstractMaxEntropyModel where {T<:Real, N<:UInt}
 
 # Undirected Binary Configuration Model (UBCM)
-Maximum entropy model with a fixed degree sequence. 
+Maximum entropy model with a fixed degree sequence. Uses the model where ``x_i = e^{-\\theta_i}```
+
 """
 mutable struct UBCM{T,N} <: AbstractMaxEntropyModel where {T<:Real, N<:UInt}
     idx::Vector{N}
@@ -84,7 +85,18 @@ end
 		return UBCM(idx, κ, f, method, x0, F, f!, xs, x)
 	end
 	
+"""
+	∂UBCM_∂x!(F::Vector, x::Vector, κ::Vector, f::Vector)
 
+Gradient of likelihood function of the UBCM model using the `x_i` formulation. 
+
+F value of gradients
+x value of parameters
+κ value of (reduced degree vector)
+f frequency associated with each value in κ 
+
+## see also [`UBCM``](@ref)
+"""
 function ∂UBCM_∂x!(F::Vector, x::Vector, κ::Vector, f::Vector)
     @tturbo for i in eachindex(x)
         fx = -x[i] / (1 + x[i] * x[i])

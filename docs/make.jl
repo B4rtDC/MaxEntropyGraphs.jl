@@ -1,12 +1,12 @@
 using Documenter
 
-
+#=
 @info @__FILE__, @__DIR__
 push!(LOAD_PATH, joinpath(@__DIR__,"../src/"))
 using Pkg
 Pkg.activate(joinpath(@__DIR__,"../"))
 using MaxEntropyGraphs
-
+=#
 
 makedocs(sitename="MaxEntropyGraphs.jl",
          pages = [
