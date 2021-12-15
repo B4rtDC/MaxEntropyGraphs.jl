@@ -19,6 +19,9 @@ It provides the following functionalities:
 
 ```
 
+## Documenation
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://B4rtDC.github.io/MaxEntropyGraphs.jl/)
+
 ## To do list:
 - [x] add direct mapping to compact model for usability
 - [ ] compare performance test for optimized exact expression with automated differentiation (it is already faster than working with the exact expressions). Possible downside: requires tailored expression for each metric, which can be complicated.
