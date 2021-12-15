@@ -1,4 +1,9 @@
-.vscode/*
-.ignoreme/*
+.vscode/
+data/
+ignoreme/
+performancetests/
+utils/
+
+
 docs/build/*
 docs/.DS_Store
