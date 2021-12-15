@@ -2,11 +2,12 @@
 ## UBCM
 ```@autodocs
 Modules = [MaxEntropyGraphs]
-Filter = t -> typeof(t) === DataType
+Order   = [:type]
 ```
 
 ## Functions
 ```@autodocs
 Modules = [MaxEntropyGraphs]
-Filter = t -> typeof(t) === Function
+Order   = [:function]
+Public = false
 ```

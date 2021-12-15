@@ -1,18 +1,12 @@
 using Documenter
 
-#=
-@info @__FILE__, @__DIR__
-push!(LOAD_PATH, joinpath(@__DIR__,"../src/"))
-using Pkg
-Pkg.activate(joinpath(@__DIR__,"../"))
-using MaxEntropyGraphs
-=#
 
 makedocs(sitename="MaxEntropyGraphs.jl",
          pages = [
             "Home" => "index.md",
-            "An other page" => "anotherPage.md",
             "Models" => "models.md",
+            "Higher order metrics" => "derivedquantities.md",
+            "GPU acceleration" => "GPU.md"
          ],
          format = Documenter.HTML(prettyurls = false)
 )

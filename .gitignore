@@ -1,3 +1,4 @@
 .vscode/*
 .ignoreme/*
 docs/build/*
+docs/.DS_Store
