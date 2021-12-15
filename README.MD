@@ -15,13 +15,12 @@ It provides the following functionalities:
 
 ## Examples
 ```Julia
-using fastmaxent
+
 
 ```
 
 ## To do list:
-- [ ] add direct mapping to compact model for usability
+- [x] add direct mapping to compact model for usability
 - [ ] compare performance test for optimized exact expression with automated differentiation (it is already faster than working with the exact expressions). Possible downside: requires tailored expression for each metric, which can be complicated.
-- [ ] compare performance with some existing methods (e.g. Max&Sam package - uses likelihood function  - in Matlab and some other in Python)
-- [ ] implement indexing on from the small model directly to the large one (macro magic)
-
+- [ ] compare performance with some existing methods (NEMtropy hub)
+- [ ] add GPU support
