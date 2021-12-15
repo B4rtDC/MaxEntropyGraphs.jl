@@ -1,5 +1,7 @@
 using Documenter
 
+using MaxEntropyGraphs
+push!(LOAD_PATH, "../src/")
 
 makedocs(sitename="MaxEntropyGraphs.jl",
          pages = [
