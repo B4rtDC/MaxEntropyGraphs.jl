@@ -2,7 +2,7 @@
 [![codecov.io](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl/coverage.svg?branch=main)](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl?branch=main)
 
 
-# MaxEntropyGraphs
+# MaxEntropyGraphs.jl
 
 
 A Julia package to use maximum entropy networks using the JuliaGraphs ecosystem (LightGraphs & SimpleWeightedGraphs).
