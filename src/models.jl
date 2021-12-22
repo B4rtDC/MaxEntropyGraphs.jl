@@ -217,19 +217,15 @@ end
 
 
 
-
-
-
-
-
-
 """
     DBCM{T,N} <: AbstractMaxEntropyModel where {T<:Real, N<:UInt}
 
 # Directed Binary Configuration Model (DBCM)
 Maximum entropy model with a fixed in- and outdegree sequence. 
 """
-mutable struct DBCM{T,N} <: AbstractMaxEntropyModel where {T<:Real, N<:UInt} end
+mutable struct DBCM{T,N} <: AbstractMaxEntropyModel where {T<:Real, N<:UInt} 
+
+end
 
 
 """
