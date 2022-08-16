@@ -4,18 +4,24 @@ authors = ["Bart De Clerck <declerck.bart@pm.me>"]
 version = "0.3.0"
 
 [deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+GraphIO = "aa1b3936-2fda-51b9-ab35-c553d3a640a2"
+GraphRecipes = "bd48cda9-67a9-57be-86fa-5b3c104eda73"
 Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 IndirectArrays = "9b13fd28-a010-5f03-acff-a1bbcff69959"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 NLsolve = "2774e3e8-f4cf-5e23-947b-6d7e65073b56"
+Pluto = "c3e4b0f8-55cb-11ea-2926-15256bba5781"
+PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [compat]
-julia = "1.6"
 Graphs = "1"
 IndirectArrays = "1"
 LoopVectorization = "0.12"
 NLsolve = "4"
 StatsBase = "0.33"
+julia = "1.6"
