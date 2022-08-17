@@ -17,6 +17,7 @@ import Statistics: std, mean    # for statistics
 import Printf: @sprintf         # for specific printing
 using Plots                     # for plotting
 using Measures                  # for margin settings
+using LaTeXStrings              # for LaTeX printing
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -57,6 +58,21 @@ Sample a random network from the `AbstractMaxEntropyModel`
 """
 Base.rand(::AbstractMaxEntropyModel) = nothing
 
+"""
+    ∇X(X::Function, M::T)
+
+Compute the gradient of a property `X` with respect to the expected adjacency matrix associated with the model `M`.
+"""
+∇X(X::Function, M::T) where T <: AbstractMaxEntropyModel = ReverseDiff.gradient(X, M.G)
+
+
+"""
+    σˣ(X::Function, M::T)
+
+Compute the standard deviation of a property `X` with respect to the expected adjacency matrix associated with the model `M`.
+"""
+σˣ(X::Function, M::T) where T <: AbstractMaxEntropyModel = nothing
+
 # ----------------------------------------------------------------------------------------------------------------------
 #
 #                                               UBCM model
@@ -78,15 +94,18 @@ struct UBCM{T} <: AbstractMaxEntropyModel where {T<:Real}
     σ::Matrix{T}
 end
 
+Base.show(io::IO, m::UBCM{T}) where T = print(io, "$(T) UBCM model ($(length(m)) vertices)")
+
 """
     UBCM(x::Vector{T}; compute::Bool=true) where {T<:Real}
 
 Constructor for the `UBCM` type. If `compute` is true, the expected adjacency matrix and variance are computed. 
-Otherwise the memory is allocated but not initialized.
+Otherwise the memory is allocated but not initialized. (TBC)
 """
 function UBCM(x::Vector{T}; compute::Bool=true) where {T<:Real}
-    G = compute ? Ĝ(::UBCM, x) : Matrix{T}(undef, length(x), length(x))
-    σ = compute ? σ(::UBCM, x) : Matrix{T}(undef, length(x), length(x))
+    G = Ĝ(x, UBCM{T})  # expected adjacency matrix
+    σ = σˣ(x, UBCM{T}) # expected standard deviation matrix
+
     return UBCM(x, G, σ)
 end
 
@@ -98,7 +117,7 @@ Base.length(m::UBCM) = length(m.x)
 
 Compute the expected adjacency matrix for the UBCM model with maximum likelihood parameters `x`.
 """
-function Ĝ(::UBCM, x::Vector{T}) where T
+function Ĝ(x::Vector{T}, ::Type{UBCM{T}}) where T
     n = length(x)
     G = zeros(T, n, n)
     for i = 1:n
@@ -112,13 +131,14 @@ function Ĝ(::UBCM, x::Vector{T}) where T
     return G
 end
 
-
 """
-    σ(::UBCM, x::Vector{T})
+    σˣ(x::Vector{T}, ::Type{UBCM{T}}) where T
 
-Compute the variance for the elements of the adjacency matrix for the UBCM model with maximum likelihood parameters `x`.
+Compute the standard deviation for the elements of the adjacency matrix for the UBCM model using the maximum likelihood parameters `x`.
+
+**Note:** read as "sigma star"
 """
-function σ(::UBCM, x::Vector{T}) where T
+function σˣ(x::Vector{T}, ::Type{UBCM{T}}) where T
     n = length(x)
     res = zeros(T, n, n)
     for i = 1:n
@@ -135,7 +155,7 @@ end
 """
     rand(m::UBCM)
 
-Generate a random graph from the UBCM model. The function returns a `LightGraph` object.
+Generate a random graph from the UBCM model. The function returns a `Graphs.AbstractGraph` object.
 """
 function Base.rand(m::UBCM)
     n = length(m)
@@ -143,7 +163,7 @@ function Base.rand(m::UBCM)
     for i = 1:n
         for j = i+1:n
             if rand() < m.G[i,j]
-                add_edge!(g, i, j)
+                Graphs.add_edge!(g, i, j)
             end
         end
     end
@@ -151,15 +171,157 @@ function Base.rand(m::UBCM)
     return g
 end
 
+"""
+    σˣ(X::Function, M::UBCM{T})
+
+Compute the standard deviation of a property `X` with respect to the expected adjacency matrix associated with the UBCM model `M`.
+"""
+σˣ(X::Function, M::UBCM{T}) where T = sqrt( sum((M.σ .* ∇X(X, M)) .^ 2) )
 
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+#
+#                                               Supporting network functions
+#
+# Note: the function working on matrices need to be defined in without contraining the types too much
+#       otherwise there will be a problem when using the autodiff package.
+# ----------------------------------------------------------------------------------------------------------------------
+
+## Binary networks
+# degree metric
+degree(A, i::Int)   = sum(@view A[:,i])             # degree of node i
+degree(A)           = reshape(sum(A, dims=1), :)    # degree vector for the entire network
+degree(m::UBCM, i::Int)     = degree(m.G, i)                # degree of node i
+degree(m::UBCM)             = reshape(sum(m.G, dims=1), :)  # degree vector for the entire network
+# ANND metric
+ANND(G::Graphs.SimpleGraph, i)  = iszero(Graphs.degree(G,i)) ? zero(Float64) : sum(map( n -> Graphs.degree(G,n), Graphs.neighbors(G,i))) / Graphs.degree(G,i)
+ANND(G::Graphs.SimpleGraph)     = map(i -> ANND(G,i), 1:Graphs.nv(G))
+ANND(A::T, i::Int) where T<: AbstractArray = sum(A[i,j] * degree(A,j) for j=1:size(A,1) if j≠i) / degree(A,i)
+ANND(A::T) where T<: AbstractArray         = map(i -> ANND(A,i), 1:size(A,1))
+ANND(m::UBCM, i::Int)           = ANND(m.G, i)
+ANND(m::UBCM)                   = ANND(m.G)
+# motifs
+M₁(A::T) where T<: AbstractArray = sum(A[i,j]*A[j,k]*(1 - A[k,i]) for i = axes(A,1) for j=i+1:size(A,1) for k=j+1:size(A,1))   # v-motifs metric
+M₁(m::UBCM)                      = M₁(m.G)
+M₁(G::Graphs.SimpleGraph)        = M₁(Graphs.adjacency_matrix(G))
+M₂(A::T) where T<: AbstractArray = sum(A[i,j]*A[j,k]*A[k,i] for i = axes(A,1) for j=i+1:size(A,1) for k=j+1:size(A,1))         # triangles metric
+M₂(m::UBCM)                      = M₂(m.G)
+M₂(G::Graphs.SimpleGraph)        = M₂(Graphs.adjacency_matrix(G))
+
+# ----------------------------------------------------------------------------------------------------------------------
+#
+#                                               UBCM model testing
+#
+# ----------------------------------------------------------------------------------------------------------------------
+NP = PyCall.pyimport("NEMtropy")
+
+mygraph = Graphs.smallgraph(:karate) # quick demo - Zachary karate club
+mygraph_nem = NP.UndirectedGraph(degree_sequence=Graphs.degree(mygraph))
+mygraph_nem.solve_tool(model="cm", method="fixed-point", initial_guess="random");
+
+M = UBCM(mygraph_nem.x)         # generate the model
+S = [rand(M) for _ in 1:10000]; # sample 10000 graphs from the model
+
+## degree metric testing
+dˣ = Graphs.degree(mygraph)                         # observed degree sequence ("d star")
+inds = sortperm(dˣ)
+# Squartini method
+d̂  = degree(M)                                      # expected degree sequence from the model
+σ_d = map(n -> σˣ(G -> degree(G, n), M), 1:length(M))      # standard deviation for each degree in the sequence
+z_d = (dˣ - d̂) ./ σ_d
+# Sampling method
+S_d = hcat(map( g -> Graphs.degree(g), S)...);       # degree sequences from the sample
+# illustration 
+# - acceptable domain
+p1 = scatter(dˣ[inds], dˣ[inds], label="observed", color=:black, marker=:xcross, 
+            xlabel="observed node degree", ylabel="node degree", legend_position=:topleft,
+            bottom_margin=5mm, left_margin=5mm)
+scatter!(p1, dˣ[inds], d̂[inds], label="expected (analytical)", linestyle=:dash, markerstrokecolor=:steelblue,markercolor=:white)
+plot!(p1, dˣ[inds], d̂[inds] .+  2* σ_d[inds], linestyle=:dash,color=:steelblue,label="acceptance domain (analytical)")
+plot!(p1, dˣ[inds], d̂[inds] .-  2* σ_d[inds], linestyle=:dash,color=:steelblue,label="")
+# - z-scores (NOTE: manual log computation to be able to deal with zero values)
+p2 = scatter(log10.(abs.(z_d)), label="analytical", xlabel="node ID", ylabel="|degree z-score|", color=:steelblue,legend=:bottom)
+for ns in [100;1000;10000]
+    μ̂ = reshape(mean( S_d[:,1:ns], dims=2), :)
+    ŝ = reshape(std(  S_d[:,1:ns], dims=2), :)
+    z_s = (dˣ - μ̂) ./ ŝ
+    scatter!(p1, dˣ[inds], μ̂[inds], label="sampled (n = $(ns))", color=Int(log10(ns)), marker=:cross)
+    plot!(p1, dˣ[inds], μ̂[inds] .+ 2*ŝ[inds], linestyle=:dash, color=Int(log10(ns)),  label="acceptance domain, sampled (n=$(ns))")
+    plot!(p1, dˣ[inds], μ̂[inds] .- 2*ŝ[inds], linestyle=:dash, color=Int(log10(ns)), label="")
+    scatter!(p2, log10.(abs.(z_s)), label="sampled (n = $(ns))", color=Int(log10(ns)))
+end
+plot!(p2, [1; length(M)], log10.([3;3]), color=:red, label="statistical significance threshold", linestyle=:dash)
+yrange = -12:2:0
+yticks!(p2,yrange, ["1e$(x)" for x in yrange])
+plot(p1,p2,layout=(1,2), size=(1200,600), title="Zachary karate club")
+savefig("""ZKC_degree_$("$(round(now(), Day))"[1:10]).pdf""")
+
+## ANND metric testing
+# Squartini method
+ANNDˣ = ANND(mygraph)                                   # observed ANND sequence ("ANND star")
+ANND_hat = ANND(M)                                      # expected ANND sequence
+σ_ANND = map(n -> σˣ(G -> ANND(G, n), M), 1:length(M))  # standard deviation for each ANND in the sequence
+z_ANND = (ANNDˣ - ANND_hat) ./ σ_ANND
+# Sampling method
+S_ANND = hcat(map( g -> ANND(g), S)...);                # ANND sequences from the sample
+# illustration 
+# - acceptable domain
+p1 = scatter(dˣ[inds], ANNDˣ[inds], label="observed", color=:black, marker=:xcross, 
+            xlabel="observed node degree", ylabel="ANND", legend_position=:topleft,
+            bottom_margin=5mm, left_margin=5mm)
+scatter!(p1, dˣ[inds], ANND_hat[inds], label="expected (analytical)", linestyle=:dash, markerstrokecolor=:steelblue,markercolor=:white)
+plot!(p1, dˣ[inds], ANND_hat[inds] .+  2* σ_ANND[inds], linestyle=:dash,color=:steelblue,label="acceptance domain (analytical)")
+plot!(p1, dˣ[inds], ANND_hat[inds] .-  2* σ_ANND[inds], linestyle=:dash,color=:steelblue,label="")
+# - z-scores (NOTE: manual log computation to be able to deal with zero values)
+p2 = scatter(log10.(abs.(z_ANND)), label="analytical", xlabel="node ID", ylabel="|ANND z-score|", color=:steelblue,legend=:bottom)
+for ns in [100;1000;10000]
+    μ̂ = reshape(mean( S_ANND[:,1:ns], dims=2), :)
+    ŝ = reshape(std(  S_ANND[:,1:ns], dims=2), :)
+    z_s = (ANNDˣ - μ̂) ./ ŝ
+    scatter!(p1, dˣ[inds], μ̂[inds], label="sampled (n = $(ns))", color=Int(log10(ns)), marker=:cross)
+    plot!(p1, dˣ[inds], μ̂[inds] .+ 2*ŝ[inds], linestyle=:dash, color=Int(log10(ns)),  label="acceptance domain, sampled (n=$(ns))")
+    plot!(p1, dˣ[inds], μ̂[inds] .- 2*ŝ[inds], linestyle=:dash, color=Int(log10(ns)), label="")
+    scatter!(p2, log10.(abs.(z_s)), label="sampled (n = $(ns))", color=Int(log10(ns)))
+end
+plot!(p2, [1; length(M)], log10.([3;3]), color=:red, label="statistical significance threshold", linestyle=:dash)
+yrange = -3:1:1
+ylims!(p2,-3,1)
+yticks!(p2,yrange, [L"$10^{ %$(x)}$" for x in yrange])
+plot(p1,p2,layout=(1,2), size=(1200,600), title="Zachary karate club")
+savefig("""ZKC_ANND_$("$(round(now(), Day))"[1:10]).pdf""")
+
+## motifs testing
+# Squartini method
+motifs = [M₁; M₂]                  # different motifs that will be computed
+Mˣ  = map(f -> f(mygraph), motifs) # observed motifs sequence ("M star")
+M̂   = map(f -> f(M), motifs)       # expected motifs sequence
+σ_M = map(f -> σˣ(f, M), motifs)   # standard deviation for each motif in the sequence
+z_M̂ = (Mˣ - M̂) ./ σ_M
+# Sampling method
+Ns = [100;1000;10000]
+z_M = zeros(length(motifs), length(Ns))
+for i in eachindex(Ns)
+    res = hcat(map(s -> map(f -> f(s), motifs),S[1:Ns[i]])...)
+    μ̂ = mean(res, dims=2)
+    ŝ = std(res, dims=2)
+    z_M[:,i] = (Mˣ - μ̂) ./ ŝ
+end
+# illustration
+plot(Ns, abs.(permutedims(repeat(z_M̂, 1,3))), color=:steelblue, label=reshape(["$(f) (analytical)" for f in motifs],1,2), linestyle=[:dash :dot], 
+     xlabel="Sample size", ylabel="|motif z-score|", xscale=:log10)
+scatter!(Ns, abs.(permutedims(z_M)), label=reshape(["$(f) (sampled)" for f in motifs],1,2))
+savefig("""ZKC_motifs_$("$(round(now(), Day))"[1:10]).pdf""")
+
+
+#=
 # ----------------------------------------------------------------------------------------------------------------------
 #
 #                                               DBCM model
 #
 # ----------------------------------------------------------------------------------------------------------------------
 
-
+#=
 
 """
 ∇X(X::Function, G::Matrix{T})
@@ -197,20 +359,8 @@ ANND(G::Graphs.SimpleGraph,i) where T = iszero(Graphs.degree(G,i)) ? zero(Float6
 ANND(G::Graphs.SimpleGraph) where T = map( i -> ANND(G,i), 1:Graphs.nv(G))
 ANND(A,i) =  sum(A[i,j] * d(A,j) for j=1:size(A,1) if j≠i) / d(A,i)
 
-## quick demo - Zachary karate club
-NP = PyCall.pyimport("NEMtropy")
-mygraph = Graphs.smallgraph(:karate)
-mygraph_nem = NP.UndirectedGraph(degree_sequence=Graphs.degree(mygraph))
-mygraph_nem.solve_tool(model="cm", method="fixed-point", initial_guess="random");
 
-# model
-M = UBCM(mygraph_nem.x)
-G_exp = Ĝ(M)
-σ_exp = σ(M)
 
-# check expected value
-d_star = Graphs.degree(mygraph)
-inds = sortperm(d_star)
 
 
 
@@ -293,20 +443,7 @@ savefig("ZKC - ANND.pdf")
 
 
 
-# counting motifs
-"""
-    M₂(A)
 
-Count number of occurences of motif number 2 (triangles)
-"""
-M₂(A) = sum(A[i,j]*A[j,k]*A[k,i] for i = 1:size(A,1) for j=i+1:size(A,1) for k=j+1:size(A,1))
-
-"""
-    M₁(A)
-
-Count number of occurences of motif number 1 (v-shapes)
-"""
-M₁(A) = sum(A[i,j]*A[j,k]*(1 - A[k,i]) for i = 1:size(A,1) for j=i+1:size(A,1) for k=j+1:size(A,1))
 
 
 N₂_obs = M₂(Graphs.adjacency_matrix(mygraph))
@@ -382,3 +519,6 @@ a_̸(A::Matrix{T},i,j) where T = (one(T) - A[j,i]) * (one(T) - A[i,j])
 # motifs itself
 
 M_13(A) = sum(a⭤(A,i,j)*a⭤(A,j,k)*a⭤(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
+
+=#
+=#
