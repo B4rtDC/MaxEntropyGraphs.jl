@@ -4,7 +4,7 @@ Idea: starting from models with known parameters:
 - sample networks, returning 
     1. Adjacency matrix (dense/ sparse (ULT)) 
     2. Graph 
-    3. Adjecency List & node number
+    3. Adjacency List & node number
 - compute z-scores of different metrics by 
     1. "exact" method 
     2. sampling method
@@ -18,6 +18,7 @@ import Printf: @sprintf         # for specific printing
 using Plots                     # for plotting
 using Measures                  # for margin settings
 using LaTeXStrings              # for LaTeX printing
+import Dates: now, Day          # for illustration printing
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -294,6 +295,7 @@ savefig("""ZKC_ANND_$("$(round(now(), Day))"[1:10]).pdf""")
 ## motifs testing
 # Squartini method
 motifs = [M₁; M₂]                  # different motifs that will be computed
+motifnames = Dict(M₁ => "M₁, v-motif", M₂ => "M₂, triangle")
 Mˣ  = map(f -> f(mygraph), motifs) # observed motifs sequence ("M star")
 M̂   = map(f -> f(M), motifs)       # expected motifs sequence
 σ_M = map(f -> σˣ(f, M), motifs)   # standard deviation for each motif in the sequence
@@ -308,9 +310,9 @@ for i in eachindex(Ns)
     z_M[:,i] = (Mˣ - μ̂) ./ ŝ
 end
 # illustration
-plot(Ns, abs.(permutedims(repeat(z_M̂, 1,3))), color=:steelblue, label=reshape(["$(f) (analytical)" for f in motifs],1,2), linestyle=[:dash :dot], 
+plot(Ns, abs.(permutedims(repeat(z_M̂, 1,3))), color=[:steelblue :sienna], label=reshape(["$(motifnames[f]) (analytical)" for f in motifs],1,2), linestyle=[:dash :dot], 
      xlabel="Sample size", ylabel="|motif z-score|", xscale=:log10)
-scatter!(Ns, abs.(permutedims(z_M)), label=reshape(["$(f) (sampled)" for f in motifs],1,2))
+plot!(Ns, abs.(permutedims(z_M)), color=[:steelblue :sienna], label=reshape(["$(motifnames[f]) (sampled)" for f in motifs],1,2), marker=:circle, linestyle=[:dash :dot])
 savefig("""ZKC_motifs_$("$(round(now(), Day))"[1:10]).pdf""")
 
 
