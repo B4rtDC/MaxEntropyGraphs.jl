@@ -341,46 +341,6 @@ a⭠(A::T, i::Int, j::Int) where T<:AbstractArray = @inbounds (one(eltype(T)) - 
 a⭤(A::T, i::Int, j::Int) where T<:AbstractArray = @inbounds A[i,j]*A[j,i]                                         # recipocrated link between i and j
 a̲(A::T, i::Int, j::Int)   where T<:AbstractArray = @inbounds (one(eltype(T)) - A[i,j])*(one(eltype(T)) - A[j,i])  # no links between i and j  A[i,j] *A[j,i]#
 # - actual motifs (cf. original 2011 paper by Squartini et al. for definitions)
-function M₁_fast(A::T)  where T<:AbstractArray
-    res = zero(eltype(A))
-     for i = axes(A,1)
-        for j = axes(A,1)
-            @simd for k = axes(A,1)
-                if i ≠ j && j ≠ k && k ≠ i
-                    res += a⭠(A,i,j) * a⭢(A,j,k) *   a̲(A,k,i)
-                end
-            end
-        end
-    end
-
-    return res
-end
-M₁_faster(A::T)  where T<:AbstractArray =    reduce(+, a⭠(A,i,j) * a⭢(A,j,k) *   a̲(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₁_fasterder(A::T)  where T<:AbstractArray = reduce(+, a⭠(A,i,j) * a⭢(A,j,k) *   a̲(A,k,i) for i=axes(A,1) for j=axes(A,1) for k=axes(A,1) if i≠j && j≠k && i≠k)
-
-function cheapsum(T::DataType, gen)
-    res = zero(T)
-    for v in gen
-        res += v
-    end
-    return res
-end
-MM₁(M::DBCM) = cheapsum(eltype(M.G), (a⭠(M.G,i,j) * a⭢(M.G,j,k) *   a̲(M.G,k,i) for i=axes(M.G,1) for j=axes(M.G,1) for k=axes(M.G,1) if i≠j && j≠k && i≠k))
-
-M₁(A::T)  where T<:AbstractArray = sum(a⭠(A,i,j) * a⭢(A,j,k) *   a̲(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₂(A::T)  where T<:AbstractArray = sum(a⭠(A,i,j) * a⭠(A,j,k) *   a̲(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₃(A::T)  where T<:AbstractArray = sum(a⭠(A,i,j) * a⭤(A,j,k) *   a̲(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₄(A::T)  where T<:AbstractArray = sum(a⭠(A,i,j) *   a̲(A,j,k) * a⭢(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₅(A::T)  where T<:AbstractArray = sum(a⭠(A,i,j) * a⭢(A,j,k) * a⭢(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₆(A::T)  where T<:AbstractArray = sum(a⭠(A,i,j) * a⭤(A,j,k) * a⭢(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₇(A::T)  where T<:AbstractArray = sum(a⭢(A,i,j) * a⭤(A,j,k) *   a̲(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₈(A::T)  where T<:AbstractArray = sum(a⭤(A,i,j) * a⭤(A,j,k) *   a̲(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₉(A::T)  where T<:AbstractArray = sum(a⭢(A,i,j) * a⭢(A,j,k) * a⭢(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₁₀(A::T) where T<:AbstractArray = sum(a⭤(A,i,j) * a⭢(A,j,k) * a⭢(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₁₁(A::T) where T<:AbstractArray = sum(a⭤(A,i,j) * a⭠(A,j,k) * a⭢(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₁₂(A::T) where T<:AbstractArray = sum(a⭤(A,i,j) * a⭤(A,j,k) * a⭢(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-M₁₃(A::T) where T<:AbstractArray = sum(a⭤(A,i,j) * a⭤(A,j,k) * a⭤(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
-
 motif_functions = [ (a⭠, a⭢, a̲);
                     (a⭠, a⭠, a̲);
                     (a⭠, a⭤, a̲);
@@ -395,34 +355,62 @@ motif_functions = [ (a⭠, a⭢, a̲);
                     (a⭤, a⭤, a⭢);
                     (a⭤, a⭤, a⭤);
                     ]
-for i = 1:13 # mapping to different functions for model and graph
+for i = 1:13 # mapping to different functions for adjacency matrix, DBCM model and graph
     fname = Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i))))
     @eval begin
-        $(fname)(M::DBCM) = $(fname)(M.G)
-        $(fname)(G::Graphs.SimpleDiGraph) = $(fname)(Graphs.adjacency_matrix(G))
-    end
-
-    @eval begin
-        function $(Symbol("$(fname)_fast"))(A::T)  where T<:AbstractArray
+        """
+            $($fname)(A::T) where T<:AbstractArray
+        
+        Compute the motif $($fname) (Σ_{i,j,k} $(motif_functions[$i][1])(i,j) $(motif_functions[$i][2])(j,k) $(motif_functions[$i][3])(k,i) ) from the adjacency matrix.
+        """
+        function $(fname)(A::T)  where T<:AbstractArray
             res = zero(eltype(A))
             for i = axes(A,1)
                 for j = axes(A,1)
                     @simd for k = axes(A,1)
                         if i ≠ j && j ≠ k && k ≠ i
-                            #res += a⭠(A,i,j) * a⭢(A,j,k) *   a̲(A,k,i)
                             res += $(motif_functions[i][1])(A,i,j) * $(motif_functions[i][2])(A,j,k) *   $(motif_functions[i][3])(A,k,i)
                         end
                     end
                 end
             end
-        
             return res
         end
 
-        $(Symbol("$(fname)_fast"))(M::DBCM) = $(Symbol("$(fname)_fast"))(M.G)
+        """
+            $($fname)(M::DBCM)
+        
+        Compute the motif $($fname) (Σ_{i,j,k} $(motif_functions[$i][1])(i,j) $(motif_functions[$i][2])(j,k) $(motif_functions[$i][3])(k,i) ) from the `DBCM` model.
+        """
+        $(fname)(M::DBCM) = $(fname)(M.G)
+
+        """
+            $($fname)(G::SimpleDiGraph)
+        
+        Compute the motif $($fname) (Σ_{i,j,k} $(motif_functions[$i][1])(i,j) $(motif_functions[$i][2])(j,k) $(motif_functions[$i][3])(k,i) ) from the `SimpleDiGraph`.
+        """
+        $(fname)(G::Graphs.SimpleDiGraph) = $(fname)(Graphs.adjacency_matrix(G))
     end
 end
 
+"""
+    motifs(M::DBCM, n::Int...)
+
+Compute the number of occurrences of motif `n` in the `DBCM` model. If no `n` is given, compute the number of occurrences of all motifs.
+
+
+# Examples
+```julia-repl
+julia> motifs(model, 13)
+[37]
+
+julia> motifs(model, 1,2,3)
+[36; 1; 19]
+
+julia> motifs(model, 1:13...)
+[36;  1;  19;  24;  13;  14;  32;  44;  16;  3;  36;  26;  37]
+```
+"""
 function motifs(M::DBCM, n::Int...)
     iszero(length(n)) && return nothing
     # generate function names
@@ -431,24 +419,37 @@ function motifs(M::DBCM, n::Int...)
     eval.(map(f -> :($(f)(M.G)), fnames))
 end
 
-function motifs_fast(M::DBCM, n::Int...)
-    iszero(length(n)) && return nothing
-    # generate function names
-    fnames = [Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i))) * "_fast") for i in n]
-    # apply function
-    eval.(map(f -> :($(f)(M.G)), fnames))
-end
+motifs(M::DBCM) = motifs(M, 1:13...)
 
-function motifs(G::Graphs.SimpleDiGraph, n::Int...)
+"""
+    motifs(G::SimpleDiGraph, n::Int...; full::Bool=false))
+
+Compute the number of occurrences of motif `n` in the `SimpleDiGraph`. If no `n` is given, compute the number of occurrences of all motifs.
+The keyword `full` allows you to choose between using a sparse or dense representation for the adjacency matrix. For small networks, a full representation is faster.
+
+# Examples
+```julia-repl
+julia> motifs(G, 13)
+[37]
+
+julia> motifs(G, 1,2,3)
+[36; 1; 19]
+
+julia> motifs(G, 1:13...)
+[36;  1;  19;  24;  13;  14;  32;  44;  16;  3;  36;  26;  37]
+```
+"""
+function motifs(G::Graphs.SimpleDiGraph, n::Int...; full::Bool=false)
     iszero(length(n)) && return nothing
     # generate function names
     fnames = [Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i)))) for i in n]
     # generate adjacency matrix
-    A = Graphs.adjacency_matrix(G)
+    A = full ? Array(Graphs.adjacency_matrix(G)) : Graphs.adjacency_matrix(G)
     # apply function
     eval.(map(f -> :($(f)($A)), fnames))
 end
 
+motifs(G::Graphs.SimpleDiGraph; full::Bool=false) = motifs(G, 1:13...; full=false)
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -637,7 +638,8 @@ savefig(p_in,  """ER_indegree_$("$(round(now(), Day))"[1:10]).pdf""")
 savefig(p_out, """ER_outdegree_$("$(round(now(), Day))"[1:10]).pdf""")
 
 ## motif testing
-
+mˣ = motifs(mygraph)
+m̂  = motifs(M)
 
 #=
 
