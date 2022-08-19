@@ -18,8 +18,8 @@ import Printf: @sprintf         # for specific printing
 using Plots                     # for plotting
 using Measures                  # for margin settings
 using LaTeXStrings              # for LaTeX printing
-import Dates: now, Day          # for illustration printing
-
+import Dates: now, Day, Minute  # for illustration printing
+using GraphIO                   # to read and write external graphs
 # ----------------------------------------------------------------------------------------------------------------------
 #
 #                                               General model
@@ -393,6 +393,8 @@ for i = 1:13 # mapping to different functions for adjacency matrix, DBCM model a
     end
 end
 
+const DBCM_motif_functions = eval.([Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i)))) for i = 1:13])
+
 """
     motifs(M::DBCM, n::Int...)
 
@@ -446,10 +448,15 @@ function motifs(G::Graphs.SimpleDiGraph, n::Int...; full::Bool=false)
     # generate adjacency matrix
     A = full ? Array(Graphs.adjacency_matrix(G)) : Graphs.adjacency_matrix(G)
     # apply function
-    eval.(map(f -> :($(f)($A)), fnames))
+    res = Vector{Int64}(undef, length(n)) # fixed type for performance reasons (x35 faster)
+    for i = 1:length(n)
+        res[i] = eval(:($(fnames[i])($A)))
+    end
+    #eval.(map(f -> :($(f)($A)), fnames))
+    return res
 end
 
-motifs(G::Graphs.SimpleDiGraph; full::Bool=false) = motifs(G, 1:13...; full=false)
+motifs(G::Graphs.SimpleDiGraph; full::Bool=false) = motifs(G, 1:13...; full=full)
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -560,87 +567,118 @@ function UBCM_test()
 end
 
 function DBCM_test()
-end
-
-NP = PyCall.pyimport("NEMtropy")
-mygraph = Graphs.erdos_renyi(183,2494, is_directed=true, seed=161)
-mygraph_nem = NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(mygraph), Graphs.indegree(mygraph)))
-mygraph_nem.solve_tool(model="dcm", method="fixed-point", initial_guess="random");
-
-# quick checks functionality
-@assert outdegree(Graphs.adjacency_matrix(mygraph)) == Graphs.outdegree(mygraph)
-@assert indegree( Graphs.adjacency_matrix(mygraph)) == Graphs.indegree(mygraph)
-@assert mygraph_nem.dseq_out == Graphs.outdegree(mygraph)
-@assert mygraph_nem.dseq_in  == Graphs.indegree(mygraph)
-
-M = UBCM(mygraph_nem.x, mygraph_nem.y) # generate the model
-# quick checks convergence
-@assert Graphs.outdegree(mygraph) ≈ outdegree(M)
-@assert Graphs.indegree(mygraph)  ≈ indegree(M)
-     
-S = [rand(M) for _ in 1:10000]; # sample 10000 graphs from the model
-
-## degree metric testing
-dˣ_in, dˣ_out = Graphs.indegree(mygraph), Graphs.outdegree(mygraph) # observed degree sequence ("d star")
-inds_in, inds_out = sortperm(dˣ_in), sortperm(dˣ_out)
-# Squartini method
-d̂_in, d̂_out  = indegree(M), outdegree(M)                            # expected degree sequence from the model
-σ_d_in =  map(n -> σˣ(G -> indegree(G, n), M),  1:length(M))        # standard deviation for each degree in the sequence
-σ_d_out = map(n -> σˣ(G -> outdegree(G, n), M), 1:length(M))      
-z_d_in, z_d_out = (dˣ_in - d̂_in) ./ σ_d_in, (dˣ_out - d̂_out) ./ σ_d_out
-# Sampling method
-S_d_in, S_d_out = hcat(map(g -> Graphs.indegree(g), S)...), hcat(map(g -> Graphs.outdegree(g), S)...);       # degree sequences from the sample
-
-# illustration
-# - acceptable domain
-# --indegree
-p1 = scatter(dˣ_in[inds_in], dˣ_in[inds_in], label="observed", color=:black, marker=:xcross, 
-                xlabel="observed node indegree", ylabel="node indegree", legend_position=:topleft,
-                bottom_margin=5mm, left_margin=5mm)
-scatter!(p1, dˣ_in[inds_in], d̂_in[inds_in], label="expected (analytical)", linestyle=:dash, markerstrokecolor=:steelblue,markercolor=:white)                
-plot!(p1, dˣ_in[inds_in], d̂_in[inds_in] .+  2* σ_d_in[inds_in], linestyle=:dash,color=:steelblue,label="acceptance domain (analytical)")
-plot!(p1, dˣ_in[inds_in], d̂_in[inds_in] .-  2* σ_d_in[inds_in], linestyle=:dash,color=:steelblue,label="")
-# --outdegree
-p3 = scatter(dˣ_out[inds_out], dˣ_out[inds_out], label="observed", color=:black, marker=:xcross, 
-                xlabel="observed node outdegree", ylabel="node outdegree", legend_position=:topleft,
-                bottom_margin=5mm, left_margin=5mm)
-scatter!(p3, dˣ_out[inds_out], d̂_out[inds_out], label="expected (analytical)", linestyle=:dash, markerstrokecolor=:steelblue,markercolor=:white)                
-plot!(p3, dˣ_out[inds_out], d̂_out[inds_out] .+  2* σ_d_out[inds_out], linestyle=:dash,color=:steelblue,label="acceptance domain (analytical)")
-plot!(p3, dˣ_out[inds_out], d̂_out[inds_out] .-  2* σ_d_out[inds_out], linestyle=:dash,color=:steelblue,label="")
-# - z-scores (NOTE: manual log computation to be able to deal with zero values)
-p2 = scatter(log10.(abs.(z_d_in)),  label="analytical", xlabel="node ID", ylabel="|indegree z-score|",  color=:steelblue,legend=:bottom)
-p4 = scatter(log10.(abs.(z_d_out)), label="analytical", xlabel="node ID", ylabel="|outdegree z-score|", color=:steelblue,legend=:bottom)
-for ns in [100;1000;10000]
+    NP = PyCall.pyimport("NEMtropy")
+    mygraph = Graphs.erdos_renyi(183,2494, is_directed=true, seed=161)
+    mygraph_nem = NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(mygraph), Graphs.indegree(mygraph)))
+    mygraph_nem.solve_tool(model="dcm", method="fixed-point", initial_guess="random");
+    
+    # quick checks functionality
+    @assert outdegree(Graphs.adjacency_matrix(mygraph)) == Graphs.outdegree(mygraph)
+    @assert indegree( Graphs.adjacency_matrix(mygraph)) == Graphs.indegree(mygraph)
+    @assert mygraph_nem.dseq_out == Graphs.outdegree(mygraph)
+    @assert mygraph_nem.dseq_in  == Graphs.indegree(mygraph)
+    
+    M = UBCM(mygraph_nem.x, mygraph_nem.y) # generate the model
+    # quick checks convergence
+    @assert Graphs.outdegree(mygraph) ≈ outdegree(M)
+    @assert Graphs.indegree(mygraph)  ≈ indegree(M)
+         
+    S = [rand(M) for _ in 1:10000]; # sample 10000 graphs from the model
+    
+    ## degree metric testing
+    dˣ_in, dˣ_out = Graphs.indegree(mygraph), Graphs.outdegree(mygraph) # observed degree sequence ("d star")
+    inds_in, inds_out = sortperm(dˣ_in), sortperm(dˣ_out)
+    # Squartini method
+    d̂_in, d̂_out  = indegree(M), outdegree(M)                            # expected degree sequence from the model
+    σ_d_in =  map(n -> σˣ(G -> indegree(G, n), M),  1:length(M))        # standard deviation for each degree in the sequence
+    σ_d_out = map(n -> σˣ(G -> outdegree(G, n), M), 1:length(M))      
+    z_d_in, z_d_out = (dˣ_in - d̂_in) ./ σ_d_in, (dˣ_out - d̂_out) ./ σ_d_out
+    # Sampling method
+    S_d_in, S_d_out = hcat(map(g -> Graphs.indegree(g), S)...), hcat(map(g -> Graphs.outdegree(g), S)...);       # degree sequences from the sample
+    
+    # illustration
+    # - acceptable domain
     # --indegree
-    μ̂_in = reshape(mean( S_d_in[:,1:ns], dims=2), :)
-    ŝ_in = reshape(std(  S_d_in[:,1:ns], dims=2), :)
-    z_s_in = (dˣ_in - μ̂_in) ./ ŝ_in
-    scatter!(p1, dˣ_in[inds_in], μ̂_in[inds_in], label="sampled (n = $(ns))", color=Int(log10(ns)), marker=:cross)
-    plot!(p1, dˣ_in[inds_in], μ̂_in[inds_in] .+ 2*ŝ_in[inds_in], linestyle=:dash, color=Int(log10(ns)),  label="acceptance domain, sampled (n=$(ns))")
-    plot!(p1, dˣ_in[inds_in], μ̂_in[inds_in] .- 2*ŝ_in[inds_in], linestyle=:dash, color=Int(log10(ns)), label="")
-    scatter!(p2, log10.(abs.(z_s_in)), label="sampled (n = $(ns))", color=Int(log10(ns)))
+    p1 = scatter(dˣ_in[inds_in], dˣ_in[inds_in], label="observed", color=:black, marker=:xcross, 
+                    xlabel="observed node indegree", ylabel="node indegree", legend_position=:topleft,
+                    bottom_margin=5mm, left_margin=5mm)
+    scatter!(p1, dˣ_in[inds_in], d̂_in[inds_in], label="expected (analytical)", linestyle=:dash, markerstrokecolor=:steelblue,markercolor=:white)                
+    plot!(p1, dˣ_in[inds_in], d̂_in[inds_in] .+  2* σ_d_in[inds_in], linestyle=:dash,color=:steelblue,label="acceptance domain (analytical)")
+    plot!(p1, dˣ_in[inds_in], d̂_in[inds_in] .-  2* σ_d_in[inds_in], linestyle=:dash,color=:steelblue,label="")
     # --outdegree
-    μ̂_out = reshape(mean( S_d_out[:,1:ns], dims=2), :)
-    ŝ_out = reshape(std(  S_d_out[:,1:ns], dims=2), :)
-    z_s_out = (dˣ_out - μ̂_out) ./ ŝ_out
-    scatter!(p3, dˣ_out[inds_out], μ̂_out[inds_out], label="sampled (n = $(ns))", color=Int(log10(ns)), marker=:cross)
-    plot!(p3, dˣ_out[inds_out], μ̂_out[inds_out] .+ 2*ŝ_out[inds_out], linestyle=:dash, color=Int(log10(ns)),  label="acceptance domain, sampled (n=$(ns))")
-    plot!(p3, dˣ_out[inds_out], μ̂_out[inds_out] .- 2*ŝ_out[inds_out], linestyle=:dash, color=Int(log10(ns)), label="")
-    scatter!(p4, log10.(abs.(z_s_out)), label="sampled (n = $(ns))", color=Int(log10(ns)))
+    p3 = scatter(dˣ_out[inds_out], dˣ_out[inds_out], label="observed", color=:black, marker=:xcross, 
+                    xlabel="observed node outdegree", ylabel="node outdegree", legend_position=:topleft,
+                    bottom_margin=5mm, left_margin=5mm)
+    scatter!(p3, dˣ_out[inds_out], d̂_out[inds_out], label="expected (analytical)", linestyle=:dash, markerstrokecolor=:steelblue,markercolor=:white)                
+    plot!(p3, dˣ_out[inds_out], d̂_out[inds_out] .+  2* σ_d_out[inds_out], linestyle=:dash,color=:steelblue,label="acceptance domain (analytical)")
+    plot!(p3, dˣ_out[inds_out], d̂_out[inds_out] .-  2* σ_d_out[inds_out], linestyle=:dash,color=:steelblue,label="")
+    # - z-scores (NOTE: manual log computation to be able to deal with zero values)
+    p2 = scatter(log10.(abs.(z_d_in)),  label="analytical", xlabel="node ID", ylabel="|indegree z-score|",  color=:steelblue,legend=:bottom)
+    p4 = scatter(log10.(abs.(z_d_out)), label="analytical", xlabel="node ID", ylabel="|outdegree z-score|", color=:steelblue,legend=:bottom)
+    for ns in [100;1000;10000]
+        # --indegree
+        μ̂_in = reshape(mean( S_d_in[:,1:ns], dims=2), :)
+        ŝ_in = reshape(std(  S_d_in[:,1:ns], dims=2), :)
+        z_s_in = (dˣ_in - μ̂_in) ./ ŝ_in
+        scatter!(p1, dˣ_in[inds_in], μ̂_in[inds_in], label="sampled (n = $(ns))", color=Int(log10(ns)), marker=:cross)
+        plot!(p1, dˣ_in[inds_in], μ̂_in[inds_in] .+ 2*ŝ_in[inds_in], linestyle=:dash, color=Int(log10(ns)),  label="acceptance domain, sampled (n=$(ns))")
+        plot!(p1, dˣ_in[inds_in], μ̂_in[inds_in] .- 2*ŝ_in[inds_in], linestyle=:dash, color=Int(log10(ns)), label="")
+        scatter!(p2, log10.(abs.(z_s_in)), label="sampled (n = $(ns))", color=Int(log10(ns)))
+        # --outdegree
+        μ̂_out = reshape(mean( S_d_out[:,1:ns], dims=2), :)
+        ŝ_out = reshape(std(  S_d_out[:,1:ns], dims=2), :)
+        z_s_out = (dˣ_out - μ̂_out) ./ ŝ_out
+        scatter!(p3, dˣ_out[inds_out], μ̂_out[inds_out], label="sampled (n = $(ns))", color=Int(log10(ns)), marker=:cross)
+        plot!(p3, dˣ_out[inds_out], μ̂_out[inds_out] .+ 2*ŝ_out[inds_out], linestyle=:dash, color=Int(log10(ns)),  label="acceptance domain, sampled (n=$(ns))")
+        plot!(p3, dˣ_out[inds_out], μ̂_out[inds_out] .- 2*ŝ_out[inds_out], linestyle=:dash, color=Int(log10(ns)), label="")
+        scatter!(p4, log10.(abs.(z_s_out)), label="sampled (n = $(ns))", color=Int(log10(ns)))
+    end
+    yrange = -10:2:0
+    ylims!(p2,-10,0); ylims!(p4,-10,0)
+    yticks!(p2,yrange, ["1e$(x)" for x in yrange])
+    yticks!(p4,yrange, ["1e$(x)" for x in yrange])
+    p_in  = plot(p1,p2,layout=(1,2), size=(1200,600), title="random Erdos-Renyi graph")
+    p_out = plot(p3,p4,layout=(1,2), size=(1200,600), title="random Erdos-Renyi graph")
+    savefig(p_in,  """ER_indegree_$("$(round(now(), Day))"[1:10]).pdf""")
+    savefig(p_out, """ER_outdegree_$("$(round(now(), Day))"[1:10]).pdf""")
+    
+    ## motif testing
+    # Squartini method
+    mˣ = motifs(mygraph)
+    m̂  = motifs(M)
+    mfuns = [Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i)))) for i = 1:13]
+    σ_m = Dict{Int, Float64}()
+    for i = 1:13
+        @info "working on $(i)"
+        σ_m[i] = σˣ(eval(mfuns[i]), M)
+    end
+    z_m = [(mˣ[i] - m̂[i]) ./ σ_m[i] for i = 1:13]
+    # simulation method
+    S_m = motifs.(S, full=true);
+    S_M = hcat(S_m...)
+    
+    # illustration
+    p_mot = scatter(z_m, xlabel="Motif ID", ylabel="z-score", color=:steelblue, label="analytical", 
+                    size=(1200,600), bottom_margin=5mm, left_margin=5mm, legend=:bottomleft, legendfontsize=6)
+    xticks!(collect(1:13))
+    for ns in [100;1000;10000]
+        m̂_sim = mean(S_M[:,1:ns], dims=2)
+        σ̂_sim = std( S_M[:,1:ns], dims=2) 
+        z_sim = (mˣ - m̂_sim) ./ σ̂_sim
+        scatter!(p_mot, z_sim, color=Int(log10(ns)), label="sampled (n = $(ns))", markeralpha=0.5)
+    end
+    plot!(p_mot, collect(1:13), -2*ones(13), color=:red, label="statistical significance threshold", linestyle=:dash)
+    plot!(p_mot, collect(1:13), 2*ones(13), color=:red, label="", linestyle=:dash)
+    
+    title!("random Erdos-Renyi graph")
+    xlims!(0,14)
+    savefig(p_mot, """ER_motifs_$("$(round(now(), Day))"[1:10]).pdf""")
 end
-yrange = -10:2:0
-ylims!(p2,-10,0); ylims!(p4,-10,0)
-yticks!(p2,yrange, ["1e$(x)" for x in yrange])
-yticks!(p4,yrange, ["1e$(x)" for x in yrange])
-p_in  = plot(p1,p2,layout=(1,2), size=(1200,600), title="random Erdos-Renyi graph")
-p_out = plot(p3,p4,layout=(1,2), size=(1200,600), title="random Erdos-Renyi graph")
-savefig(p_in,  """ER_indegree_$("$(round(now(), Day))"[1:10]).pdf""")
-savefig(p_out, """ER_outdegree_$("$(round(now(), Day))"[1:10]).pdf""")
 
-## motif testing
-mˣ = motifs(mygraph)
-m̂  = motifs(M)
 
+#ylims!(-10,0)
+
+#σˣ($(f), $(M)
 #=
 
 """
@@ -841,3 +879,117 @@ a_̸(A::Matrix{T},i,j) where T = (one(T) - A[j,i]) * (one(T) - A[i,j])
 M_13(A) = sum(a⭤(A,i,j)*a⭤(A,j,k)*a⭤(A,k,i) for i = 1:size(A,1) for j=1:size(A,1) for k=1:size(A,1) if i≠j && j≠k && i≠k)
 
 =#
+
+
+# helper function to load up a network from a file
+load_network_from_edges(f::String) = Graphs.loadgraph(f, EdgeListFormat())
+LRFW = load_network_from_edges("./data/foodweb_little_rock/edges.csv")
+
+"""
+    run a complete analysis (with plots and storage (?))
+
+"""
+function DBCM_analysis(G::Graphs.SimpleDiGraph, name::String; N::Int=100, subsamples::Vector{Int64}=[10;100])
+    # for plotting
+    sample_labels = permutedims(map(l -> "sampled (n = $(l))", subsamples))
+    sample_colors = permutedims(Int.(log10.(round.(Int,subsamples))))
+
+    @info "$(round(now(), Minute)) - Starting analysis for $(name)"
+    @info "$(round(now(), Minute)) - Computing ML parameters for $(name)"
+    G_nem =  NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(G), Graphs.indegree(G)))
+    G_nem.solve_tool(model="dcm", method="fixed-point", initial_guess="random")
+    model = UBCM(mygraph_nem.x, mygraph_nem.y)
+    @info "$(round(now(), Minute)) - Generating sample (n = $(N)) for $(name)"
+    S = [rand(model) for _ in 1:N]
+
+    ### Different METRICS ###
+    ## Node metrics ##
+    @info "$(round(now(), Minute)) - Computing node metrics for $(name)"
+    for (f, f_graphs) in [(indegree, Graphs.indegree); (outdegree, Graphs.outdegree)]
+        @info "$(round(now(), Minute)) - Computing $(f) for $(name)"
+        Xˣ, X̂, σ̂_X̂, X_S = node_metric(f, G, model, S; graph_fun=f_graphs)
+        inds = sortperm(Xˣ) # sorted indices based on oberved value (not based on degree)
+        # compute z-score (Squartini)
+        z_X_a = (Xˣ .- X̂) ./ σ̂_X̂
+        # compute z-score (Simulation)
+        X̂_S = hcat(map(n -> reshape(mean(X_S[:,1:n], dims=2),:), subsamples)...)
+        σ̂_X̂_S = hcat(map(n -> reshape( std(X_S[:,1:n], dims=2),:), subsamples)...)
+        z_X_S = (Xˣ .- X̂_S) ./ σ̂_X̂_S
+
+        # illustration
+        p1 = scatter(Xˣ[inds], Xˣ[inds], label="observed", color=:black, marker=:xcross, 
+                     xlabel="observed node $(f)", ylabel="node $(f)", legend_position=:topleft,
+                     bottom_margin=5mm, left_margin=5mm)
+        scatter!(p1, Xˣ[inds], X̂[inds], label="expected (analytical - DBCM)", linestyle=:dash, markerstrokecolor=:steelblue,
+                 markercolor=:white)                
+        p2 = scatter(log10.(abs.(z_X_a)),  label="analytical - BDCM)", xlabel="node ID", ylabel="|$(f) z-score|",
+                     color=:steelblue,legend=:bottom)
+        scatter!(p2, log10.(abs.(z_X_S)), label=sample_labels, color=sample_colors)
+
+        p = plot(p1,p2,layout=(1,2), size=(1200,600))
+        savefig(p, """$(name)_$("$(round(now(), Day))"[1:10])_$(f)_z-score.pdf""")
+    end
+
+    ## Graph metrics (e.g. motifs) ##
+    @info "$(round(now(), Minute)) - Computing graph metrics for $(name)"
+    @info "$(round(now(), Minute)) - Computing triadic motifs for $(name)"
+    mˣ = motifs(G,1,2)
+    m̂  = motifs(model,1,2)
+    σ̂_m̂  = Vector{eltype(model.G)}(undef, length(m̂))
+    for i = 1:length(m̂)
+        @info "$(round(now(), Minute)) - Computing standard deviation for motif $(i)"
+        σ̂_m̂[i] = σˣ(DBCM_motif_functions[i], model)
+    end
+    # compute z-score (Squartini)
+    z_m_a = [(mˣ[i] - m̂[i]) ./ σ̂_m̂[i] for i = 1:length(m̂)]
+    # compute z-score (Simulation)
+    @info "$(round(now(), Minute)) - Computing motifs for the sample"
+    S_m = hcat(motifs.(S, full=true)...); # computed values from sample
+    m̂_S =   hcat(map(n -> reshape(mean(S_m[:,1:n], dims=2),:), subsamples)...)
+    σ̂_m̂_S = hcat(map(n -> reshape( std(S_m[:,1:n], dims=2),:), subsamples)...)
+    z_m_S = (mˣ .- m̂_S) ./ σ̂_m̂_S
+    # illustration
+
+    p_mot = scatter(z_m_a, xlabel="Motif ID", ylabel="z-score", color=:steelblue, label="analytical (BDCM)", 
+                    size=(1200,600), bottom_margin=5mm, left_margin=5mm, legend=:bottomleft, legendfontsize=6, xticks=collect(1:13))
+
+
+    scatter!(p_mot, z_m_S, label=sample_labels, color=sample_colors, markeralpha=0.5)
+    plot!(p_mot, collect(1:13), -2*ones(13), color=:red, label="statistical significance threshold", linestyle=:dash)
+    plot!(p_mot, collect(1:13), 2*ones(13), color=:red, label="", linestyle=:dash)
+    title!("random Erdos-Renyi graph")
+    xlims!(0,14)
+    savefig(p_mot, """$(name)_$("$(round(now(), Day))"[1:10])_motifs_z-score.pdf""")
+end
+   
+
+"""
+node_metric(X::Function, G::Graphs.SimpleDiGraph, M::DBCM, S::Vector{T}; graph_fun::Function=X) where T<: Graphs.SimpleDiGraph
+
+For the metric `X`, compute the observed value from the graph `G`, the expected value under the DBCM `M` and the values for the 
+elements of the sample `S`. The function `graph_fun` is used to indicate the function that will be used to compute the metric `X`
+on the `::Graphs.SimpleDiGraph` object (some metrics such as degree are available in the `Graphs` package and are prefered for speed). 
+The default is to use the function `X` itself.
+
+By default, this function assumes that the metric `X` needs to be computed for each node in the graph.
+
+The return tuple is (Xˣ, X̂, σ̂_X̂, X_S) where
+- `Xˣ`: the observed value of the metric `X`
+- `X̂`: the expected value of the metrix `X` under the null model
+- `σ̂_X̂`: the standard deviation of the metric `X` under the null model
+- `X_S`: the values of the metric `X` for the elements of the sample
+
+Can be used in combination with: (indegree, Graphs.indegree), (outdegree, Graphs.outdegree), ANND
+
+"""
+function node_metric(X::Function, G::Graphs.SimpleDiGraph, M::DBCM, S::Vector{T}; graph_fun::Function=X) where T<: Graphs.SimpleDiGraph
+    Xˣ =  graph_fun(G)                        # compute observed value
+    X̂  =  X(M)                                # compute value for the DBCM
+    σ̂_X̂  =  map(n -> σˣ(g -> indegree(g, n), M),  1:length(M)) # compute variance for the DBCM
+    X_S = hcat(map(g -> graph_fun(g), S)...) # compute value for the sample
+
+    return Xˣ, X̂, σ̂_X̂, X_S
+end
+
+dˣ_in, d̂_in, σ̂_d̂_in, d_in_S = computevals(indegree, mygraph, M, S; graph_fun=Graphs.indegree)
+
