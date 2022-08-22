@@ -214,7 +214,7 @@ Base.length(m::DBCM) = length(m.x)
 Constructor for the `DBCM` type. If `compute` is true, the expected adjacency matrix and variance are computed. 
 Otherwise the memory is allocated but not initialized. (TBC)
 """
-function UBCM(x::Vector{T}, y::Vector{T}; compute::Bool=true) where {T<:Real}
+function DBCM(x::Vector{T}, y::Vector{T}; compute::Bool=true) where {T<:Real}
     G = Ĝ( x, y, DBCM{T}) # expected adjacency matrix
     σ = σˣ(x, y, DBCM{T}) # expected standard deviation matrix
 
@@ -330,10 +330,22 @@ outdegree(M::DBCM, i::Int)  = outdegree(M.G, i)
 outdegree(M::DBCM)          = outdegree(M.G)
 indegree(A::T, i::Int) where T<: AbstractArray        = sum(@view A[:,i])             # out-degree of node i
 indegree(A::T)         where T<: AbstractArray        = reshape(sum(A, dims=1), :)    # out-degree vector for the entire network
-indegree(M::DBCM, i::Int)   = indegree(M.G, i)
-indegree(M::DBCM)           = indegree(M.G)
+indegree(M::DBCM, i::Int)  = indegree(M.G, i)
+indegree(M::DBCM)          = indegree(M.G)
 # ANND metric
+ANND_in(G::T, i) where T<:Graphs.SimpleGraphs.SimpleDiGraph = iszero(Graphs.indegree(G,i)) ? zero(Float64) : sum(map( n -> Graphs.indegree(G,n), Graphs.inneighbors(G,i))) / Graphs.indegree(G,i)
+ANND_in(G::T)       where T<:Graphs.SimpleGraphs.SimpleDiGraph = map(i -> ANND_in(G,i), 1:Graphs.nv(G))
+ANND_in(A::T, i::Int) where T<: AbstractArray = sum(A[j,i] * indegree(A,j) for j=1:size(A,1) if j≠i) / indegree(A,i)
+ANND_in(A::T) where T<: AbstractArray         = map(i -> ANND_in(A,i), 1:size(A,1))
+ANND_in(m::DBCM, i::Int)           = ANND_in(m.G, i)
+ANND_in(m::DBCM)                   = ANND_in(m.G)
 
+ANND_out(G::T, i) where T<:Graphs.SimpleGraphs.SimpleDiGraph = iszero(Graphs.outdegree(G,i)) ? zero(Float64) : sum(map( n -> Graphs.outdegree(G,n), Graphs.outneighbors(G,i))) / Graphs.outdegree(G,i)
+ANND_out(G::T)       where T<:Graphs.SimpleGraphs.SimpleDiGraph = map(i -> ANND_out(G,i), 1:Graphs.nv(G))
+ANND_out(A::T, i::Int) where T<: AbstractArray = sum(A[i,j] * outdegree(A,j) for j=1:size(A,1) if j≠i) / outdegree(A,i)
+ANND_out(A::T) where T<: AbstractArray         = map(i -> ANND_out(A,i), 1:size(A,1))
+ANND_out(m::DBCM, i::Int)           = ANND_out(m.G, i)
+ANND_out(m::DBCM)                   = ANND_out(m.G)
 # motifs
 # - scaffolding
 a⭢(A::T, i::Int, j::Int) where T<:AbstractArray = @inbounds A[i,j] * (one(eltype(T)) - A[j,i])                    # directed link from i to j and not from j to i A[i,j] *A[j,i]#A
@@ -418,7 +430,7 @@ function motifs(M::DBCM, n::Int...)
     # generate function names
     fnames = [Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i)))) for i in n]
     # apply function
-    eval.(map(f -> :($(f)(M.G)), fnames))
+    eval.(map(f -> :($(f)($M.G)), fnames))
 end
 
 motifs(M::DBCM) = motifs(M, 1:13...)
@@ -883,13 +895,20 @@ M_13(A) = sum(a⭤(A,i,j)*a⭤(A,j,k)*a⭤(A,k,i) for i = 1:size(A,1) for j=1:si
 
 # helper function to load up a network from a file
 load_network_from_edges(f::String) = Graphs.loadgraph(f, EdgeListFormat())
-LRFW = load_network_from_edges("./data/foodweb_little_rock/edges.csv")
+
 
 """
     run a complete analysis (with plots and storage (?))
 
 """
-function DBCM_analysis(G::Graphs.SimpleDiGraph, name::String; N::Int=100, subsamples::Vector{Int64}=[10;100])
+function DBCM_analysis(G::Graphs.SimpleDiGraph, name::String; 
+                        N::Int=10000, subsamples::Vector{Int64}=[100;1000;10000],
+                        nodefunctions= [(indegree, Graphs.indegree, Graphs.indegree); 
+                                        (outdegree, Graphs.outdegree, Graphs.outdegree);
+                                        (ANND_in, ANND_in, Graphs.indegree);
+                                        (ANND_out, ANND_out, Graphs.outdegree)])
+    NP = PyCall.pyimport("NEMtropy")
+    
     # for plotting
     sample_labels = permutedims(map(l -> "sampled (n = $(l))", subsamples))
     sample_colors = permutedims(Int.(log10.(round.(Int,subsamples))))
@@ -898,17 +917,19 @@ function DBCM_analysis(G::Graphs.SimpleDiGraph, name::String; N::Int=100, subsam
     @info "$(round(now(), Minute)) - Computing ML parameters for $(name)"
     G_nem =  NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(G), Graphs.indegree(G)))
     G_nem.solve_tool(model="dcm", method="fixed-point", initial_guess="random")
-    model = UBCM(mygraph_nem.x, mygraph_nem.y)
+    model = DBCM(G_nem.x, G_nem.y)
     @info "$(round(now(), Minute)) - Generating sample (n = $(N)) for $(name)"
     S = [rand(model) for _ in 1:N]
 
     ### Different METRICS ###
     ## Node metrics ##
+    #=
     @info "$(round(now(), Minute)) - Computing node metrics for $(name)"
-    for (f, f_graphs) in [(indegree, Graphs.indegree); (outdegree, Graphs.outdegree)]
+    for (f, f_graphs, f_ref) in nodefunctions
         @info "$(round(now(), Minute)) - Computing $(f) for $(name)"
         Xˣ, X̂, σ̂_X̂, X_S = node_metric(f, G, model, S; graph_fun=f_graphs)
-        inds = sortperm(Xˣ) # sorted indices based on oberved value (not based on degree)
+        ref_val = f_ref(G)
+        inds = sortperm(ref_val) # sorted indices based on oberved value (not based on degree)
         # compute z-score (Squartini)
         z_X_a = (Xˣ .- X̂) ./ σ̂_X̂
         # compute z-score (Simulation)
@@ -917,24 +938,27 @@ function DBCM_analysis(G::Graphs.SimpleDiGraph, name::String; N::Int=100, subsam
         z_X_S = (Xˣ .- X̂_S) ./ σ̂_X̂_S
 
         # illustration
-        p1 = scatter(Xˣ[inds], Xˣ[inds], label="observed", color=:black, marker=:xcross, 
-                     xlabel="observed node $(f)", ylabel="node $(f)", legend_position=:topleft,
+        p1 = scatter(ref_val[inds], Xˣ[inds], label="observed", color=:red, marker=:circle, 
+                     xlabel="observed node $(f_ref)", ylabel="node $(f)", legend_position=:topleft,
                      bottom_margin=5mm, left_margin=5mm)
-        scatter!(p1, Xˣ[inds], X̂[inds], label="expected (analytical - DBCM)", linestyle=:dash, markerstrokecolor=:steelblue,
-                 markercolor=:white)                
+        scatter!(p1, ref_val[inds], X̂[inds], label="expected (analytical - DBCM)", markerstrokecolor=:steelblue, markercolor=:white)  
+        plot!(p1,ref_val[inds],X̂[inds] .+ 2* σ̂_X̂[inds], label="expected ± 2σ (analytical - DBCM)", linestyle=:dash, color=:steelblue)              
+        plot!(p1,ref_val[inds],X̂[inds] .- 2* σ̂_X̂[inds], label="", linestyle=:dash, color=:steelblue)
+        
+        # maybe re-evaluate this
         p2 = scatter(log10.(abs.(z_X_a)),  label="analytical - BDCM)", xlabel="node ID", ylabel="|$(f) z-score|",
                      color=:steelblue,legend=:bottom)
         scatter!(p2, log10.(abs.(z_X_S)), label=sample_labels, color=sample_colors)
-
+        plot!(p2, )
         p = plot(p1,p2,layout=(1,2), size=(1200,600))
         savefig(p, """$(name)_$("$(round(now(), Day))"[1:10])_$(f)_z-score.pdf""")
     end
-
+=#
     ## Graph metrics (e.g. motifs) ##
     @info "$(round(now(), Minute)) - Computing graph metrics for $(name)"
     @info "$(round(now(), Minute)) - Computing triadic motifs for $(name)"
-    mˣ = motifs(G,1,2)
-    m̂  = motifs(model,1,2)
+    mˣ = motifs(G)
+    m̂  = motifs(model)
     σ̂_m̂  = Vector{eltype(model.G)}(undef, length(m̂))
     for i = 1:length(m̂)
         @info "$(round(now(), Minute)) - Computing standard deviation for motif $(i)"
@@ -944,22 +968,25 @@ function DBCM_analysis(G::Graphs.SimpleDiGraph, name::String; N::Int=100, subsam
     z_m_a = [(mˣ[i] - m̂[i]) ./ σ̂_m̂[i] for i = 1:length(m̂)]
     # compute z-score (Simulation)
     @info "$(round(now(), Minute)) - Computing motifs for the sample"
-    S_m = hcat(motifs.(S, full=true)...); # computed values from sample
+    S_m = hcat(motifs.(S,full=true)...); # computed values from sample
     m̂_S =   hcat(map(n -> reshape(mean(S_m[:,1:n], dims=2),:), subsamples)...)
     σ̂_m̂_S = hcat(map(n -> reshape( std(S_m[:,1:n], dims=2),:), subsamples)...)
     z_m_S = (mˣ .- m̂_S) ./ σ̂_m̂_S
+    #=
     # illustration
-
     p_mot = scatter(z_m_a, xlabel="Motif ID", ylabel="z-score", color=:steelblue, label="analytical (BDCM)", 
-                    size=(1200,600), bottom_margin=5mm, left_margin=5mm, legend=:bottomleft, legendfontsize=6, xticks=collect(1:13))
+                    size=(1200,600), bottom_margin=5mm, left_margin=5mm, legend=:topleft, legendfontsize=6, xticks=collect(1:13))
 
 
     scatter!(p_mot, z_m_S, label=sample_labels, color=sample_colors, markeralpha=0.5)
     plot!(p_mot, collect(1:13), -2*ones(13), color=:red, label="statistical significance threshold", linestyle=:dash)
     plot!(p_mot, collect(1:13), 2*ones(13), color=:red, label="", linestyle=:dash)
-    title!("random Erdos-Renyi graph")
+    title!("$(name)")
     xlims!(0,14)
     savefig(p_mot, """$(name)_$("$(round(now(), Day))"[1:10])_motifs_z-score.pdf""")
+    =#
+
+    return hcat(z_m_a, z_m_S), m̂, m̂_S, σ̂_m̂_S
 end
    
 
@@ -991,5 +1018,85 @@ function node_metric(X::Function, G::Graphs.SimpleDiGraph, M::DBCM, S::Vector{T}
     return Xˣ, X̂, σ̂_X̂, X_S
 end
 
-dˣ_in, d̂_in, σ̂_d̂_in, d_in_S = computevals(indegree, mygraph, M, S; graph_fun=Graphs.indegree)
+#=
+G_nem =  NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(G), Graphs.indegree(G)))
+    G_nem.solve_tool(model="dcm", method="fixed-point", initial_guess="random")
+    model = UBCM(mygraph_nem.x, mygraph_nem.y)
 
+    model = UBCM(mygraph_nem.x, mygraph_nem.y)
+
+
+LRFW_nem = NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(LRFW), Graphs.indegree(LRFW)))
+LRFW_nem.solve_tool(model="dcm", method="fixed-point", initial_guess="random")
+LRFW_M = DBCM(LRFW_nem.x, LRFW_nem.y)
+LRFB_sample = [rand(LRFW_M) for i = 1:100]
+res = computevals(ANND_in, LRFB, LRFB_M, LRFB_sample)
+inds = sortperm(Graphs.indegree(LRFB))
+
+
+LRFW = load_network_from_edges("./data/foodweb_little_rock/edges.csv")
+LRFW_nem =  NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(LRFW), Graphs.indegree(LRFW)))
+LRFW_nem.solve_tool(model="dcm", method="fixed-point", initial_guess="random")
+LRFW_model = DBCM(mygraph_nem.x, mygraph_nem.y)
+LRFW_sample = [rand(LRFW_model) for i = 1:100]
+res = computevals(ANND_in, LRFW, LRFW_model, LRFW_sample)
+
+inds = sortperm(Graphs.indegree(LRFW))
+x = Graphs.indegree(LRFW)
+scatter(x[inds], res[1][inds], label="analytical", color=:red)
+plot!(x[inds], res[2][inds], color=:black)
+plot!(x[inds], res[2][inds] .+ 2*res[3][inds], color=:blue,line=:dash)
+plot!(x[inds], res[2][inds] .- 2*res[3][inds], color=:blue,line=:dash)
+
+sss = reshape(std(res[4], dims=2),:)
+#(res[1] .- reshape(mean(res[4], dims=2),:)) ./ reshape(std(res[4], dims=2),:)
+
+plot!(x[inds], res[2][inds] .+ 2*sss[inds], label="sample", color=:green)
+xticks!(0:20:100)
+
+=#
+
+#mijnetwerk = Graphs.SimpleDiGraph( Graphs.smallgraph(:karate))
+#DBCM_analysis(mijnetwerk, "karate")
+#Gbis = Graphs.erdos_renyi(70, 2500, is_directed=true)
+#DBCM_analysis(Gbis, "randomerdosrenyi")
+
+
+# Figure 5 reproduction from the paper
+G_chesapeake = readpajek("./data/Chesapeake_bay.txt");
+z_chesapeake, r_chesapeake... = DBCM_analysis(G_chesapeake, "Chesapeake_bay")
+
+G_foodnet = load_network_from_edges("./data/foodweb_little_rock/edges.csv")
+z_little_rock, r_little_rock... = DBCM_analysis(foodnet, "Little_rock")
+
+G_maspalomas = readpajek("./data/Maspalomas_lagoon.txt");
+z_maspalomas, r_maspalomas... = DBCM_analysis(G_maspalomas, "Maspalomas")
+
+G_florida_bay = readpajek("./data/Florida_bay.txt");
+z_florida_bay, r_florida_bay... = DBCM_analysis(G_florida_bay, "Floriday_bay")
+
+G_stmark = readpajek("./data/StMarks_seagrass.txt");
+z_stmark, z_stmark... = DBCM_analysis(G_stmark, "St_mark")
+
+
+data = (z_chesapeake, z_little_rock, z_maspalomas, z_florida_bay, z_stmark)
+plotnames = ["Chesapeake Bay";"Little Rock Lake"; "Maspalomas Lagoon";"Florida Bay"; "St Marks Seagrass"]
+mycolors = [:crimson; :steelblue; :seagreen; :indigo; :goldenrod]; 
+markershapes = [:circle; :utriangle; :rect; :star5]
+
+myplot = plot(size=(800,600), bottom_margin=5mm)
+for i in 1:length(plotnames)
+    #@info Int((i-1)*13+1):Int((i-1)*13+13)
+    #data[Int((i-1)*1+1):Int((i-1)+13),1]
+    plot!(myplot, x, data[i][:,1]   , color=mycolors[i], marker=markershapes[1], label="$(plotnames[i])", markeralpha=0.5, markersize=2, markerstrokewidth=0)
+    scatter!(myplot, x, data[i][:,2:end], color=mycolors[i], marker=permutedims(markershapes[2:end]), label="", markeralpha=0.5, markersize=2,markerstrokewidth=0)
+end
+plot!(myplot,[0;14], [-2 2;-2 2], label="", color=:black, legend_position=:bottomright)
+xlabel!(myplot,"motif \n∘: analytical\n △: n=100, □: n=1000, ⋆:n=10000")
+ylabel!(myplot,"z-score")
+xlims!(myplot,0,14)
+xticks!(myplot,x)
+ylims!(myplot,-17,15)
+yticks!(myplot,-15:5:15)
+title!(myplot,"Analytical vs simulation results for motifs (DBCM model)")
+savefig(myplot, "comparison_motifs_dbcm_$("$(round(now(), Minute))").pdf")
