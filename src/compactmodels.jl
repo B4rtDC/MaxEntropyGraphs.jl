@@ -9,7 +9,17 @@ Idea: starting from models with known parameters:
     1. "exact" method 
     2. sampling method
 """
-
+#= run this once at startup
+if Sys.islinux()
+    ENV["GRDIR"] = "" # for headless plotting
+    using Pkg; Pkg.build("GR")
+    # sudo apt install xvfb
+    # https://gr-framework.org/julia.html#installation
+    import GR:inline
+    GR.inline("pdf")
+    GR.inline("png")
+end
+=#
 import Graphs                   # network interface for graphs
 import PyCall                   # for calling NEMtropy package in Python
 import ReverseDiff              # for gradient
@@ -20,6 +30,8 @@ using Measures                  # for margin settings
 using LaTeXStrings              # for LaTeX printing
 import Dates: now, Day, Minute  # for illustration printing
 using GraphIO                   # to read and write external graphs
+using JLD2                      # for data storage
+using Distributions, HypothesisTests
 # ----------------------------------------------------------------------------------------------------------------------
 #
 #                                               General model
@@ -369,6 +381,7 @@ motif_functions = [ (a⭠, a⭢, a̲);
                     ]
 for i = 1:13 # mapping to different functions for adjacency matrix, DBCM model and graph
     fname = Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i))))
+    fdistname = Symbol("M_dist_$(i)")
     @eval begin
         """
             $($fname)(A::T) where T<:AbstractArray
@@ -388,6 +401,25 @@ for i = 1:13 # mapping to different functions for adjacency matrix, DBCM model a
             end
             return res
         end
+
+        """
+            $($fdistname)(A::T) where T<:AbstractArray
+        
+        Compute the Poisson Binomial distribution for motif $($fname) (Σ_{i,j,k} $(motif_functions[$i][1])(i,j) $(motif_functions[$i][2])(j,k) $(motif_functions[$i][3])(k,i) ) from the adjacency matrix.
+        """
+        function $(fdistname)(A::T)  where T<:AbstractArray
+            res = eltype(A)[] #zero(eltype(A))
+            for i = axes(A,1)
+                for j = axes(A,1)
+                    @simd for k = axes(A,1)
+                        if i ≠ j && j ≠ k && k ≠ i
+                            push!(res, $(motif_functions[i][1])(A,i,j) * $(motif_functions[i][2])(A,j,k) *   $(motif_functions[i][3])(A,k,i))
+                        end
+                    end
+                end
+            end
+            return PoissonBinomial(res)
+        end 
 
         """
             $($fname)(M::DBCM)
@@ -428,9 +460,10 @@ julia> motifs(model, 1:13...)
 function motifs(M::DBCM, n::Int...)
     iszero(length(n)) && return nothing
     # generate function names
-    fnames = [Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i)))) for i in n]
+    #fnames = [Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i)))) for i in n]
     # apply function
-    eval.(map(f -> :($(f)($M.G)), fnames))
+    eval.(map(f -> :($(f)($M.G)), DBCM_motif_functions)) 
+    #eval.(map(f -> :($(f)($M.G)), fnames))
 end
 
 motifs(M::DBCM) = motifs(M, 1:13...)
@@ -986,7 +1019,7 @@ function DBCM_analysis(G::Graphs.SimpleDiGraph, name::String;
     savefig(p_mot, """$(name)_$("$(round(now(), Day))"[1:10])_motifs_z-score.pdf""")
     =#
 
-    return hcat(z_m_a, z_m_S), m̂, m̂_S, σ̂_m̂_S
+    return hcat(z_m_a, z_m_S), mˣ, m̂_S, σ̂_m̂_S
 end
    
 
@@ -1061,13 +1094,532 @@ xticks!(0:20:100)
 #Gbis = Graphs.erdos_renyi(70, 2500, is_directed=true)
 #DBCM_analysis(Gbis, "randomerdosrenyi")
 
+"""
+    DBCM_motifs_analysis
 
+Compute the z-scores etc. for all motifs for a `SimpleDiGraph`. Returns a Dict for storage of the computed results
+
+G: the network
+N_min: minimum sample length used for computing metrics
+N_max: maximum sample length used for computing metrics
+n_sample_lengths: number of values in the domain [N_min, N_max]
+"""
+function DBCM_motifs_analysis(  G::T;
+                                N_min::Int=100, 
+                                N_max::Int=10000, 
+                                n_sample_lengths::Int=3,
+                                subsamples::Vector{Int64}=round.(Int,exp10.(range(log10(N_min),log10(N_max), length=n_sample_lengths))), kwargs...) where T<:Graphs.SimpleDiGraph
+    @info "$(round(now(), Minute)) - Started DBCM motif analysis with the following setting:\n$(kwargs)"
+    NP = PyCall.pyimport("NEMtropy")
+    G_nem =  NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(G), Graphs.indegree(G)))
+    #msg = """$(get!(kwargs, :networkname, "default"))\n"""
+    G_nem.solve_tool(model="dcm_exp", method="fixed-point", initial_guess="degrees", max_steps=3000)
+    #=
+    for initial_method in ["random"; "degrees"; "degrees_minor"]
+        G_nem.solve_tool(model="dcm_exp", method="fixed-point", initial_guess=initial_method, max_steps=3000)
+        if abs(G_nem.error) < 1e-6
+            msg *= "$(initial_method): $(G_nem.error)\n"
+        end
+    end
+    =#
+
+    #G_nem_normal = NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(G), Graphs.indegree(G)))
+    #G_nem_normal.solve_tool(model="dcm", method="fixed-point", initial_guess="degrees", max_steps=3000)
+    
+    #@info msg
+    #@warn exp.(-G_nem.x) 
+    #@warn G_nem_normal.x
+    #model = DBCM(G_nem.x, G_nem.y)
+    #@warn norm(indegree(model) - Graphs.indegree(G)), norm(outdegree(model) - Graphs.outdegree(G))
+    #model_normal = DBCM(G_nem_normal.x, G_nem_normal.y)
+    #@warn norm(indegree(model_normal) - Graphs.indegree(G)), norm(outdegree(model_normal) - Graphs.outdegree(G))
+    # generate model
+
+    model = DBCM(G_nem.x, G_nem.y)
+    @assert indegree(model) ≈ Graphs.indegree(G)
+
+    # generate sample
+    S = [rand(model) for _ in 1:N_max]
+    # compute motif data
+    @info "$(round(now(), Minute)) - Computing observed motifs"
+    mˣ = motifs(G)
+    @info "$(round(now(), Minute)) - Computing expected motifs for the DBCM model"
+    m̂  = motifs(model)
+    σ̂_m̂  = Vector{eltype(model.G)}(undef, length(m̂))
+    for i = 1:length(m̂)
+        @info "$(round(now(), Minute)) - Computing standard deviation for motif $(i)"
+        σ̂_m̂[i] = σˣ(DBCM_motif_functions[i], model)
+    end
+    # compute z-score (Squartini)
+    z_m_a = (mˣ - m̂) ./ σ̂_m̂  
+    @info "$(round(now(), Minute)) - Computing expected motifs for the sample"
+    #S_m = hcat(motifs.(S,full=true)...); # computed values from sample
+    S_m = zeros(13, length(S))
+    Threads.@threads for i in eachindex(S)
+        S_m[:,i] .= motifs(S[i], full=true)
+    end
+
+    #S_m = hcat(pmap(s -> motifs(s, full=true), S)...)
+    m̂_S =   hcat(map(n -> reshape(mean(S_m[:,1:n], dims=2),:), subsamples)...)
+    σ̂_m̂_S = hcat(map(n -> reshape( std(S_m[:,1:n], dims=2),:), subsamples)...)
+    z_m_S = (mˣ .- m̂_S) ./ σ̂_m̂_S
+    @info "$(round(now(), Minute)) - Finished"
+    return Dict(:model => model,
+                :network => G,
+                :mˣ => mˣ, 
+                :m̂ => m̂, 
+                :σ̂_m̂ => σ̂_m̂, 
+                :z_m_a => z_m_a,
+                :m̂_S => m̂_S,
+                :σ̂_m̂_S => σ̂_m̂_S,
+                :z_m_S => z_m_S,
+                :S_m => S_m,
+                :error => G_nem.error) 
+                
+end
+
+
+
+
+### Different METRICS ###
+## Node metrics ##
+#=
+@info "$(round(now(), Minute)) - Computing node metrics for $(name)"
+for (f, f_graphs, f_ref) in nodefunctions
+@info "$(round(now(), Minute)) - Computing $(f) for $(name)"
+Xˣ, X̂, σ̂_X̂, X_S = node_metric(f, G, model, S; graph_fun=f_graphs)
+ref_val = f_ref(G)
+inds = sortperm(ref_val) # sorted indices based on oberved value (not based on degree)
+# compute z-score (Squartini)
+z_X_a = (Xˣ .- X̂) ./ σ̂_X̂
+# compute z-score (Simulation)
+X̂_S = hcat(map(n -> reshape(mean(X_S[:,1:n], dims=2),:), subsamples)...)
+σ̂_X̂_S = hcat(map(n -> reshape( std(X_S[:,1:n], dims=2),:), subsamples)...)
+z_X_S = (Xˣ .- X̂_S) ./ σ̂_X̂_S
+
+# illustration
+p1 = scatter(ref_val[inds], Xˣ[inds], label="observed", color=:red, marker=:circle, 
+ xlabel="observed node $(f_ref)", ylabel="node $(f)", legend_position=:topleft,
+ bottom_margin=5mm, left_margin=5mm)
+scatter!(p1, ref_val[inds], X̂[inds], label="expected (analytical - DBCM)", markerstrokecolor=:steelblue, markercolor=:white)  
+plot!(p1,ref_val[inds],X̂[inds] .+ 2* σ̂_X̂[inds], label="expected ± 2σ (analytical - DBCM)", linestyle=:dash, color=:steelblue)              
+plot!(p1,ref_val[inds],X̂[inds] .- 2* σ̂_X̂[inds], label="", linestyle=:dash, color=:steelblue)
+
+# maybe re-evaluate this
+p2 = scatter(log10.(abs.(z_X_a)),  label="analytical - BDCM)", xlabel="node ID", ylabel="|$(f) z-score|",
+ color=:steelblue,legend=:bottom)
+scatter!(p2, log10.(abs.(z_X_S)), label=sample_labels, color=sample_colors)
+plot!(p2, )
+p = plot(p1,p2,layout=(1,2), size=(1200,600))
+savefig(p, """$(name)_$("$(round(now(), Day))"[1:10])_$(f)_z-score.pdf""")
+end
+=#
+## Graph metrics (e.g. motifs) ##
+#@info "$(round(now(), Minute)) - Computing graph metrics for $(name)"
+#@info "$(round(now(), Minute)) - Computing triadic motifs for $(name)"
+
+#=
+# illustration
+p_mot = scatter(z_m_a, xlabel="Motif ID", ylabel="z-score", color=:steelblue, label="analytical (BDCM)", 
+size=(1200,600), bottom_margin=5mm, left_margin=5mm, legend=:topleft, legendfontsize=6, xticks=collect(1:13))
+
+
+scatter!(p_mot, z_m_S, label=sample_labels, color=sample_colors, markeralpha=0.5)
+plot!(p_mot, collect(1:13), -2*ones(13), color=:red, label="statistical significance threshold", linestyle=:dash)
+plot!(p_mot, collect(1:13), 2*ones(13), color=:red, label="", linestyle=:dash)
+title!("$(name)")
+xlims!(0,14)
+savefig(p_mot, """$(name)_$("$(round(now(), Day))"[1:10])_motifs_z-score.pdf""")
+=#
+
+
+"""
+    write_result(outfile::String, label::Union{String, Symbol}, data)
+
+write out data to jld file. Checks for existance of the file and appends if it exists.
+
+outfile::String - path to output file
+label - label for the data in the file
+data - actual data to write to the file
+"""
+function write_result(outfile::String, label::Union{String, SubString{String}, Symbol}, data)
+    outfile = endswith(outfile, ".jld") ? outfile : outfile * ".jld"
+    # append or create file
+    jldopen(outfile, isfile(outfile) ? "r+" : "w") do file
+        write(file, String(label), data)
+    end
+end
+
+function produce_squartini_dbcm_data(output = "./data/computed_results/DBCM_result_more.jld",
+                                     netdata = "./data/networks")
+    for network in filter(x-> occursin("_directed", x), joinpath.(netdata, readdir(netdata)))
+        @info "working on $(network)"
+        # reference name for storage
+        refname = split(split(network,"/")[end],"_")[1]
+        @info refname
+        # load network
+        G = Graphs.loadgraph(network)
+        # compute motifs
+        res = DBCM_motifs_analysis(G, networkname=network)
+        # write out results
+        #@info "storage result= $(Symbol($(write_result(output, refname, res))))"
+        write_result(output, refname, res)
+    end
+end
+
+
+###############################################################################################
+# checking the motif results
+###############################################################################################
+function makeplots()
+    ## general settings ##
+    output = "./data/computed_results/DBCM_result_more.jld"
+    data = jldopen(output)
+    data_labels = keys(data)
+    plotnames = ["Chesapeake Bay";"Everglades Marshes"; "Florida Bay"; "Little Rock Lake"; "Maspalomas Lagoon"; "St Marks Seagrass" ]
+    mycolors = [:crimson;        :saddlebrown;          :indigo;     :blue;           :lime;  :goldenrod ]; 
+    markershapes = [:circle;        :star5 ;            :dtriangle;  :rect;               :utriangle;  :star6 ]
+    linestyles = [:dot; :dash; :solid]
+
+
+    #####################################################
+    # plot for the z-scores (analytical + simulation)
+    #####################################################
+    @info "plotting z-scores for the motifs"
+    motifplot = plot(size=(1600, 1200), bottom_ofset=5mm, left_ofset=5mm, thickness_scaling = 2)
+    for i = eachindex(data_labels)
+        plot!(motifplot, 1:13, data[data_labels[i]][:z_m_a], label=plotnames[i], color=mycolors[i], marker=markershapes[i], 
+        markerstrokewidth=0, markerstrokecolor=mycolors[i])
+        y = data[data_labels[i]][:z_m_S]
+        for j = 1:size(y,2)
+            plot!(motifplot, 1:13, y[:, j], label="", color=mycolors[i], marker=markershapes[i], 
+                                        markerstrokewidth=0, markerstrokecolor=mycolors[i], line=linestyles[j], linealpha=0.5, markeralpha=0.5)
+        end
+    end
+    plot!(motifplot,[0;14], [-2 2;-2 2], label="", color=:black, legend_position=:bottomright)
+    xlabel!(motifplot, "motif")
+    ylabel!(motifplot, "z-score")
+    xlims!(motifplot, 0,14)
+    xticks!(motifplot, 1:13)
+    ylims!(motifplot, -15,15)
+    yticks!(motifplot ,-15:5:15)
+    title!(motifplot ,"Analytical vs Simulation results for motifs (DBCM model)\n-: analytical, .: n=100, - -:, n=1000, -: n=10000")
+    savefig(motifplot, "./data/computed_results/DBCM_motifs_z-score.pdf")
+
+    ############################################################################
+    # plot for the difference in expected motif counts (analytical - simulation)
+    ############################################################################
+    @info "plotting difference in expected motif counts"
+    motifcountplot = plot(size=(1600, 1200), bottom_ofset=5mm, left_ofset=10mm, thickness_scaling = 2,legendposition=:topleft)
+    for i = eachindex(data_labels)
+        y = abs.((data[data_labels[i]][:m̂] - data[data_labels[i]][:m̂_S][:,end]) ./ data[data_labels[i]][:m̂])
+        plot!(motifcountplot, 1:13, y, label=plotnames[i], color=mycolors[i], marker=markershapes[i], 
+        markerstrokewidth=0, markerstrokecolor=mycolors[i], yscale=:log10)
+    end
+    xlabel!(motifcountplot, "motif")
+    ylabel!(motifcountplot, L"\left|\frac{\hat{m}_a - \hat{m}_s}{\hat{m}_a}\right|")
+    title!(motifcountplot ,"Analytical vs Simulation difference in expected value estimate")
+    xlims!(motifcountplot, 0,14)
+    xticks!(motifcountplot, 1:13)
+    ylims!(motifcountplot, 1e-6,1e-1)
+    savefig(motifcountplot, "./data/computed_results/DBCM_motifs_count.pdf")
+
+    ############################################################################
+    # plot for the difference in expected motif standard deviavtion (analytical - simulation)
+    ############################################################################
+    @info "plotting difference in expected motif count standard deviation"
+    motifstdplot = plot(size=(1600, 1200), bottom_ofset=5mm, left_ofset=10mm, thickness_scaling = 2,legendposition=:topleft)
+    for i = eachindex(data_labels)
+        y = abs.((data[data_labels[i]][:σ̂_m̂] - data[data_labels[i]][:σ̂_m̂_S][:,end]) ./ data[data_labels[i]][:σ̂_m̂])
+        plot!(motifstdplot, 1:13, y, label=plotnames[i], color=mycolors[i], marker=markershapes[i], 
+        markerstrokewidth=0, markerstrokecolor=mycolors[i], yscale=:log10)
+    end
+    xlabel!(motifstdplot, "motif")
+    ylabel!(motifstdplot, L"\left|\frac{\hat{\sigma_m}_a - \hat{\sigma_m}_s}{\hat{\sigma_m}_a}\right|")
+    title!(motifstdplot ,"Analytical vs Simulation difference in motif count standard deviation")
+    xlims!(motifstdplot, 0,14)
+    xticks!(motifstdplot, 1:13)
+    #ylims!(motifcountplot, 1e-6,1e-1)
+    savefig(motifstdplot, "./data/computed_results/DBCM_motifs_std.pdf")
+
+    #=
+    ############################################################################
+    # plot some histograms of the sample
+    ############################################################################
+    
+    for j = 1:13
+        global motif_hist_plot = plot(size=(1600, 1200), bottom_ofset=5mm, left_ofset=10mm, thickness_scaling = 2,legendposition=:topleft)
+        y = @view data[data_labels[4]][:S_m][j,:]
+
+        # check data fitting
+        d = fit(Normal{Float64}, y)
+        dΓ = fit(Gamma, y)
+        # hypothesis test for normality
+        p = ExactOneSampleKSTest(y, d)
+        d_F = fit( Fdistribution{Float64}, y)
+        if pvalue(p) < 1e-2
+            histogram!(motif_hist_plot, y, normalize=true, label="PDF")
+            d_χ = Chisq(mean(y))
+            x_χ = motif_hist_plot.series_list[end].plotattributes[:x]
+            y_χ = pdf.(d_χ, x_χ)
+            yΓ = pdf.(dΓ, x_χ)
+            xΓ = motif_hist_plot.series_list[end].plotattributes[:x]
+            
+            p_χ = ExactOneSampleKSTest(y, d_χ)
+            @info pvalue(p_χ)
+            # add markers indicating the estimated of the standard deviation
+            ymax = maximum(motif_hist_plot.series_list[end].plotattributes[:y])
+            x_sq = data[data_labels[4]][:σ̂_m̂][j]
+            x_S  = data[data_labels[4]][:σ̂_m̂_S][j,end]
+            plot!(motif_hist_plot, [x_sq; x_sq], [0; ymax], label="σ_analytical", color=:red, line=:dot)
+            plot!(motif_hist_plot, [x_S; x_S], [0; ymax], label="σ_sample", color=:red, line=:dash)
+            #plot!(motif_hist_plot, [std(d_χ); std(d_χ)], [0; ymax], label="σ_χ (ν = $(@sprintf("%1.2f", d_χ.ν )))", color=:black, line=:dash)
+            plot!(motif_hist_plot, [std(dΓ); std(dΓ)], [0; ymax], label="σ_Γ", color=:black, line=:dash)
+            # add χ² pdf to plot
+            #plot!(motif_hist_plot, x_χ, y_χ, label="X ~ χ²(ν=$(@sprintf("%1.2f", d_χ.ν ))) ", fillrange=0, fillalpha=0.5) 
+            plot!(motif_hist_plot, xΓ, yΓ, label="X ~ Γ", fillrange=0, fillalpha=0.5) 
+   
+            # fix other plot details
+            xlabel!(motif_hist_plot, "motif value")
+            ylabel!(motif_hist_plot, L"f_X(x)")
+            title!(motif_hist_plot ,"$(plotnames[4])\n motif 9 PDF (n = $(size(data["littlerock"][:S_m], 2)))\n p-value normality: $(@sprintf("%1.2e", pvalue(p)))\n skewness: $(skewness(y))\n curtosis: $(kurtosis(y)))")
+            savefig(motif_hist_plot, "./data/computed_results/DBCM_motif_$(j)_histogram (non normal).pdf")
+        else
+            histogram!(motif_hist_plot, y, normalize=true, label="PDF")
+            # add markers indicating the estimated of the standard deviation
+            ymax = maximum(motif_hist_plot.series_list[end].plotattributes[:y])
+            x_sq = data[data_labels[4]][:σ̂_m̂][j]
+            x_S  = data[data_labels[4]][:σ̂_m̂_S][j,end]
+            plot!(motif_hist_plot, [x_sq; x_sq], [0; ymax], label="σ_analytical", color=:red, line=:dot)
+            plot!(motif_hist_plot, [x_S; x_S], [0; ymax], label="σ_sample", color=:red, line=:dash)
+
+            xlabel!(motif_hist_plot, "motif value")
+            ylabel!(motif_hist_plot, L"f_X(x)")
+            title!(motif_hist_plot ,"$(plotnames[4])\n motif 9 PDF (n = $(size(data["littlerock"][:S_m], 2)))\n p-value normality: $(@sprintf("%1.2e", pvalue(p)))\n skewness: $(skewness(y))\n curtosis: $(kurtosis(y)))")
+            savefig(motif_hist_plot, "./data/computed_results/DBCM_motif_$(j)_histogram (normal).pdf")
+        end
+    end
+    =#
+
+    ############################################################################################################################
+    # plot some histograms, sample standard deviation, sample mean and theoretical values using the PoissonBinomial distribution
+    ############################################################################################################################
+    @info "plotting histograms of sample standard deviation, sample mean and theoretical values using the PoissonBinomial distribution for dataset $(data_labels[4])"
+    α_lim = 0.01 # limit p-value for normality test
+    for j = 1:13
+        motif_Pb_plot = plot(size=(1600, 1200), bottom_ofset=5mm, left_ofset=10mm, thickness_scaling = 2,legendposition=:topleft)
+        # get sample counts for the motif
+        y = @view data[data_labels[4]][:S_m][j,:]
+        # check theoretical data fitting
+        d_N = fit(Normal{Float64}, y)                           # Normal distribution
+        d_Pb = eval(:($(Symbol("M_dist_$(j)"))(model.G)))       # Poissin-Binomial distribution
+        # hypothesis test for normality
+        normalitytest = ExactOneSampleKSTest(y, d_N)
+        # plot the histogram
+        histogram!(motif_Pb_plot, y, normalize=true, label="PDF")
+        # add markers indicating the estimated of the standard deviation
+        ymax = maximum(motif_Pb_plot.series_list[end].plotattributes[:y])
+        σ_sq = data[data_labels[4]][:σ̂_m̂][j]            # Squartini standard deviation
+        σ_S  = data[data_labels[4]][:σ̂_m̂_S][j,end]      # Sample standard deviation
+        σ_th = std(d_Pb)                                # Theoretical standard deviation according to the Poisson-Binomial distribution
+        plot!(motif_Pb_plot, [σ_sq; σ_sq], [0; ymax], label="σ_analytical ($(@sprintf("%1.2f", σ_sq)))", color=:black, line=:dot)
+        plot!(motif_Pb_plot, [σ_S; σ_S], [0; ymax], label="σ_sample ($(@sprintf("%1.2f", σ_S)))", color=:red, line=:dot)
+        plot!(motif_Pb_plot, [σ_th; σ_th], [0; ymax], label="σ_{Pb} ($(@sprintf("%1.2f", σ_th)))", color=:blue, line=:dot)
+        # add markers indication the estimate of the mean
+        E_sq = data[data_labels[4]][:m̂][j]            # Squartini mean
+        E_s  = data[data_labels[4]][:m̂_S][j,end]      # Sample mean
+        E_th = mean(d_Pb)                             # Theoretical mean according to the Poisson-Binomial distribution
+        plot!(motif_Pb_plot, [E_sq; E_sq], [0; ymax], label="E_analytical ($(@sprintf("%1.12f", E_sq)))", color=:black, line=:dash)
+        plot!(motif_Pb_plot, [E_s; E_s], [0; ymax], label="E_sample ($(@sprintf("%1.12f", E_s)))", color=:black, line=:dash)
+        plot!(motif_Pb_plot, [E_th; E_th], [0; ymax], label="E_{Pb} ($(@sprintf("%1.12f", E_th)))", color=:black, line=:dash)
+        @info abs(E_th - E_sq)
+        # final layout options
+        xlabel!(motif_Pb_plot, "motif value")
+        ylabel!(motif_Pb_plot, L"f_X(x)")
+        title!(motif_Pb_plot ,"$(plotnames[4])\n motif $(j) PDF (n = $(size(data["littlerock"][:S_m], 2)))\n p-value normality: $(@sprintf("%1.2e", pvalue(normalitytest)))\n skewness: $(skewness(y))\n curtosis: $(kurtosis(y)))")
+        figoutpath = "./data/computed_results/DBCM_Pb_motif_$(j)_histogram ($(pvalue(normalitytest) < α_lim ? "non " : "")normal).pdf"
+        savefig(motif_Pb_plot, figoutpath)
+    end
+
+    ##########################################################################################
+    # illustrate the difference in σ values in function of the magnitude of the expected value
+    ##########################################################################################
+    @info "plotting the difference in σ values in function of the magnitude of the expected value"
+    motifsigmadiffplot = plot(size=(1600, 1200), bottom_ofset=1mm, left_ofset=5mm, thickness_scaling = 2,legendposition=:bottomleft)
+    motifsigmadiffplot_2 = plot(size=(1600, 1200), bottom_ofset=1mm, left_ofset=5mm, thickness_scaling = 2,legendposition=:bottomleft)
+    for i = eachindex(data_labels)
+        y = abs.((data[data_labels[i]][:σ̂_m̂] - data[data_labels[i]][:σ̂_m̂_S][:,end]) ./ data[data_labels[i]][:σ̂_m̂])
+        x = data[data_labels[i]][:m̂]
+        scatter!(motifsigmadiffplot, x, y, label=plotnames[i], color=mycolors[i], marker=markershapes[i], 
+        markerstrokewidth=0, markerstrokecolor=mycolors[i], scale=:log10)
+
+        scatter!(motifsigmadiffplot_2, 1:13, data[data_labels[i]][:m̂], label=plotnames[i], color=mycolors[i], marker=markershapes[i], 
+        markerstrokewidth=0, markerstrokecolor=mycolors[i], yscale=:log10)
+    end
+    xlabel!(motifsigmadiffplot, L"$E[m]$")
+    ylabel!(motifsigmadiffplot, L"\left|\frac{\hat{\sigma_m}_a - \hat{\sigma_m}_s}{\hat{\sigma_m}_a}\right|")
+    title!(motifsigmadiffplot ,"Relative difference in σ vs. the expected value")
+    xlims!(motifsigmadiffplot, 0.1,1e6)
+    xticks!(motifsigmadiffplot, 10. .^(0:5))
+    ylims!(motifsigmadiffplot, 1e-2,10)
+    yticks!(motifsigmadiffplot, 10. .^(-2:1))
+
+    xlabel!(motifsigmadiffplot_2, "motif")
+    ylabel!(motifsigmadiffplot_2, L"$E[m]$")
+    title!(motifsigmadiffplot_2 ,"expected motif count")
+    xlims!(motifsigmadiffplot_2, 0, 14)
+    xticks!(motifsigmadiffplot_2, collect(1:13))
+    ylims!(motifsigmadiffplot_2, 1e-1,1e5)
+    yticks!(motifsigmadiffplot_2, 10. .^(-1:2:5))
+
+    savefig(plot(motifsigmadiffplot,motifsigmadiffplot_2, size=(3200, 1200), bottom_ofset=1mm, left_ofset=5mm, thickness_scaling = 2,legendposition=:bottomleft), "./data/computed_results/DBCM_sigma_diff.pdf")
+
+end
+
+#=
+
+###############################################################################################
+# determine maximum likelihood estimator of χ²distribution
+###############################################################################################
+ν_true = 10.;
+x = rand(Chisq(ν_true), 100)
+fig = histogram(x,normalize=:pdf, label="sample histogram")
+xpoints = range(0,30,length=100)
+ypoints = pdf.(Chisq(ν_true), xpoints)
+plot!(xpoints, ypoints, label="true distribution")
+plot!(xpoints, pdf.(Chisq(mean(x)), xpoints), label="estimated distribution")
+savefig("./data/chisqauredata.pdf")
+
+function chisqLSfit(x, ν)
+
+
+end
+L(x, ν) = -sum(x.^(ν[1]/2-1) .* exp.(-x ./ 2)) ./ (2^(ν[1]/2) * gamma(ν[1]/2))
+fooo(ν) =  L(x, ν)
+res = optimize(fooo, [mean(x)])
+res
+
+=#
+
+#xlabel!(motifstdplot, "motif")
+#ylabel!(motifstdplot, L"\left|\frac{\hat{\sigma_m}_a - \hat{\sigma_m}_s}{\hat{\sigma_m}_a}\right|")
+#end
+    #=
+    ####################################################################
+    # plot for the expacted values, normalized (analytical + simulation)
+    ####################################################################
+    expvalplot = plot(size=(1600, 1200), bottom_ofset=5mm, left_ofset=5mm, thickness_scaling = 2)
+    for i = eachindex(data_labels)
+        
+        mˣ = data[data_labels[i]][:mˣ]
+        m̂ = data[data_labels[i]][:m̂]
+        m̂_S = data[data_labels[i]][:m̂_S][:,3]
+       #  @info data_labels[i], plotnames[i], ( mˣ - m̂) ./  m̂
+        plot!(expvalplot, 1:13, (m̂ -  mˣ) ./  m̂, 
+            label=plotnames[i], color=mycolors[i], marker=markershapes[i], 
+            markerstrokewidth=0, markerstrokecolor=mycolors[i], line=:dash)
+        plot!(expvalplot, 1:13, (m̂_S - mˣ) ./ m̂_S , 
+            label=plotnames[i], color=mycolors[i], marker=markershapes[i], 
+            markerstrokewidth=0, markerstrokecolor=mycolors[i], line=:dot)
+        #plot!(expvalplot, 1:13, log10.(data[data_labels[i]][:m̂]), label="", color=mycolors[i], marker=markershapes[i], 
+        #markerstrokewidth=0, markerstrokecolor=mycolors[i], line=:dash)
+        #plot!(expvalplot, 1:13, log10.(data[data_labels[i]][:m̂_S][:,3]), label="", color=mycolors[i], marker=markershapes[i], 
+        #markerstrokewidth=0, markerstrokecolor=mycolors[i], line=:dot)
+        #=
+        plot!(expvalplot, 1:13, log10.(data[data_labels[i]][:mˣ] ), label=plotnames[i], color=mycolors[i], marker=markershapes[i], 
+        markerstrokewidth=0, markerstrokecolor=mycolors[i])
+        plot!(expvalplot, 1:13, log10.(data[data_labels[i]][:m̂]), label="", color=mycolors[i], marker=markershapes[i], 
+        markerstrokewidth=0, markerstrokecolor=mycolors[i], line=:dash)
+        plot!(expvalplot, 1:13, log10.(data[data_labels[i]][:m̂_S][:,3]), label="", color=mycolors[i], marker=markershapes[i], 
+        markerstrokewidth=0, markerstrokecolor=mycolors[i], line=:dot) =#
+    end
+   # plot!(expvalplot, [-1], [-1], line=:solid, label="observed", color=:black)
+    #plot!(expvalplot, [-1], [-1], line=:dash, label="expected", color=:black)
+    #plot!(expvalplot, [-1], [-1], line=:dot, label="sample", color=:black)
+    xlabel!(expvalplot, "motif")
+    ylabel!(expvalplot, "value")
+    xlims!(expvalplot, 0,14)
+    ylims!(expvalplot, -5,2)
+    xticks!(expvalplot, 1:13)
+    title!(expvalplot ,"Analytical results for motifs (DBCM model)")
+    savefig(expvalplot, "./data/computed_results/DBCM_motifs_counts.pdf")
+
+    # plot for the relation between difference in analytical and simulation results and the motif actual motif count 
+    # for different networks
+    differenceplot = plot(size=(1600, 1200), bottom_ofset=5mm, left_ofset=5mm, thickness_scaling = 2)
+    for i = eachindex(data_labels)
+        @info data_labels[i], plotnames[i]
+        Δ_z_score = data[data_labels[i]][:z_m_a] .- data[data_labels[i]][:z_m_S][:,2]
+        x = data[data_labels[i]][:mˣ] ./ Graphs.nv(data[data_labels[i]][:network])
+        @info x, Δ_z_score
+        scatter!(differenceplot, x .+ 0.1  , Δ_z_score, label=plotnames[i], color=mycolors[i], marker=markershapes[i], 
+        markerstrokewidth=0, markerstrokecolor=mycolors[i], xscale=:log10)
+    end
+    ylims!(differenceplot, -5, 5)
+    xlabel!(differenceplot, "normalised motif count")
+    ylabel!(differenceplot, "difference in z-score (simulation/analytical)")
+    title!(differenceplot ,"Results for motifs (DBCM model)")
+    savefig(differenceplot, "./data/computed_results/DBCM_motifs_delta_z-score-normalised_count.pdf")
+end
+=#
+    #=
+    motifplot = plot()
+
+    plotnames = ["Chesapeake Bay";"Little Rock Lake"; "Maspalomas Lagoon";"Florida Bay"; "St Marks Seagrass"; "Everglades Marshes"]
+    mycolors = [:crimson; :steelblue; :seagreen; :indigo; :goldenrod; :saddlebrown]; 
+    markershapes = [:circle; :utriangle; :rect; :star5]
+
+    myplot = plot(size=(800,600), bottom_margin=5mm)
+    x = collect(1:13)
+    for i in 1:length(plotnames)
+        #@info Int((i-1)*13+1):Int((i-1)*13+13)
+        #data[Int((i-1)*1+1):Int((i-1)+13),1]
+        plot!(myplot, x, data[i][:,1] , color=mycolors[i], marker=markershapes[1], label="$(plotnames[i])", markeralpha=0.5, markersize=2, markerstrokewidth=0)
+    # scatter!(myplot, x, data[i][:,2:end], color=mycolors[i], marker=permutedims(markershapes[2:end]), label="", markeralpha=0.5, markersize=2,markerstrokewidth=0)
+    end
+    plot!(myplot,[0;14], [-2 2;-2 2], label="", color=:black, legend_position=:bottomright)
+    xlabel!(myplot, "motif \n∘: analytical\n △: n=100, □: n=1000, ⋆:n=10000")
+    ylabel!(myplot, "z-score")
+    xlims!(myplot, 0,14)
+    xticks!(myplot, x)
+    ylims!(myplot, -17,15)
+    yticks!(myplot ,-15:5:15)
+    title!(myplot ,"Analytical vs simulation results for motifs (DBCM model)")
+    savefig(myplot, "comparison_motifs_dbcm_$("$(round(now(), Minute))").pdf")
+    =#
+
+#=
+output = "./data/computed_results/DBCM_results.jld"
+netdata = "./data/networks"
+for network in filter(x-> occursin("_directed", x), joinpath.(netdata, readdir(netdata)))
+    @info "working on $(network)"
+    # reference name for storage
+    refname = split(split(network,"/")[end],"_")[1]
+    @info refname
+    # load network
+    G = Graphs.loadgraph(network)
+    # compute motifs
+    res = DBCM_motifs_analysis(G)
+    # write out results
+    #@info "storage result= $(Symbol($(write_result(output, refname, res))))"
+    write_result(output, refname, res)
+end
+=#
+# exploit the results
+
+
+
+
+#=
 # Figure 5 reproduction from the paper
 G_chesapeake = readpajek("./data/Chesapeake_bay.txt");
 z_chesapeake, r_chesapeake... = DBCM_analysis(G_chesapeake, "Chesapeake_bay")
 
-G_foodnet = load_network_from_edges("./data/foodweb_little_rock/edges.csv")
-z_little_rock, r_little_rock... = DBCM_analysis(foodnet, "Little_rock")
+
+Graphs.savegraph("./data/networks/everglades.lg", G_everglade)
+
+G_little_rock = load_network_from_edges("./data/foodweb_little_rock/edges.csv")
+z_little_rock, r_little_rock... = DBCM_analysis(G_little_rock, "Little_rock")
 
 G_maspalomas = readpajek("./data/Maspalomas_lagoon.txt");
 z_maspalomas, r_maspalomas... = DBCM_analysis(G_maspalomas, "Maspalomas")
@@ -1076,27 +1628,365 @@ G_florida_bay = readpajek("./data/Florida_bay.txt");
 z_florida_bay, r_florida_bay... = DBCM_analysis(G_florida_bay, "Floriday_bay")
 
 G_stmark = readpajek("./data/StMarks_seagrass.txt");
-z_stmark, z_stmark... = DBCM_analysis(G_stmark, "St_mark")
+z_stmark, r_stmark... = DBCM_analysis(G_stmark, "St_mark")
 
+G_everglade = readpajek("./data/raw_network_data/Everglades.txt")
+z_everglade, r_everglade... = DBCM_analysis(G_everglade, "Everglades")
 
-data = (z_chesapeake, z_little_rock, z_maspalomas, z_florida_bay, z_stmark)
-plotnames = ["Chesapeake Bay";"Little Rock Lake"; "Maspalomas Lagoon";"Florida Bay"; "St Marks Seagrass"]
-mycolors = [:crimson; :steelblue; :seagreen; :indigo; :goldenrod]; 
+data = (z_chesapeake, z_little_rock, z_maspalomas, z_florida_bay, z_stmark, z_everglade)
+plotnames = ["Chesapeake Bay";"Little Rock Lake"; "Maspalomas Lagoon";"Florida Bay"; "St Marks Seagrass"; "Everglades Marshes"]
+mycolors = [:crimson; :steelblue; :seagreen; :indigo; :goldenrod; :saddlebrown]; 
 markershapes = [:circle; :utriangle; :rect; :star5]
 
 myplot = plot(size=(800,600), bottom_margin=5mm)
+x = collect(1:13)
 for i in 1:length(plotnames)
     #@info Int((i-1)*13+1):Int((i-1)*13+13)
     #data[Int((i-1)*1+1):Int((i-1)+13),1]
-    plot!(myplot, x, data[i][:,1]   , color=mycolors[i], marker=markershapes[1], label="$(plotnames[i])", markeralpha=0.5, markersize=2, markerstrokewidth=0)
-    scatter!(myplot, x, data[i][:,2:end], color=mycolors[i], marker=permutedims(markershapes[2:end]), label="", markeralpha=0.5, markersize=2,markerstrokewidth=0)
+    plot!(myplot, x, data[i][:,1] , color=mycolors[i], marker=markershapes[1], label="$(plotnames[i])", markeralpha=0.5, markersize=2, markerstrokewidth=0)
+   # scatter!(myplot, x, data[i][:,2:end], color=mycolors[i], marker=permutedims(markershapes[2:end]), label="", markeralpha=0.5, markersize=2,markerstrokewidth=0)
 end
 plot!(myplot,[0;14], [-2 2;-2 2], label="", color=:black, legend_position=:bottomright)
-xlabel!(myplot,"motif \n∘: analytical\n △: n=100, □: n=1000, ⋆:n=10000")
-ylabel!(myplot,"z-score")
-xlims!(myplot,0,14)
-xticks!(myplot,x)
-ylims!(myplot,-17,15)
-yticks!(myplot,-15:5:15)
-title!(myplot,"Analytical vs simulation results for motifs (DBCM model)")
+xlabel!(myplot, "motif \n∘: analytical\n △: n=100, □: n=1000, ⋆:n=10000")
+ylabel!(myplot, "z-score")
+xlims!(myplot, 0,14)
+xticks!(myplot, x)
+ylims!(myplot, -17,15)
+yticks!(myplot ,-15:5:15)
+title!(myplot ,"Analytical vs simulation results for motifs (DBCM model)")
 savefig(myplot, "comparison_motifs_dbcm_$("$(round(now(), Minute))").pdf")
+
+using Plots; gr()
+plot(rand(10))
+png("test_gr_saving")
+
+
+
+#=
+DBCMpath = "./data/computed_results/DBCM.jld"
+jldopen(DBCMpath, isfile(DBCMpath) ? "r+" : "w") do file
+    #=g = JLD.create_group(file, :DBCM)=#
+    to_store = Dict(:zscores => z_maspalomas,
+                    :m_observed => r_maspalomas[1],                        
+                    :m_sim_hat => r_maspalomas[2],
+                    :m_sim_std => r_maspalomas[3]
+)
+    write(file, String(:Maspalomas), to_store)
+    #g[:Chesapeake] = 
+end
+jldopen(DBCMpath, "r+") do file
+    to_store = Dict(:zscores => z_chesapeake,
+                    :m_observed => r_chesapeake[1],                        
+                    :m_sim_hat => r_chesapeake[2],
+                    :m_sim_std => r_chesapeake[3]
+)
+    write(file, String(:Chesapeake), to_store)
+    #g[:Chesapeake] = 
+end
+
+memmem =  jldopen("./data/computed_results/DBCM.jld", "r") do file
+    read(file)#, "DBCM")
+end
+
+memmem =  jldopen("./data/computed_results/minitest.jld", "r") do file
+    read(file)#, "DBCM")
+end
+
+=#
+=#
+
+#=
+
+using BenchmarkTools
+M = [rand(100,100) for _ in 1:100];
+motifs(A::T) where T<:AbstractArray = eval.(map(f -> :($(f)($A)), DBCM_motif_functions))
+@btime motifs.(M);                      # 1.946 s (47807 allocations: 2.27 MiB)
+result = zeros(13, length(M))
+@btime begin                            # 346.120 ms (48462 allocations: 2.29 MiB) x6 faster than above
+    Threads.@threads for i in 1:length(M)
+        result[:,i] .= motifs(M[i]);                      
+    end
+end
+
+@btime asyncmap(motifs, M; ntasks=4);   # 1.902 s (48346 allocations: 2.28 MiB)
+@btime asyncmap(motifs, M; ntasks=8);   # 1.990 s (48370 allocations: 2.28 MiB)
+=#
+
+"""
+based on the wikipedia article on person type distributions
+return 
+- the type of pearson family (0), I → VII
+- the distribution (if possible)
+- pdf value associated with x
+- the coefficients (TBC)
+"""
+function pearsonfamily(x::T) where T <: AbstractVector
+    @warn "pearsonfamily"
+    γ₁ = skewness(x) # symmetry measure
+    γ₂ = kurtosis(x) # "tailedness" measure Note: Julia uses excess kurtosis
+    β₁ = γ₁^2
+    β₂ = γ₂ + 3
+    
+    μ₁ = mean(x)
+    μ₂ = var(x)
+    @info "μ₁:  $(μ₁) +  μ₂: $(μ₂)"
+    @info "β₁:  $(β₁) +  β₂: $(β₂)"
+    b₀ = (4*β₂ - 3*β₁) / (10*β₂ - 12*β₁ - 18) * μ₂
+    b₁ = sqrt(μ₂) * sqrt(β₁) * (β₂ + 3) / (10*β₂ - 12*β₁ - 18)
+    b₂ = (2*β₂ - 3*β₁ - 6)/(10*β₂ - 12*β₁ - 18)
+    a = b₁
+    @info "b₀: $(b₀), b₁: $(b₁), b₂: $(b₂), a: $(a)"
+    # case symmetric distributions
+    type = 0
+    if iszero(b₁)
+        if isequal(β₂, 3)
+            type = 0
+        elseif β₂ < 3
+            type = 2
+        elseif β₂ > 3
+            type = 7
+        end
+    # case single root
+    elseif isequal(b₂, 3)
+        type = 3
+    # case assymetrical distributions
+    else
+        κ = b₁^2 - 4*b₂*b₀
+        if κ ≥ 0
+            a₁ = (-b₁ - sqrt(κ))/(2*b₂)
+            a₂ = (-b₁ + sqrt(κ))/(2*b₂)
+            if isequal(sign(a₁ * a₂), -1)
+                type = 1
+            else
+                type = 6
+            end
+        
+        elseif κ < 0
+            type = 4
+        end
+    end
+
+    @info "picked type $(type) distribution"
+
+    if isequal(type, 6)
+        m₁ = (a + a₁) / (b₂*(a₂ - a₁))
+        m₂ = - (a + a₂) / (b₂*(a₂ - a₁))
+
+        @info "a₁: $(a₁) and a₂: $(a₂)"
+        @info "m₁: $(m₁) and m₂: $(m₂)"
+        λ = μ₁ + (a₂ - a₁) * (m₂ + 1)/(m₂ + m₁ + 2) - a₂
+        @info "λ = $(λ)"
+        @info "λ + a₂: $(λ + a₂)"
+        @info "(a₂ - a₁): $(a₂ - a₁)"
+        dist = BetaPrime(m₂ + 1, -m₂ - m₁ - 1)
+        trf = (x .- (λ + a₂)) ./ (a₂ - a₁)
+        #@info unique(trf), trf .< 0
+        @info "difference in a: $((a₁- a₂  )) $((a₂ - a₁ )), λ = $(λ)"
+        return pdf.(dist, trf) ./ (a₂ - a₁), dist,  (λ + a₂), (a₂ - a₁), std(dist) * (a₂ - a₁)
+    end
+end
+
+function myfitpearson(mu1::T, mu2::T, beta1::T, beta2::T, atol::T=sqrt(eps())) where T <: Real
+    @warn "working method"
+    @info "mu1: $(mu1), mu2: $(mu2)"
+    @info "beta1: $(beta1), beta2: $(beta2)"
+    if beta1 > (beta2 - 1)
+      error("There are no probability distributions with these moments")
+    elseif isapprox(beta1, (beta2 -1))
+      p = (1 + sqrt(beta1)/sqrt(4+beta1))/2
+      a = mu1 - mu2 * sqrt((1-p)/p)
+      b = mu1 + mu2 * sqrt(p/(1-p))
+      error("Not a pearson distribution. Try discrete distribution with mass \n $p on $a and mass $(1-p) on $b")
+    else
+      b0 = mu2 * (4*beta2 - 3*beta1) / (10*beta2 - 12*beta1 - 18)
+      b1 = sqrt(mu2) * sqrt(beta1) * (beta2 + 3) / (10*beta2 - 12*beta1 - 18)
+      b2 = (2*beta2 - 3*beta1 - 6) / (10*beta2 - 12*beta1 - 18)
+    @info "b0 = $(b0) b1 = $(b1) b2 = $(b2)"
+      if isapprox(beta1, 0.0, rtol=0.0, atol=atol)
+        if isapprox(beta2, 3.0, rtol=0.0, atol=atol) #Type 0
+          return Normal(mu1, sqrt(mu2))
+        elseif beta2 < 3 #Type II
+          a1 = sqrt(mu2) / 2 * (-sqrt(-16 * beta2 * (2 * beta2 - 6)) / (2 * beta2 - 6))    
+          m1 = - 1.0 / (2 * b2)
+          return PearsonII(1+m1, mu1 - a1, 2*a1)
+        else #beta2 > 3 #Type VII
+          r = 6 * (beta2 - 1) / (2 * beta2 - 6)
+          a = sqrt(mu2 * (r-1))
+          return PearsonVII(1 + r, mu1, a / sqrt(1 + r))
+        end
+      elseif !isapprox((2*beta2 - 3*beta1 - 6), 0.0, rtol=0.0, atol=atol)
+        k = 0.25 * beta1 * (beta2 + 3)^2 / ((4*beta2 - 3*beta1) * (2*beta2 - 3*beta1 - 6))
+        if k < 0 #Type I
+          a1 = sqrt(mu2) / 2 * ((-sqrt(beta1) * (beta2 + 3) - sqrt(beta1 * (beta2 + 3) ^ 2 - 4 * (4*beta2 - 3*beta1) * (2*beta2-3*beta1-6))) / (2*beta2-3*beta1-6))
+          a2 = sqrt(mu2) / 2 * ((-sqrt(beta1) * (beta2 + 3) + sqrt(beta1 * (beta2 + 3) ^ 2 - 4 * (4*beta2 - 3*beta1) * (2*beta2-3*beta1-6))) / (2*beta2-3*beta1-6))
+          if a1 > a2
+            tmp = a1
+            a1 = a2
+            a2 = tmp
+          end
+          m1 =  -(sqrt(beta1) * (beta2+3) + a1*(10*beta2 - 12*beta1 - 18) / sqrt(mu2)) / 
+          (sqrt(beta1 * (beta2 + 3)^2 -4*(4*beta2 - 3*beta1)*(2*beta2 - 3*beta1-6)))
+          m2 = -(-sqrt(beta1) * (beta2+3) - a2*(10*beta2 - 12*beta1 - 18) / sqrt(mu2)) /
+          (sqrt(beta1 * (beta2 + 3)^2 -4*(4*beta2 - 3*beta1)*(2*beta2 - 3*beta1-6)))
+          lambda = mu1 - (a2-a1) * (1+m1) / (m1+m2+2)
+          
+          return PearsonI(1+m1, 1+m2, lambda, a2-a1)
+        elseif isapprox(k, 1.0, rtol=0.0, atol=atol) #Type V
+          return PearsonV(1/b2-1, mu1 - b1/(2*b2), -(b1-b1/(2*b2)) / b2) 
+        elseif k > 1 #Type VI
+
+        #@info "TYPE VI"
+          a1 = sqrt(mu2)/2*((-sqrt(beta1)*(beta2+3)-sqrt(beta1*(beta2+3)^2-4*(4*beta2-3*beta1)*
+                                                         (2*beta2-3*beta1-6)))/(2*beta2-3*beta1-6))
+          a2 = sqrt(mu2)/2*((-sqrt(beta1)*(beta2+3)+sqrt(beta1*(beta2+3)^2-4*(4*beta2-3*beta1)*
+                                                         (2*beta2-3*beta1-6)))/(2*beta2-3*beta1-6))
+        @info "a1: $(a1), a2: $(a2)"
+          if a1 > a2
+            tmp = a1
+            a1 = a2
+            a2 = tmp
+          end
+          m1 = (b1 + a1)/(b2*(a2-a1))
+          m2 = - (b1 + a2)/(b2*(a2-a1))
+          @info "m1: $(m1), m2: $(m2)"
+          alpha = (a2-a1)
+          lambda = mu1 + alpha * (m2+1)/(m2+m1+2)
+          @info "λ = $(lambda)"
+          @info "α = $(alpha)"
+          return
+          return PearsonVI(1+m2, -m2-m1-1, lambda, alpha)
+        else # (k > 0) && (k < 1) #Type IV
+          r = 6*(beta2-beta1-1)/(2*beta2-3*beta1-6)
+          nu = -r*(r-2)*sqrt(beta1)/sqrt(16*(r-1)-beta1*(r-2)^2)
+          alpha = sqrt(mu2*(16*(r-1)-beta1*(r-2)^2))/4
+          lambda = mu1 - ((r-2)*sqrt(beta1)*sqrt(mu2))/4
+          m = 1+r/2
+          return PearsonIV(m, nu, lambda, alpha)
+        end
+      else # Type III
+        m = b0 / (b1^2) - 1
+        return PearsonIII(1+m, mu1 - b0/b1, b1)
+      end
+    end
+  end
+
+
+
+
+
+
+  #=
+output = "./data/computed_results/DBCM_result_more.jld"
+motif = 11;
+data = jldopen(output);
+x = data["littlerock"][:S_m][motif,:];
+res = pearsonfamily(x);
+y = res[1]
+myfig = scatter(x, y, left_margin=10mm, label="Pearson Type VI fit", size=(1200,800))
+histogram!(myfig, x, label="histogram",normalize=:pdf, bins=:fd)
+σ_th = data["littlerock"][:σ̂_m̂][motif]
+
+X = (x .- res[end-2]) ./ res[end-1]
+p = ExactOneSampleKSTest(X, res[2])
+
+@info "σ_th: $(σ_th), σ_s: $(std(x)), σ_f: $(res[end])"
+plot!(myfig, [σ_th; σ_th],[0.; maximum(myfig.series_list[end][:y])], line=:dot, color=:black, label="theoretical")
+plot!(myfig, [std(x); std(x)],[0.; maximum(myfig.series_list[end][:y])], line=:dot, color=:red, label="from sample")
+plot!(myfig, [res[end]; res[end]],[0.; maximum(myfig.series_list[end][:y])], line=:dash, color=:blue, label="from dist")
+savefig(myfig, "./data/computed_results/pearsontest.pdf")
+
+
+mf = MatFile("./data/computed_results/DBCM_result_probs.mat", "w")
+put_variable(mf, "jprobs", y)
+close(mf)
+
+myfitpearson(mean(x), var(x), skewness(x)^2, kurtosis(x)+3)
+
+=#
+
+#=
+    d = b₁^2 - 4*b₂*b₀
+    # Type 0
+    if iszero(μ₁) && iszero(μ₂)
+        dist = Normal()
+        return 0, dist, pdf.(dist)
+    # Type I
+    if β
+    # Type II
+
+
+
+    if d < 0
+        @info "negative discriminant"
+        # Type IV
+
+        # Type VII
+    else
+        @info "positive discriminant"
+        a₁ = (-b₁ - sqrt(d))/(2*b₂)
+        a₂ = (-b₁ + sqrt(d))/(2*b₂)
+        ν = 1/(b₂*(a₁ - a₂))
+        # Type I distribution
+        if sign(a₁) ≠ sign(a₂)
+            @info "Type I distribution"
+            
+            return dist, y
+        else
+            @info "other type"
+        end
+    end
+    return [b₀; b₁; b₂]
+    =#
+#end
+
+#=
+# sample standard deviation as estimator for the standard deviation
+a, b = 100., 40.
+testdist = BetaPrime(a, b)
+std(testdist) == sqrt(a*(a+b-1)/((b-2)*(b-1)^2))
+
+myS = rand(testdist,100);
+sigma = std(myS);
+@info std(myS), std(testdist), abs(std(myS) - std(testdist))/std(testdist)
+
+
+function too_opt_mle(x, p1, p2)
+    dist = BetaPrime(p1, p2)
+    return -sum(log.(pdf.(dist, x)))
+
+end
+
+res = optimize(p -> too_opt_mle(X, p...), [63.; 7780.])
+
+
+
+
+function chisqLSfit(x, ν)
+
+
+end
+L(x, ν) = -sum(x.^(ν[1]/2-1) .* exp.(-x ./ 2)) ./ (2^(ν[1]/2) * gamma(ν[1]/2))
+fooo(ν) =  L(x, ν)
+res = optimize(fooo, [mean(x)])
+res
+
+=#
+
+
+
+output = "./data/computed_results/DBCM_result_more.jld"
+motif = 12;
+data = jldopen(output);
+model = data["littlerock"][:model]
+count(iszero,Graphs.indegree(data["littlerock"][:network])), count(iszero,Graphs.outdegree(data["littlerock"][:network]))
+#x = data["littlerock"][:S_m][motif,:];
+
+#d = M_dist_(model.G)
+
+d = eval(:($(Symbol("M_dist_$(motif)"))(model.G)))
+sqrt(sum(d.p .* (1 .- d.p)))
+#=
+@eval begin
+    dd = :($(Symbol("M_dist_$(motif)"))(model.G))
+end
+=#
