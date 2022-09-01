@@ -1,0 +1,2 @@
+# Simulation
+The analytical method can quickly become expensive to compute since each element in the adjacency matrix has a non-zero value. It is also possible to obtain an estimate of both the metric and its variance using Monte Carlo simulation.  

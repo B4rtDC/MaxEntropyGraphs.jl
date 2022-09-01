@@ -12,7 +12,7 @@ makedocs(sitename="MaxEntropyGraphs.jl",
          pages = [
             "Home" => "index.md",
             "Models" => "models.md",
-            "Higher order metrics" => "derivedquantities.md",
+            "Higher order metrics" => Any["exact.md", "simulated.md"],
             "GPU acceleration" => "GPU.md"
          ]
 )

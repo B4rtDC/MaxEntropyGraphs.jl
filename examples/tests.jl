@@ -1,507 +1,4 @@
-"""
-Idea: starting from models with known parameters:
-- obtain expected values and variances for adjacency/weight matrix elements
-- sample networks, returning 
-    1. Adjacency matrix (dense/ sparse (ULT)) 
-    2. Graph 
-    3. Adjacency List & node number
-- compute z-scores of different metrics by 
-    1. "exact" method 
-    2. sampling method
-"""
-#= run this once at startup
-if Sys.islinux()
-    ENV["GRDIR"] = "" # for headless plotting
-    using Pkg; Pkg.build("GR")
-    # sudo apt install xvfb
-    # https://gr-framework.org/julia.html#installation
-    import GR:inline
-    GR.inline("pdf")
-    GR.inline("png")
-end
-=#
-import Graphs                   # network interface for graphs
-import PyCall                   # for calling NEMtropy package in Python
-import ReverseDiff              # for gradient
-import Statistics: std, mean    # for statistics
-import Printf: @sprintf         # for specific printing
-using Plots                     # for plotting
-using Measures                  # for margin settings
-using LaTeXStrings              # for LaTeX printing
-import Dates: now, Day, Minute  # for illustration printing
-using GraphIO                   # to read and write external graphs
-using JLD2                      # for data storage
-using Distributions, HypothesisTests
-# ----------------------------------------------------------------------------------------------------------------------
-#
-#                                               General model
-#
-# ----------------------------------------------------------------------------------------------------------------------
 
-"""
-    AbstractMaxEntropyModel
-
-An abstract type for a MaxEntropyModel. Each model has one or more structural constraints  
-that are fixed while the rest of the network is completely random. 
-
-The different functions below should be implemented in the subtypes.
-"""
-abstract type AbstractMaxEntropyModel end
-
-"""
-    σ(::AbstractMaxEntropyModel)
-
-Compute variance for elements of the adjacency matrix for the specific `AbstractMaxEntropyModel` based on the ML parameters.
-"""
-σ(::AbstractMaxEntropyModel) = nothing
-
-
-"""
-    Ĝ(::AbstractMaxEntropyModel)
-
-Compute expected adjacency and/or weight matrix for a given `AbstractMaxEntropyModel`
-"""
-Ĝ(::AbstractMaxEntropyModel) = nothing
-
-
-"""
-    rand(::AbstractMaxEntropyModel)
-
-Sample a random network from the `AbstractMaxEntropyModel`
-"""
-Base.rand(::AbstractMaxEntropyModel) = nothing
-
-"""
-    ∇X(X::Function, M::T)
-
-Compute the gradient of a property `X` with respect to the expected adjacency matrix associated with the model `M`.
-"""
-∇X(X::Function, M::T) where T <: AbstractMaxEntropyModel = ReverseDiff.gradient(X, M.G)
-
-
-"""
-    σˣ(X::Function, M::T)
-
-Compute the standard deviation of a property `X` with respect to the expected adjacency matrix associated with the model `M`.
-"""
-σˣ(X::Function, M::T) where T <: AbstractMaxEntropyModel = nothing
-
-# ----------------------------------------------------------------------------------------------------------------------
-#
-#                                               UBCM model
-#
-# ----------------------------------------------------------------------------------------------------------------------
-
-"""
-    UBCM
-
-Maximum entropy model for the Undirected Binary Configuration Model (UBCM). 
-    
-The object holds the maximum likelihood parameters of the model (x), the expected adjacency matrix (G), 
-and the variance for the elements of the adjacency matrix (σ).
-
-"""
-struct UBCM{T} <: AbstractMaxEntropyModel where {T<:Real}
-    x::Vector{T}
-    G::Matrix{T}
-    σ::Matrix{T}
-end
-
-Base.show(io::IO, m::UBCM{T}) where T = print(io, "$(T) UBCM model ($(length(m)) vertices)")
-
-"""Return the number of nodes in the UBCM network"""
-Base.length(m::UBCM) = length(m.x)
-
-"""
-    UBCM(x::Vector{T}; compute::Bool=true) where {T<:Real}
-
-Constructor for the `UBCM` type. If `compute` is true, the expected adjacency matrix and variance are computed. 
-Otherwise the memory is allocated but not initialized. (TBC)
-"""
-function UBCM(x::Vector{T}; compute::Bool=true) where {T<:Real}
-    G = Ĝ(x, UBCM{T})  # expected adjacency matrix
-    σ = σˣ(x, UBCM{T}) # expected standard deviation matrix
-
-    return UBCM(x, G, σ)
-end
-
-"""
-    Ĝ(::UBCM, x::Vector{T}) where {T<:Real}
-
-Compute the expected adjacency matrix for the UBCM model with maximum likelihood parameters `x`.
-"""
-function Ĝ(x::Vector{T}, ::Type{UBCM{T}}) where T
-    n = length(x)
-    G = zeros(T, n, n)
-    for i = 1:n
-        @simd for j = i+1:n
-            @inbounds xij = x[i]*x[j]
-            @inbounds G[i,j] = xij/(1 + xij)
-            @inbounds G[j,i] = xij/(1 + xij)
-        end
-    end
-    
-    return G
-end
-
-"""
-    σˣ(x::Vector{T}, ::Type{UBCM{T}}) where T
-
-Compute the standard deviation for the elements of the adjacency matrix for the UBCM model using the maximum likelihood parameters `x`.
-
-**Note:** read as "sigma star"
-"""
-function σˣ(x::Vector{T}, ::Type{UBCM{T}}) where T
-    n = length(x)
-    res = zeros(T, n, n)
-    for i = 1:n
-        @simd for j = i+1:n
-            @inbounds xij =  x[i]*x[j]
-            @inbounds res[i,j] = sqrt(xij)/(1 + xij)
-            @inbounds res[j,i] = sqrt(xij)/(1 + xij)
-        end
-    end
-
-    return res
-end
-
-"""
-    rand(m::UBCM)
-
-Generate a random graph from the UBCM model. The function returns a `Graphs.AbstractGraph` object.
-"""
-function Base.rand(m::UBCM)
-    n = length(m)
-    g = Graphs.SimpleGraph(n)
-    for i = 1:n
-        for j = i+1:n
-            if rand() < m.G[i,j]
-                Graphs.add_edge!(g, i, j)
-            end
-        end
-    end
-
-    return g
-end
-
-"""
-    σˣ(X::Function, M::UBCM{T})
-
-Compute the standard deviation of a property `X` with respect to the expected adjacency matrix associated with the UBCM model `M`.
-"""
-σˣ(X::Function, M::UBCM{T}) where T = sqrt( sum((M.σ .* ∇X(X, M)) .^ 2) )
-
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-#
-#                                               DBCM model
-#
-# ----------------------------------------------------------------------------------------------------------------------
-
-"""
-    DBCM
-
-Maximum entropy model for the Directed Binary Configuration Model (DBCM). 
-    
-The object holds the maximum likelihood parameters of the model (x, y), the expected adjacency matrix (G), 
-and the variance for the elements of the adjacency matrix (σ).
-
-"""
-struct DBCM{T} <: AbstractMaxEntropyModel where {T<:Real}
-    x::Vector{T}
-    y::Vector{T}
-    G::Matrix{T}
-    σ::Matrix{T}
-end
-
-Base.show(io::IO, m::DBCM{T}) where T = print(io, "$(T) DBCM model ($(length(m)) vertices)")
-
-"""Return the number of nodes in the DBCM network"""
-Base.length(m::DBCM) = length(m.x)
-
-"""
-    DBCM(x::Vector{T}, y::Vector{T}; compute::Bool=true) where {T<:Real}
-
-Constructor for the `DBCM` type. If `compute` is true, the expected adjacency matrix and variance are computed. 
-Otherwise the memory is allocated but not initialized. (TBC)
-"""
-function DBCM(x::Vector{T}, y::Vector{T}; compute::Bool=true) where {T<:Real}
-    G = Ĝ( x, y, DBCM{T}) # expected adjacency matrix
-    σ = σˣ(x, y, DBCM{T}) # expected standard deviation matrix
-
-    return DBCM(x, y, G, σ)
-end
-
-"""
-    Ĝ(x::Vector{T}, y::Vector{T}, ::Type{DBCM{T}}) where {T<:Real}
-
-Compute the expected adjacency matrix for the `DBCM` model with maximum likelihood parameters `x` and `y`.
-"""
-function Ĝ(x::Vector{T}, y::Vector{T}, ::Type{DBCM{T}}) where T
-    n = length(x)
-    G = zeros(T, n, n)
-    for i = 1:n
-        @simd for j = i+1:n
-            @inbounds xiyj = x[i]*y[j]
-            @inbounds xjyi = x[j]*y[i]
-            @inbounds G[i,j] = xiyj/(1 + xiyj)
-            @inbounds G[j,i] = xjyi/(1 + xjyi)
-        end
-    end
-    
-    return G
-end
-
-"""
-    σˣ(x::Vector{T}, y::Vector{T}, ::Type{DBCM{T}}) where T
-
-Compute the standard deviation for the elements of the adjacency matrix for the `DBCM` model using the maximum likelihood parameters `x` and `y`.
-
-**Note:** read as "sigma star"
-"""
-function σˣ(x::Vector{T}, y::Vector{T}, ::Type{DBCM{T}}) where T
-    n = length(x)
-    res = zeros(T, n, n)
-    for i = 1:n
-        @simd for j = i+1:n
-            @inbounds xiyj =  x[i]*y[j]
-            @inbounds xjyi =  x[j]*y[i]
-            @inbounds res[i,j] = sqrt(xiyj)/(1 + xiyj)
-            @inbounds res[j,i] = sqrt(xjyi)/(1 + xjyi)
-        end
-    end
-
-    return res
-end
-
-"""
-    rand(m::DBCM)
-
-Generate a random graph from the `DBCM` model. The function returns a `Graphs.AbstractGraph` object.
-"""
-function Base.rand(m::DBCM)
-    n = length(m)
-    g = Graphs.SimpleDiGraph(n)
-    for i = 1:n
-        for j = i+1:n
-            if rand() < m.G[i,j]
-                Graphs.add_edge!(g, i, j)
-            end
-            if rand() < m.G[j,i]
-                Graphs.add_edge!(g, j, i)
-            end
-        end
-    end
-
-    return g
-end
-
-"""
-    σˣ(X::Function, M::DBCM{T})
-
-Compute the standard deviation of a property `X` with respect to the expected adjacency matrix associated with the `DBCM` model `M`.
-"""
-σˣ(X::Function, M::DBCM{T}) where T = sqrt( sum((M.σ .* ∇X(X, M)) .^ 2) )
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-#
-#                                               Supporting network functions
-#
-# Note: the function working on matrices need to be defined in without contraining the types too much
-#       otherwise there will be a problem when using the autodiff package.
-# ----------------------------------------------------------------------------------------------------------------------
-
-## Binary networks
-# degree metric
-degree(A, i::Int)   = sum(@view A[:,i])             # degree of node i
-degree(A)           = reshape(sum(A, dims=1), :)    # degree vector for the entire network
-degree(m::UBCM, i::Int)     = degree(m.G, i)                # degree of node i
-degree(m::UBCM)             = reshape(sum(m.G, dims=1), :)  # degree vector for the entire network
-# ANND metric
-ANND(G::Graphs.SimpleGraph, i)  = iszero(Graphs.degree(G,i)) ? zero(Float64) : sum(map( n -> Graphs.degree(G,n), Graphs.neighbors(G,i))) / Graphs.degree(G,i)
-ANND(G::Graphs.SimpleGraph)     = map(i -> ANND(G,i), 1:Graphs.nv(G))
-ANND(A::T, i::Int) where T<: AbstractArray = sum(A[i,j] * degree(A,j) for j=1:size(A,1) if j≠i) / degree(A,i)
-ANND(A::T) where T<: AbstractArray         = map(i -> ANND(A,i), 1:size(A,1))
-ANND(m::UBCM, i::Int)           = ANND(m.G, i)
-ANND(m::UBCM)                   = ANND(m.G)
-# motifs
-M₁(A::T) where T<: AbstractArray = sum(A[i,j]*A[j,k]*(1 - A[k,i]) for i = axes(A,1) for j=i+1:size(A,1) for k=j+1:size(A,1))   # v-motifs metric
-M₁(m::UBCM)                      = M₁(m.G)
-M₁(G::Graphs.SimpleGraph)        = M₁(Graphs.adjacency_matrix(G))
-M₂(A::T) where T<: AbstractArray = sum(A[i,j]*A[j,k]*A[k,i] for i = axes(A,1) for j=i+1:size(A,1) for k=j+1:size(A,1))         # triangles metric
-M₂(m::UBCM)                      = M₂(m.G)
-M₂(G::Graphs.SimpleGraph)        = M₂(Graphs.adjacency_matrix(G))
-
-## Directed binary networks
-# degree metrics
-outdegree(A::T, i::Int) where T<: AbstractArray        = sum(@view A[i,:])             # out-degree of node i
-outdegree(A::T)         where T<: AbstractArray       = reshape(sum(A, dims=2), :)    # out-degree vector for the entire network
-outdegree(M::DBCM, i::Int)  = outdegree(M.G, i)
-outdegree(M::DBCM)          = outdegree(M.G)
-indegree(A::T, i::Int) where T<: AbstractArray        = sum(@view A[:,i])             # out-degree of node i
-indegree(A::T)         where T<: AbstractArray        = reshape(sum(A, dims=1), :)    # out-degree vector for the entire network
-indegree(M::DBCM, i::Int)  = indegree(M.G, i)
-indegree(M::DBCM)          = indegree(M.G)
-# ANND metric
-ANND_in(G::T, i) where T<:Graphs.SimpleGraphs.SimpleDiGraph = iszero(Graphs.indegree(G,i)) ? zero(Float64) : sum(map( n -> Graphs.indegree(G,n), Graphs.inneighbors(G,i))) / Graphs.indegree(G,i)
-ANND_in(G::T)       where T<:Graphs.SimpleGraphs.SimpleDiGraph = map(i -> ANND_in(G,i), 1:Graphs.nv(G))
-ANND_in(A::T, i::Int) where T<: AbstractArray = sum(A[j,i] * indegree(A,j) for j=1:size(A,1) if j≠i) / indegree(A,i)
-ANND_in(A::T) where T<: AbstractArray         = map(i -> ANND_in(A,i), 1:size(A,1))
-ANND_in(m::DBCM, i::Int)           = ANND_in(m.G, i)
-ANND_in(m::DBCM)                   = ANND_in(m.G)
-
-ANND_out(G::T, i) where T<:Graphs.SimpleGraphs.SimpleDiGraph = iszero(Graphs.outdegree(G,i)) ? zero(Float64) : sum(map( n -> Graphs.outdegree(G,n), Graphs.outneighbors(G,i))) / Graphs.outdegree(G,i)
-ANND_out(G::T)       where T<:Graphs.SimpleGraphs.SimpleDiGraph = map(i -> ANND_out(G,i), 1:Graphs.nv(G))
-ANND_out(A::T, i::Int) where T<: AbstractArray = sum(A[i,j] * outdegree(A,j) for j=1:size(A,1) if j≠i) / outdegree(A,i)
-ANND_out(A::T) where T<: AbstractArray         = map(i -> ANND_out(A,i), 1:size(A,1))
-ANND_out(m::DBCM, i::Int)           = ANND_out(m.G, i)
-ANND_out(m::DBCM)                   = ANND_out(m.G)
-# motifs
-# - scaffolding
-a⭢(A::T, i::Int, j::Int) where T<:AbstractArray = @inbounds A[i,j] * (one(eltype(T)) - A[j,i])                    # directed link from i to j and not from j to i A[i,j] *A[j,i]#A
-a⭠(A::T, i::Int, j::Int) where T<:AbstractArray = @inbounds (one(eltype(T)) - A[i,j]) * A[j,i]                    # directed link from j to i and not from i to j A[i,j] *A[j,i]#
-a⭤(A::T, i::Int, j::Int) where T<:AbstractArray = @inbounds A[i,j]*A[j,i]                                         # recipocrated link between i and j
-a̲(A::T, i::Int, j::Int)   where T<:AbstractArray = @inbounds (one(eltype(T)) - A[i,j])*(one(eltype(T)) - A[j,i])  # no links between i and j  A[i,j] *A[j,i]#
-# - actual motifs (cf. original 2011 paper by Squartini et al. for definitions)
-motif_functions = [ (a⭠, a⭢, a̲);
-                    (a⭠, a⭠, a̲);
-                    (a⭠, a⭤, a̲);
-                    (a⭠, a̲, a⭢);
-                    (a⭠, a⭢,a⭢);
-                    (a⭠, a⭤, a⭢);
-                    (a⭢, a⭤, a̲);
-                    (a⭤, a⭤, a̲);
-                    (a⭢, a⭢, a⭢);
-                    (a⭤, a⭢, a⭢);
-                    (a⭤, a⭠, a⭢);
-                    (a⭤, a⭤, a⭢);
-                    (a⭤, a⭤, a⭤);
-                    ]
-for i = 1:13 # mapping to different functions for adjacency matrix, DBCM model and graph
-    fname = Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i))))
-    fdistname = Symbol("M_dist_$(i)")
-    @eval begin
-        """
-            $($fname)(A::T) where T<:AbstractArray
-        
-        Compute the motif $($fname) (Σ_{i,j,k} $(motif_functions[$i][1])(i,j) $(motif_functions[$i][2])(j,k) $(motif_functions[$i][3])(k,i) ) from the adjacency matrix.
-        """
-        function $(fname)(A::T)  where T<:AbstractArray
-            res = zero(eltype(A))
-            for i = axes(A,1)
-                for j = axes(A,1)
-                    @simd for k = axes(A,1)
-                        if i ≠ j && j ≠ k && k ≠ i
-                            res += $(motif_functions[i][1])(A,i,j) * $(motif_functions[i][2])(A,j,k) *   $(motif_functions[i][3])(A,k,i)
-                        end
-                    end
-                end
-            end
-            return res
-        end
-
-        """
-            $($fdistname)(A::T) where T<:AbstractArray
-        
-        Compute the Poisson Binomial distribution for motif $($fname) (Σ_{i,j,k} $(motif_functions[$i][1])(i,j) $(motif_functions[$i][2])(j,k) $(motif_functions[$i][3])(k,i) ) from the adjacency matrix.
-        """
-        function $(fdistname)(A::T)  where T<:AbstractArray
-            res = eltype(A)[] #zero(eltype(A))
-            for i = axes(A,1)
-                for j = axes(A,1)
-                    @simd for k = axes(A,1)
-                        if i ≠ j && j ≠ k && k ≠ i
-                            push!(res, $(motif_functions[i][1])(A,i,j) * $(motif_functions[i][2])(A,j,k) *   $(motif_functions[i][3])(A,k,i))
-                        end
-                    end
-                end
-            end
-            return PoissonBinomial(res)
-        end 
-
-        """
-            $($fname)(M::DBCM)
-        
-        Compute the motif $($fname) (Σ_{i,j,k} $(motif_functions[$i][1])(i,j) $(motif_functions[$i][2])(j,k) $(motif_functions[$i][3])(k,i) ) from the `DBCM` model.
-        """
-        $(fname)(M::DBCM) = $(fname)(M.G)
-
-        """
-            $($fname)(G::SimpleDiGraph)
-        
-        Compute the motif $($fname) (Σ_{i,j,k} $(motif_functions[$i][1])(i,j) $(motif_functions[$i][2])(j,k) $(motif_functions[$i][3])(k,i) ) from the `SimpleDiGraph`.
-        """
-        $(fname)(G::Graphs.SimpleDiGraph) = $(fname)(Graphs.adjacency_matrix(G))
-    end
-end
-
-const DBCM_motif_functions = eval.([Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i)))) for i = 1:13])
-
-"""
-    motifs(M::DBCM, n::Int...)
-
-Compute the number of occurrences of motif `n` in the `DBCM` model. If no `n` is given, compute the number of occurrences of all motifs.
-
-
-# Examples
-```julia-repl
-julia> motifs(model, 13)
-[37]
-
-julia> motifs(model, 1,2,3)
-[36; 1; 19]
-
-julia> motifs(model, 1:13...)
-[36;  1;  19;  24;  13;  14;  32;  44;  16;  3;  36;  26;  37]
-```
-"""
-function motifs(M::DBCM, n::Int...)
-    iszero(length(n)) && return nothing
-    # generate function names
-    #fnames = [Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i)))) for i in n]
-    # apply function
-    eval.(map(f -> :($(f)($M.G)), DBCM_motif_functions)) 
-    #eval.(map(f -> :($(f)($M.G)), fnames))
-end
-
-motifs(M::DBCM) = motifs(M, 1:13...)
-
-"""
-    motifs(G::SimpleDiGraph, n::Int...; full::Bool=false))
-
-Compute the number of occurrences of motif `n` in the `SimpleDiGraph`. If no `n` is given, compute the number of occurrences of all motifs.
-The keyword `full` allows you to choose between using a sparse or dense representation for the adjacency matrix. For small networks, a full representation is faster.
-
-# Examples
-```julia-repl
-julia> motifs(G, 13)
-[37]
-
-julia> motifs(G, 1,2,3)
-[36; 1; 19]
-
-julia> motifs(G, 1:13...)
-[36;  1;  19;  24;  13;  14;  32;  44;  16;  3;  36;  26;  37]
-```
-"""
-function motifs(G::Graphs.SimpleDiGraph, n::Int...; full::Bool=false)
-    iszero(length(n)) && return nothing
-    # generate function names
-    fnames = [Symbol('M' * prod(map(x -> Char(x+48+8272),map(v -> reverse(digits(v)), i)))) for i in n]
-    # generate adjacency matrix
-    A = full ? Array(Graphs.adjacency_matrix(G)) : Graphs.adjacency_matrix(G)
-    # apply function
-    res = Vector{Int64}(undef, length(n)) # fixed type for performance reasons (x35 faster)
-    for i = 1:length(n)
-        res[i] = eval(:($(fnames[i])($A)))
-    end
-    #eval.(map(f -> :($(f)($A)), fnames))
-    return res
-end
-
-motifs(G::Graphs.SimpleDiGraph; full::Bool=false) = motifs(G, 1:13...; full=full)
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -1095,16 +592,16 @@ xticks!(0:20:100)
 #DBCM_analysis(Gbis, "randomerdosrenyi")
 
 """
-    DBCM_motifs_analysis
+    DBCM_analysis
 
-Compute the z-scores etc. for all motifs for a `SimpleDiGraph`. Returns a Dict for storage of the computed results
+Compute the z-scores etc. for all motifs and the degrees for a `SimpleDiGraph`. Returns a Dict for storage of the computed results
 
 G: the network
 N_min: minimum sample length used for computing metrics
 N_max: maximum sample length used for computing metrics
 n_sample_lengths: number of values in the domain [N_min, N_max]
 """
-function DBCM_motifs_analysis(  G::T;
+function DBCM_analysis(  G::T;
                                 N_min::Int=100, 
                                 N_max::Int=10000, 
                                 n_sample_lengths::Int=3,
@@ -1112,36 +609,24 @@ function DBCM_motifs_analysis(  G::T;
     @info "$(round(now(), Minute)) - Started DBCM motif analysis with the following setting:\n$(kwargs)"
     NP = PyCall.pyimport("NEMtropy")
     G_nem =  NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(G), Graphs.indegree(G)))
-    #msg = """$(get!(kwargs, :networkname, "default"))\n"""
     G_nem.solve_tool(model="dcm_exp", method="fixed-point", initial_guess="degrees", max_steps=3000)
-    #=
-    for initial_method in ["random"; "degrees"; "degrees_minor"]
-        G_nem.solve_tool(model="dcm_exp", method="fixed-point", initial_guess=initial_method, max_steps=3000)
-        if abs(G_nem.error) < 1e-6
-            msg *= "$(initial_method): $(G_nem.error)\n"
-        end
+    if abs(G_nem.error) < 1e-6
+        @warn "Method did not converge"
     end
-    =#
-
-    #G_nem_normal = NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(G), Graphs.indegree(G)))
-    #G_nem_normal.solve_tool(model="dcm", method="fixed-point", initial_guess="degrees", max_steps=3000)
-    
-    #@info msg
-    #@warn exp.(-G_nem.x) 
-    #@warn G_nem_normal.x
-    #model = DBCM(G_nem.x, G_nem.y)
-    #@warn norm(indegree(model) - Graphs.indegree(G)), norm(outdegree(model) - Graphs.outdegree(G))
-    #model_normal = DBCM(G_nem_normal.x, G_nem_normal.y)
-    #@warn norm(indegree(model_normal) - Graphs.indegree(G)), norm(outdegree(model_normal) - Graphs.outdegree(G))
-    # generate model
-
+    # generate the model
     model = DBCM(G_nem.x, G_nem.y)
-    @assert indegree(model) ≈ Graphs.indegree(G)
-
-    # generate sample
+    @assert indegree(model)  ≈ Graphs.indegree(G)
+    @assert outdegree(model) ≈ Graphs.outdegree(G)
+    # generate the sample
+    @info "$(round(now(), Minute)) - Generating sample"
     S = [rand(model) for _ in 1:N_max]
+
+    #################################
+    # motif part
+    #################################
+
     # compute motif data
-    @info "$(round(now(), Minute)) - Computing observed motifs"
+    @info "$(round(now(), Minute)) - Computing observed motifs in the observed network"
     mˣ = motifs(G)
     @info "$(round(now(), Minute)) - Computing expected motifs for the DBCM model"
     m̂  = motifs(model)
@@ -1158,23 +643,70 @@ function DBCM_motifs_analysis(  G::T;
     Threads.@threads for i in eachindex(S)
         S_m[:,i] .= motifs(S[i], full=true)
     end
-
-    #S_m = hcat(pmap(s -> motifs(s, full=true), S)...)
     m̂_S =   hcat(map(n -> reshape(mean(S_m[:,1:n], dims=2),:), subsamples)...)
     σ̂_m̂_S = hcat(map(n -> reshape( std(S_m[:,1:n], dims=2),:), subsamples)...)
     z_m_S = (mˣ .- m̂_S) ./ σ̂_m̂_S
+
+    #################################       
+    # degree part
+    #################################
+    # compute degree sequence
+    @info "$(round(now(), Minute)) - Computing degrees in the observed network"
+    d_inˣ, d_outˣ = Graphs.indegree(G), Graphs.outdegree(G)
+    @info "$(round(now(), Minute)) - Computing expected degrees for the DBCM model"
+    d̂_in, d̂_out = indegree(model), outdegree(model)
+    @info "$(round(now(), Minute)) - Computing standard deviations for the degrees for the DBCM model"
+    σ̂_d̂_in, σ̂_d̂_out = map(j -> σˣ(m -> indegree(m, j), model), 1:length(model)), map(j -> σˣ(m -> outdegree(m, j), model), 1:length(model))
+    # compute degree z-score (Squartini)
+    z_d_in_sq, z_d_out_sq = (d_inˣ - d̂_in) ./ σ̂_d̂_in, (d_outˣ - d̂_out) ./ σ̂_d̂_out
+    @info "$(round(now(), Minute)) - Computing distributions for degree sequences"
+    d_in_dist, d_out_dist = indegree_dist(model), outdegree(model)
+    z_d_in_dist, z_d_out_dist = (d_inˣ - mean.(d_in_dist)) ./ std.(d_in_dist), (d_outˣ - mean.(d_out_dist)) ./ std.(d_out_dist)
+
+    # compute data for the sample
+    @info "$(round(now(), Minute)) - Computing degree sequences for the sample"
+    d_in_S, d_out_S = hcat(Graphs.indegree.(S)...), hcat(Graphs.outdegree.(S)...)
+    d̂_in_S, d̂_out_S = hcat(map(n -> reshape(mean(d_in_S[:,1:n], dims=2),:), subsamples)...), hcat(map(n -> reshape(mean(d_out_S[:,1:n], dims=2),:), subsamples)...)
+    σ̂_d_in_S, σ̂_d_out_S = hcat(map(n -> reshape(std( d_in_S[:,1:n], dims=2),:), subsamples)...), hcat(map(n -> reshape( std(d_out_S[:,1:n], dims=2),:), subsamples)...)
+    # compute degree z-score (sample)
+    z_d_in_S, z_d_out_S = (d_inˣ .- d̂_in_S) ./ σ̂_d_in_S, (d_outˣ .- d̂_out_S) ./ σ̂_d_out_S
+    
+
     @info "$(round(now(), Minute)) - Finished"
-    return Dict(:model => model,
-                :network => G,
-                :mˣ => mˣ, 
-                :m̂ => m̂, 
-                :σ̂_m̂ => σ̂_m̂, 
-                :z_m_a => z_m_a,
-                :m̂_S => m̂_S,
-                :σ̂_m̂_S => σ̂_m̂_S,
-                :z_m_S => z_m_S,
-                :S_m => S_m,
-                :error => G_nem.error) 
+    return Dict(:network => G,
+                :model => model,
+                :error => G_nem.error,
+                # motif information
+                :mˣ => mˣ,          # observed
+                :m̂ => m̂,            # expected squartini
+                :σ̂_m̂ => σ̂_m̂,        # standard deviation squartini
+                :z_m_a => z_m_a,    # z_motif squartini
+                :S_m => S_m,        # sample data
+                :m̂_S => m̂_S,        # expected sample
+                :σ̂_m̂_S => σ̂_m̂_S,    # standard deviation sample
+                :z_m_S => z_m_S,    # z_motif sample
+                # in/outdegree information
+                :d_inˣ => d_inˣ,                # observed
+                :d_outˣ => d_outˣ,              # observed
+                :d̂_in => d̂_in,                  # expected squartini
+                :d̂_out => d̂_out,                # expected squartini
+                :σ̂_d̂_in => σ̂_d̂_in,              # standard deviation squartini
+                :σ̂_d̂_out => σ̂_d̂_out,            # standard deviation squartini
+                :z_d_in_sq => z_d_in_sq,        # z_degree squartini
+                :z_d_out_sq => z_d_out_sq,      # z_degree squartini
+                :d̂_in_S => d̂_in_S,              # expected sample
+                :d̂_out_S => d̂_out_S,            # expected sample
+                :σ̂_d_in_S => σ̂_d_in_S,          # standard deviation sample
+                :σ̂_d_out_S => σ̂_d_out_S,        # standard deviation sample
+                :z_d_in_S => z_d_in_S,          # z_degree sample
+                :z_d_out_S => z_d_out_S,        # z_degree sample
+                :d_in_dist => d_in_dist,        # distribution (analytical PoissonBinomial)
+                :d_out_dist => d_out_dist,      # distribution (analytical PoissonBinomial)
+                :z_d_in_dist => z_d_in_dist,    # z_degree distribution (analytical PoissonBinomial)
+                :z_d_out_dist => z_d_out_dist,  # z_degree distribution (analytical PoissonBinomial)
+                :d_in_S => d_in_S,              # indegree sample
+                :d_out_S => d_out_S             # indegree sample
+                ) 
                 
 end
 
@@ -1260,7 +792,7 @@ function produce_squartini_dbcm_data(output = "./data/computed_results/DBCM_resu
         # load network
         G = Graphs.loadgraph(network)
         # compute motifs
-        res = DBCM_motifs_analysis(G, networkname=network)
+        res = DBCM_analysis(G)
         # write out results
         #@info "storage result= $(Symbol($(write_result(output, refname, res))))"
         write_result(output, refname, res)
@@ -1406,28 +938,29 @@ function makeplots()
     ############################################################################################################################
     @info "plotting histograms of sample standard deviation, sample mean and theoretical values using the PoissonBinomial distribution for dataset $(data_labels[4])"
     α_lim = 0.01 # limit p-value for normality test
+    for dataname in data_labels
     for j = 1:13
         motif_Pb_plot = plot(size=(1600, 1200), bottom_ofset=5mm, left_ofset=10mm, thickness_scaling = 2,legendposition=:topleft)
         # get sample counts for the motif
-        y = @view data[data_labels[4]][:S_m][j,:]
+        y = @view data[dataname][:S_m][j,:]
         # check theoretical data fitting
         d_N = fit(Normal{Float64}, y)                           # Normal distribution
-        d_Pb = eval(:($(Symbol("M_dist_$(j)"))(model.G)))       # Poissin-Binomial distribution
+        d_Pb = eval(:($(Symbol("M_dist_$(j)"))(data[$(dataname)][:model].G)))       # Poissin-Binomial distribution
         # hypothesis test for normality
         normalitytest = ExactOneSampleKSTest(y, d_N)
         # plot the histogram
         histogram!(motif_Pb_plot, y, normalize=true, label="PDF")
         # add markers indicating the estimated of the standard deviation
         ymax = maximum(motif_Pb_plot.series_list[end].plotattributes[:y])
-        σ_sq = data[data_labels[4]][:σ̂_m̂][j]            # Squartini standard deviation
-        σ_S  = data[data_labels[4]][:σ̂_m̂_S][j,end]      # Sample standard deviation
+        σ_sq = data[dataname][:σ̂_m̂][j]            # Squartini standard deviation
+        σ_S  = data[dataname][:σ̂_m̂_S][j,end]      # Sample standard deviation
         σ_th = std(d_Pb)                                # Theoretical standard deviation according to the Poisson-Binomial distribution
         plot!(motif_Pb_plot, [σ_sq; σ_sq], [0; ymax], label="σ_analytical ($(@sprintf("%1.2f", σ_sq)))", color=:black, line=:dot)
         plot!(motif_Pb_plot, [σ_S; σ_S], [0; ymax], label="σ_sample ($(@sprintf("%1.2f", σ_S)))", color=:red, line=:dot)
         plot!(motif_Pb_plot, [σ_th; σ_th], [0; ymax], label="σ_{Pb} ($(@sprintf("%1.2f", σ_th)))", color=:blue, line=:dot)
         # add markers indication the estimate of the mean
-        E_sq = data[data_labels[4]][:m̂][j]            # Squartini mean
-        E_s  = data[data_labels[4]][:m̂_S][j,end]      # Sample mean
+        E_sq = data[dataname][:m̂][j]            # Squartini mean
+        E_s  = data[dataname][:m̂_S][j,end]      # Sample mean
         E_th = mean(d_Pb)                             # Theoretical mean according to the Poisson-Binomial distribution
         plot!(motif_Pb_plot, [E_sq; E_sq], [0; ymax], label="E_analytical ($(@sprintf("%1.12f", E_sq)))", color=:black, line=:dash)
         plot!(motif_Pb_plot, [E_s; E_s], [0; ymax], label="E_sample ($(@sprintf("%1.12f", E_s)))", color=:black, line=:dash)
@@ -1436,10 +969,12 @@ function makeplots()
         # final layout options
         xlabel!(motif_Pb_plot, "motif value")
         ylabel!(motif_Pb_plot, L"f_X(x)")
-        title!(motif_Pb_plot ,"$(plotnames[4])\n motif $(j) PDF (n = $(size(data["littlerock"][:S_m], 2)))\n p-value normality: $(@sprintf("%1.2e", pvalue(normalitytest)))\n skewness: $(skewness(y))\n curtosis: $(kurtosis(y)))")
-        figoutpath = "./data/computed_results/DBCM_Pb_motif_$(j)_histogram ($(pvalue(normalitytest) < α_lim ? "non " : "")normal).pdf"
+        z_th = (data[dataname][:mˣ][j] - E_th) / σ_th
+        title!(motif_Pb_plot ,"$(plotnames[4])\n motif $(j) PDF (n = $(size(data[dataname][:S_m], 2)))\n p-value normality: $(@sprintf("%1.2e", pvalue(normalitytest)))\n skewness: $(skewness(y))\n curtosis: $(kurtosis(y)))\n theoretical z-score: $(@sprintf("%1.2f", z_th))")
+        figoutpath = "./data/computed_results/DBCM_$(dataname)_Pb_motif_$(j)_histogram ($(pvalue(normalitytest) < α_lim ? "non " : "")normal).pdf"
         savefig(motif_Pb_plot, figoutpath)
     end
+end
 
     ##########################################################################################
     # illustrate the difference in σ values in function of the magnitude of the expected value
@@ -1972,21 +1507,111 @@ res
 
 =#
 
+#outpath = "./data/computed_results/DBCM_complete.jld"
 
+path = "./data/computed_results/DBCM_result_more.jld"
+data = jldopen(path)["littlerock"];
+data[:mˣ]
+Graphs.adjacency_matrix(data[:network])
+#produce_squartini_dbcm_data(outpath)
 
-output = "./data/computed_results/DBCM_result_more.jld"
-motif = 12;
-data = jldopen(output);
-model = data["littlerock"][:model]
-count(iszero,Graphs.indegree(data["littlerock"][:network])), count(iszero,Graphs.outdegree(data["littlerock"][:network]))
+#output = "./data/computed_results/DBCM_result_more.jld"
+#motif = 12;
+#data = jldopen(output);
+#model = data["littlerock"][:model]
+#count(iszero,Graphs.indegree(data["littlerock"][:network])), count(iszero,Graphs.outdegree(data["littlerock"][:network]))
 #x = data["littlerock"][:S_m][motif,:];
 
-#d = M_dist_(model.G)
+#DBCM_analysis(data["littlerock"][:network])
 
+#d = M_dist_(model.G)
+#=
 d = eval(:($(Symbol("M_dist_$(motif)"))(model.G)))
 sqrt(sum(d.p .* (1 .- d.p)))
 #=
 @eval begin
     dd = :($(Symbol("M_dist_$(motif)"))(model.G))
 end
+=#
+
+
+
+################################################################################
+# Let's check the variance computation - degree: OK
+################################################################################
+@info "Checking the variance of the in/out-degrees"
+# outdegree
+σ_outdegree_theory(model,i) = sqrt(sum(model.G[i,j]*(1-model.G[i,j]) for j = 1:length(model) if j≠i))
+σ_out_theory = map(j -> σ_outdegree_theory(model, j), 1:length(model))
+σ_outdegree_squart =  map(j-> σˣ(m -> outdegree(m, j), model), 1:length(model))
+@assert isapprox(σ_out_theory, σ_outdegree_squart) # => perfect match rounding error only
+# indegree
+σ_indegree_theoryf(model,i) = sqrt(sum(model.G[j,i]*(1-model.G[j,i]) for j = 1:length(model) if j≠i))
+σ_in_theory = map(j -> σ_indegree_theoryf(model, j), 1:length(model))
+σ_indegree_squart =  map(j-> σˣ(m -> indegree(m, j), model), 1:length(model))
+@assert isapprox(σ_in_theory, σ_indegree_squart) # => perfect match rounding error only
+# note: this follows a 
+
+################################################################################
+# Let's compute the variance for a motif
+################################################################################
+@info "Checking the variance of the motif M_13"
+# e.g. motif 13 (trianle in all directions)
+σ_m13_squartini = σˣ(M₁₃, model) # single core, memory intensive: 11.731 s (180851614 allocations: 7.32 GiB)
+∇M_13 = ReverseDiff.gradient(M₁₃, model.G) # gradient of M_13
+
+function ∂M_13∂a_ts(M, t,s)
+    A = M.G
+    res = zero(eltype(A))
+    for i = axes(A,1)
+        for j = axes(A,1)
+            @simd for k = axes(A,1)
+                if i ≠ j && j ≠ k && k ≠ i
+                    if     (t,s) == (i,j)
+                        res += A[j,i] * A[j,k] * A[k,j] * A[k,i] * A[i,k]
+                    elseif (t,s) == (j,i)
+                        res += A[i,j] * A[j,k] * A[k,j] * A[k,i] * A[i,k]
+                    elseif (t,s) == (j,k)
+                        res += A[i,j] * A[j,i] * A[k,j] * A[k,i] * A[i,k]
+                    elseif (t,s) == (k,j)
+                        res += A[i,j] * A[j,i] * A[j,k] * A[k,i] * A[i,k]
+                    elseif (t,s) == (k,i)
+                        res += A[i,j] * A[j,i] * A[j,k] * A[k,j] * A[i,k]
+                    elseif (t,s) == (i,k)
+                        res += A[i,j] * A[j,i] * A[j,k] * A[k,j] * A[k,i] 
+                    end
+                end
+            end
+        end
+    end
+    return res
+end
+
+∇M_13_anal = zeros(size(∇M_13))
+# multi core, less memory intensive: 99.600 s (60943 allocations: 2.33 MiB)
+@btime begin
+    for i = 1:size(∇M_13_anal, 1)
+        @info "working on $(i)/$(size(∇M_13_anal, 1))"
+        Threads.@threads for j = 1:size(∇M_13_anal, 2)
+            ∇M_13_anal[i,j] = ∂M_13∂a_ts(model, i,j)
+        end
+    end
+end
+
+@assert isapprox(∇M_13, ∇M_13_anal) # => perfect match rounding error only
+
+σ_m13_anal = sqrt(sum((model.σ .* ∇M_13_anal) .^2) + sum())
+
+@assert isapprox(σ_m13_squartini, σ_m13_anal) # => perfect match rounding error only
+
+k_1_out_S = [Graphs.outdegree(rand(model),1) for _ in 1:10000];
+k_1_out_S_mean = mean(k_1_out_S)
+k_1_out_S_std = std(k_1_out_S)
+
+
+
+S = [rand(model) for _ in 1:10]
+d_in_S = hcat(Graphs.indegree.(S)...)
+subsamples = [1;4;10]
+hcat(map(n -> reshape(mean(d_in_S[:,1:n], dims=2),:), subsamples)...)
 =#
