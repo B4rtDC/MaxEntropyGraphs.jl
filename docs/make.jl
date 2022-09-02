@@ -1,7 +1,7 @@
 using Documenter
 push!(LOAD_PATH, "../src/")
 using MaxEntropyGraphs
-using Graphs
+#using Graphs
 
 ci = get(ENV, "CI", "") == "true"
 
