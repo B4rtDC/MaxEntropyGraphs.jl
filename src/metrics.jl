@@ -32,7 +32,7 @@ M₂(G::Graphs.SimpleGraph)        = M₂(Graphs.adjacency_matrix(G))
 
 Compute the Poisson-Binomial distribution for the indegree of node `i` for the `UBCM` model `m`.
 """
-degree_dist(m::UBCM, i::Int) = PoissonBinomial(m.G[axes(m.G, 1) .!= i, i])
+degree_dist(m::UBCM, i::Int) = Distributions.PoissonBinomial(m.G[axes(m.G, 1) .!= i, i])
 
 """
     indegree_dist(m::UBCM)
@@ -193,7 +193,7 @@ motifs(G::Graphs.SimpleDiGraph; full::Bool=false) = motifs(G, 1:13...; full=full
 
 Compute the Poisson-Binomial distribution for the indegree of node `i` for the `DBCM` model `m`.
 """
-indegree_dist(m::DBCM, i::Int) = PoissonBinomial(m.G[axes(m.G, 1) .!= i, i])
+indegree_dist(m::DBCM, i::Int) = Distributions.PoissonBinomial(m.G[axes(m.G, 1) .!= i, i])
 
 """
     indegree_dist(m::DBCM)
