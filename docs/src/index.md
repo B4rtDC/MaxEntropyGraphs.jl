@@ -2,3 +2,6 @@
 
 Documentation for MaxEntropyGraphs.jl
 
+@docs```
+MaxEntropyGraphs
+```

@@ -2,24 +2,34 @@
 The different models that are available are described below. Each of these models is a subtype of an `AbstractMaxEntropyModel`
 
 ```@docs
-MaxEntropyGraphs.AbstractMaxEntropyModel
+MaxEntropyGraphs.::AbstractMaxEntropyModel
+```
+For each model, the following methods should be implemented:
+```@docs
+σ(::AbstractMaxEntropyModel)
+Ĝ(::AbstractMaxEntropyModel)
+σˣ(X::Function, M::T) where T <: MaxEntropyGraphs.AbstractMaxEntropyModel
+Base.rand(::AbstractMaxEntropyModel)
 ```
 
- For each model there are multiple methods available to obtain the parameters that generate the maximum likelihood. Each of these models can be solved by using the `solve!` function.
 
-```Julia
-solve!(model)
-```
-
-```@autodocs
-Modules = [MaxEntropyGraphs]
-Order = [:function]
-Filter = x -> occursin("UBCM,"$(x)"))
-```
 ## UBCM
 Generate a Undirected Binary Configuration Model.
-
+```@docs
+MaxEntropyGraphs.UBCM
+σ(::MaxEntropyGraphs.UBCM)
+Ĝ(::MaxEntropyGraphs.UBCM)
+σˣ(X::Function, M::MaxEntropyGraphs.UBCM)
+Base.rand(::MaxEntropyGraphs.UBCM)
+```
 
 ## DBCM
 Generate a Directed Binary Configuration Model.
 
+```@docs
+MaxEntropyGraphs.DBCM
+σ(::MaxEntropyGraphs.DBCM)
+Ĝ(::MaxEntropyGraphs.DBCM)
+σˣ(X::Function, M::MaxEntropyGraphs.DBCM)
+Base.rand(::MaxEntropyGraphs.DBCM)
+```
