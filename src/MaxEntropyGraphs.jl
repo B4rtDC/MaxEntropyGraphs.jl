@@ -16,7 +16,7 @@ module MaxEntropyGraphs
     include("metrics.jl")
 
     # models
-    export UBCM, DBCM
+    export AbstractMaxEntropyModel, UBCM, DBCM
     export rand
 
     # metrics
