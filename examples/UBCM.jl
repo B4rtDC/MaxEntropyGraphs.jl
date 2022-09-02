@@ -154,12 +154,16 @@ In the following plot we show that the sample variance is not a good estimator f
 # ╔═╡ 2c0c1b0b-d02f-4715-ad8f-91ed63834db1
 let
 	# compute actual distribution of the degrees
-	
-	plot(size=(800,600), bottom_margin=0mm, left_margin=0mm, thickness_scaling=1.2, legendposition=:topleft)
 	x = 1:length(model)
 	Pb = MaxEntropyGraphs.degree_dist(model)
+	sigma_th = std.(Pb)
+
+	# illustration
+	plot(size=(800,600), bottom_margin=0mm, left_margin=0mm, thickness_scaling=1.2, legendposition=:topleft)
+	scatter!(x, abs.(σ_th - σ̂)./σ_th, label="MaxEntropyGraphs.jl")
+	
 	#=
-	scatter!(x, abs.(σ_obs - σ̂)./d_obs, label="MaxEntropyGraphs.jl")
+	s
 	for i in eachindex(samplesizes)
 		y = abs.(σ_obs - σ̂ₛ[i])./d_obs
 		filt =  .!iszero.(y)

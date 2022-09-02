@@ -39,7 +39,7 @@ degree_dist(m::UBCM, i::Int) = PoissonBinomial(m.G[axes(m.G, 1) .!= i, i])
 
 Compute the Poisson-Binomial distribution for the indegree for all nodes for the `UBCM` model `m`.
 """
-degree_dist(m::UBCM) = map(i -> indegree_dist(m, i), axes(m.G,1))
+degree_dist(m::UBCM) = map(i -> degree_dist(m, i), axes(m.G,1))
 
 
 
