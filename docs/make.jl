@@ -1,7 +1,7 @@
 using Documenter
 push!(LOAD_PATH, "../src/")
 using MaxEntropyGraphs
-
+using Graphs
 
 ci = get(ENV, "CI", "") == "true"
 
@@ -13,8 +13,8 @@ makedocs(sitename="MaxEntropyGraphs.jl",
             "Home" => "index.md",
             "Models" => "models.md",
             "Metrics" => Any["exact.md", "simulated.md"],
-            "GPU acceleration" => "GPU.md",
-            "API" => "API.md"
+            "GPU acceleration" => "GPU.md"#,
+            #"API" => "API.md"
          ]
 )
 

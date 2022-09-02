@@ -1,7 +1,6 @@
 # MaxEntropyGraphs.jl
 
 Documentation for MaxEntropyGraphs.jl
-
-@docs```
+```@docs
 MaxEntropyGraphs
 ```
