@@ -27,6 +27,22 @@ M₁(G::Graphs.SimpleGraph)        = M₁(Graphs.adjacency_matrix(G))
 M₂(m::UBCM)                      = M₂(m.G)
 M₂(G::Graphs.SimpleGraph)        = M₂(Graphs.adjacency_matrix(G))
 
+"""
+    degree_dist(m::UBCM, i::Int)
+
+Compute the Poisson-Binomial distribution for the indegree of node `i` for the `UBCM` model `m`.
+"""
+degree_dist(m::UBCM, i::Int) = PoissonBinomial(m.G[axes(m.G, 1) .!= i, i])
+
+"""
+    indegree_dist(m::UBCM)
+
+Compute the Poisson-Binomial distribution for the indegree for all nodes for the `UBCM` model `m`.
+"""
+degree_dist(m::UBCM) = map(i -> indegree_dist(m, i), axes(m.G,1))
+
+
+
 ## Directed binary networks
 # degree metrics
 Graphs.outdegree(A::T, i::Int) where T<: AbstractArray     = sum(@view A[i,:])             # out-degree of node i
