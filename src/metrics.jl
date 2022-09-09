@@ -10,12 +10,12 @@
 # degree metric
 Graphs.degree(A::T, i::Int) where T<: AbstractArray         = sum(@view A[:,i])             # degree of node i
 Graphs.degree(A::T)         where T<: AbstractArray         = reshape(sum(A, dims=1), :)    # degree vector for the entire network
-Graphs.degree(m::UBCM, i::Int)                              = degree(m.G, i)                # degree of node i
+Graphs.degree(m::UBCM, i::Int)                              = Graphs.degree(m.G, i)                # degree of node i
 Graphs.degree(m::UBCM)                                      = reshape(sum(m.G, dims=1), :)  # degree vector for the entire network
 # ANND metric
 ANND(G::Graphs.SimpleGraph, i)              = iszero(Graphs.degree(G,i)) ? zero(Float64) : sum(map( n -> Graphs.degree(G,n), Graphs.neighbors(G,i))) / Graphs.degree(G,i)
 ANND(G::Graphs.SimpleGraph)                 = map(i -> ANND(G,i), 1:Graphs.nv(G))
-ANND(A::T, i::Int) where T<: AbstractArray  = sum(A[i,j] * degree(A,j) for j=1:size(A,1) if j≠i) / degree(A,i)
+ANND(A::T, i::Int) where T<: AbstractArray  = sum(A[i,j] * Graphs.degree(A,j) for j=1:size(A,1) if j≠i) / Graphs.degree(A,i)
 ANND(A::T) where T<: AbstractArray          = map(i -> ANND(A,i), 1:size(A,1))
 ANND(m::UBCM, i::Int)                       = ANND(m.G, i)
 ANND(m::UBCM)                               = ANND(m.G)

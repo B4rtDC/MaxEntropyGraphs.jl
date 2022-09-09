@@ -8,6 +8,7 @@ using InteractiveUtils
 begin
 	using Pkg
 	Pkg.activate(dirname(@__FILE__))
+	using Printf
 	
 	using Graphs
 	using GraphIO
@@ -18,6 +19,7 @@ begin
 	using Plots
 	using Measures
 	using LaTeXStrings
+	using Distributions
 end
 
 # ╔═╡ 74545a15-78cf-4bfc-837d-fc4395ac5626
@@ -93,14 +95,14 @@ md"""
 """
 
 # ╔═╡ b9245598-ced5-42d7-8f72-5a4789dc44c1
-@btime estimate_degree_params_sim();
+@btime estimate_degree_params_sim(100);
 
 # ╔═╡ 2b072ed7-4e3a-4809-9a66-1ffbfc12c651
 @btime estimate_degree_params_ME(model);
 
 # ╔═╡ 567c2d26-893a-400f-b026-a6f2c8742a90
 md"""
-### Perfomance (precision)
+### Performance (precision)
 Let's have a look at the difference between the expected degree for both methods with repect to the observed degree. This should be zero, as this is the way the UBCM model is defined.
 """
 
@@ -125,7 +127,7 @@ The result obtained by `MaxEntropyGraphs` is much closer to the expected result.
 
 # ╔═╡ 6dbd1571-85fb-465f-a101-a9488aa99ba4
 let
-	plot(size=(800,600), bottom_margin=0mm, left_margin=0mm, thickness_scaling=1.2, legendposition=:topleft)
+	plot(size=(600,400), bottom_margin=0mm, left_margin=5mm, thickness_scaling=1.0, legendposition=:topleft)
 	x = 1:length(model)
 	scatter!(x, abs.(d_obs - d̂)./d_obs, label="MaxEntropyGraphs.jl")
 	for i in eachindex(samplesizes)
@@ -133,6 +135,7 @@ let
 		filt =  .!iszero.(y)
 		scatter!(x[filt], y[filt], label="sampled (n = $(samplesizes[i]))", yscale=:log10)
 	end
+	
 	xlabel!("node id")
 	ylabel!(L"\left| \frac{d_{obs} - d_{s}}{d_{obs}} \right|")
 	ylims!(1e-11, 1e3)
@@ -142,7 +145,7 @@ end
 
 # ╔═╡ bacd35c3-87d8-4193-8692-752bc508079b
 md"""
-When looking at the variance, and additional advantage becomes clear: under the `UBCM`, the degree of a node follows a Poisson-Binomial distrbution
+Under the `UBCM`, the degree of a node follows a Poisson-Binomial distrbution
 ```math
 k_i\sim P_b(\bar{p}) \text{ where } \bar{p} = \{a_{i,j} \}_{j \ne i}
 ```
@@ -156,50 +159,79 @@ let
 	# compute actual distribution of the degrees
 	x = 1:length(model)
 	Pb = MaxEntropyGraphs.degree_dist(model)
-	sigma_th = std.(Pb)
+	σ_th = std.(Pb) .^ 2
 
-	# illustration
-	plot(size=(800,600), bottom_margin=0mm, left_margin=0mm, thickness_scaling=1.2, legendposition=:topleft)
-	scatter!(x, abs.(σ_th - σ̂)./σ_th, label="MaxEntropyGraphs.jl")
-	
-	#=
-	s
+	# illustration (sometimes the difference is actually zero, these values won't be shown)
+	p=plot(size=(600,400), bottom_margin=0mm, left_margin=5mm, thickness_scaling=1.0, legendposition=:bottomleft)
+	scatter!(x, abs.(σ_th - σ̂ .^ 2)./σ_th, label="MaxEntropyGraphs.jl")
 	for i in eachindex(samplesizes)
-		y = abs.(σ_obs - σ̂ₛ[i])./d_obs
+		y = abs.(σ_th - σ̂ₛ[i] .^2)./σ_th
 		filt =  .!iszero.(y)
 		scatter!(x[filt], y[filt], label="sampled (n = $(samplesizes[i]))", yscale=:log10)
 	end
 	xlabel!("node id")
-	ylabel!(L"\left| \frac{d_{obs} - d_{s}}{d_{obs}} \right|")
-	ylims!(1e-11, 1e3)
-	yticks!(10. .^ (-10:2:0))
-	title!("difference in expected variance")
-	=#
+	ylabel!(L"\left| \frac{\hat{\sigma}^2 - \sigma^2_{th}}{\sigma^2_{th}} \right|")
+	ylims!(1e-22, 1e1)
+	yticks!(10. .^ (-18:2:0))
+	title!("Difference in expected variance")
+	savefig(p,"variance.png")
+	p
 end
 
-# ╔═╡ cf449299-4ea0-4e2a-a264-4f49a9b94382
-abs.(d_obs - d̂ₛ[2])
+# ╔═╡ 04eedbbd-fbf5-4515-b081-3739f550b261
+md"""
+The estimators that are typically used, i.e. sample mean and variance are the optimal estimators when the underlying distribution of the data is normal. In the illustration below, we show that is is not the case. We look at the sample distribution of the node with the lowest degree.
+"""
 
-# ╔═╡ 2895a789-e0cb-4096-897c-8f79f2935f95
-d̂ₛ
+# ╔═╡ f437603e-dd0d-4e3d-adcb-e521f7b1337e
+begin
+	Node = 12
+	Ns = 10000
+	S_d_max = map( x -> degree(x, Node), [rand(model) for _ in  1:Ns])
+	μ̂_d_max, σ̂_d_max = mean(S_d_max), std(S_d_max)
+	N_d_max = Normal(μ̂_d_max, σ̂_d_max)
+	pvecinds = [i for i in range(1,length(model)) if i≠Node]
+	Pb_d_max = PoissonBinomial(model.G[Node, pvecinds])
+	hist = histogram(S_d_max, label="sample")
+	
+	x = unique(S_d_max)
+	y = map(x -> count(i-> isequal(i,x), S_d_max), x)
+	myplot = bar(x, y ./ sum(y), bar_width=1, label=LaTeXString("sample disttribution (n = $(Ns))"), fillalpha=0.5)
 
-# ╔═╡ 670d7147-75d6-4ce7-9dff-4c29cb06d5a6
-abs.(d_obs - d̂)
+	xvals = range(-5, 10, step=0.2)
+	k = 10
+	mylabel = LaTeXString(@sprintf("\$\\mathcal{N}(\\hat{\\mu}, \\hat{\\sigma}) \\;\\;\\;  (σ = %1.3e)\$", std(N_d_max)))
+	plot!(myplot,xvals, pdf.(N_d_max, xvals), label=mylabel, linecolor=:black, linestyle=:dash)
+	myotherlabel = LaTeXString(@sprintf("\$\\mathcal{P}_b(\\bar{p}) \\;\\;\\;\\;\\;\\;\\;  (σ = %1.3e)\$", std(Pb_d_max)))
+	plot!(0:10, pdf.(Pb_d_max, 0:10), label=myotherlabel, linecolor=:red, linestyle=:dot, marker=:circle, markercolor=:red)
+	
+	xticks!(-4:2:8)
+	xlabel!(L"d")
+	ylabel!(L"f_X(x)")
+	title!("Experimental vs theoretical distribution")
+end
 
-# ╔═╡ 1c4dcf30-8801-4159-a729-f8feb3380eb9
-estimate_degree_params_sim()
+# ╔═╡ 7ddac9cb-78ed-49c6-933e-6c119d37fb5b
+md"""
+## Average nearest neighbor degree
+We have seen that there are differences for the structural constraints that control the model. When looking at higher order metrics, the difference between the values obtained from the sample and those computed using the analytical method can be even more important.
+"""
 
-# ╔═╡ 2de07a0e-8058-42ee-9f92-533956e8cbea
-estimate_degree_params_ME(model)
+# ╔═╡ 8027ee24-9c17-452c-ae49-0e25ccf370e8
+begin
+	N = 1000
+	S = [rand(model) for _ in 1:N]
+	ANND(model,1)
+end
 
-# ╔═╡ c4d218db-e976-483b-9e98-39d2de498c50
-hcat(degree.(sample)...)
+# ╔═╡ 3c4f9957-1f70-4a49-a710-aeb145163fe1
+methods(ANND)
 
-# ╔═╡ 74a633fc-15fb-43d3-8a95-66dff892542a
-degree(G)
+# ╔═╡ 7412c9c1-8303-407b-a988-2b12bbcdb6fe
+methods(degree)
 
-# ╔═╡ 78b050f4-c5d2-4fcb-b3e9-e26bf071f993
-degree(model)
+# ╔═╡ 42c7e783-f2ea-411a-a0ca-724bf327a4cf
+degree(model)[34]
 
 # ╔═╡ Cell order:
 # ╟─74545a15-78cf-4bfc-837d-fc4395ac5626
@@ -222,12 +254,11 @@ degree(model)
 # ╟─3fd44870-f7e1-4484-9862-82f23289f244
 # ╟─6dbd1571-85fb-465f-a101-a9488aa99ba4
 # ╟─bacd35c3-87d8-4193-8692-752bc508079b
-# ╠═2c0c1b0b-d02f-4715-ad8f-91ed63834db1
-# ╠═cf449299-4ea0-4e2a-a264-4f49a9b94382
-# ╠═2895a789-e0cb-4096-897c-8f79f2935f95
-# ╠═670d7147-75d6-4ce7-9dff-4c29cb06d5a6
-# ╠═1c4dcf30-8801-4159-a729-f8feb3380eb9
-# ╠═2de07a0e-8058-42ee-9f92-533956e8cbea
-# ╠═c4d218db-e976-483b-9e98-39d2de498c50
-# ╠═74a633fc-15fb-43d3-8a95-66dff892542a
-# ╠═78b050f4-c5d2-4fcb-b3e9-e26bf071f993
+# ╟─2c0c1b0b-d02f-4715-ad8f-91ed63834db1
+# ╟─04eedbbd-fbf5-4515-b081-3739f550b261
+# ╟─f437603e-dd0d-4e3d-adcb-e521f7b1337e
+# ╟─7ddac9cb-78ed-49c6-933e-6c119d37fb5b
+# ╠═8027ee24-9c17-452c-ae49-0e25ccf370e8
+# ╠═3c4f9957-1f70-4a49-a710-aeb145163fe1
+# ╠═7412c9c1-8303-407b-a988-2b12bbcdb6fe
+# ╠═42c7e783-f2ea-411a-a0ca-724bf327a4cf

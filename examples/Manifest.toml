@@ -573,7 +573,7 @@ uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 
 [[deps.MaxEntropyGraphs]]
 deps = ["Dates", "Distributions", "Graphs", "PyCall", "ReverseDiff"]
-git-tree-sha1 = "56557621c82e6fc61ef687b8ebcd11246f62f7bb"
+git-tree-sha1 = "73a0baae2b2bf963798aa3d16f4d2dca19e3e62a"
 repo-rev = "main"
 repo-url = "https://github.com/B4rtDC/MaxEntropyGraphs.jl.git"
 uuid = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"
