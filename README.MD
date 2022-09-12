@@ -14,12 +14,14 @@ It provides the following functionalities (currently only for the UBCM and DBCM 
 
 The computation of the parameters that maximize the likelihood is done using the [NEMtropy package](https://nemtropy.readthedocs.io/en/master/index.html) (making use of PyCall).
 
-More detailed information is available in the documentation and some demo notebooks are available in the examples subfolder.
+More detailed information is available in the documentation and some demo notebooks are available in the examples subfolder. These can be run locally, or you can just look at the html rendering of the notebook.
 
 
 
 ## To do list:
 - [ ] add additional models
 - [ ] use [NLsolve.jl](https://github.com/JuliaNLSolvers/NLsolve.jl) to obtain the model parameters instead of using PyCall 
+- [ ] optimize the code for speed
 - [ ] add GPU support (both for parameter and metric computation)
+
 

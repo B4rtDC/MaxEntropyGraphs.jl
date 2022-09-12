@@ -24,8 +24,12 @@ ANND(m::UBCM)                               = ANND(m.G)
 M₁(m::UBCM)                      = M₁(m.G)
 M₁(G::Graphs.SimpleGraph)        = M₁(Graphs.adjacency_matrix(G))
 #M₂(A::T) where T<: AbstractArray = sum(A[i,j]*A[j,k]*A[k,i] for i = axes(A,1) for j=i+1:size(A,1) for k=j+1:size(A,1))         # triangles metric
+# triangle count
 M₂(m::UBCM)                      = M₂(m.G)
 M₂(G::Graphs.SimpleGraph)        = M₂(Graphs.adjacency_matrix(G))
+# should become M₁₃ 
+
+#For undirected, unweighted, and unsigned networks, four types of triads exist: (1) triads without ties/edges (empty triads); (2) triads with one tie present, and two ties absent (one edge triads); (3) triads with one edge absent, and two edges present, referred to in the literature as two-path, two-star, or open triads (or forbidden triads in weighted networks when present edges are strong); and (4) triads with all edges present (triangles, closed triads) (Triads should not be confused with triplets. 
 
 """
     degree_dist(m::UBCM, i::Int)
