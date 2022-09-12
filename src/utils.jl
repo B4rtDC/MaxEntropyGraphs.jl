@@ -23,8 +23,8 @@ function DBCM_analysis(  G::T;
     end
     # generate the model
     model = DBCM(G_nem.x, G_nem.y)
-    @assert indegree(model)  ≈ Graphs.indegree(G)
-    @assert outdegree(model) ≈ Graphs.outdegree(G)
+    @assert Graphs.indegree(model)  ≈ Graphs.indegree(G)
+    @assert Graphs.outdegree(model) ≈ Graphs.outdegree(G)
     # generate the sample
     @info "$(round(now(), Minute)) - Generating sample"
     S = [rand(model) for _ in 1:N_max]
@@ -62,9 +62,9 @@ function DBCM_analysis(  G::T;
     @info "$(round(now(), Minute)) - Computing degrees in the observed network"
     d_inˣ, d_outˣ = Graphs.indegree(G), Graphs.outdegree(G)
     @info "$(round(now(), Minute)) - Computing expected degrees for the DBCM model"
-    d̂_in, d̂_out = indegree(model), outdegree(model)
+    d̂_in, d̂_out = Graphs.indegree(model), Graphs.outdegree(model)
     @info "$(round(now(), Minute)) - Computing standard deviations for the degrees for the DBCM model"
-    σ̂_d̂_in, σ̂_d̂_out = map(j -> σˣ(m -> indegree(m, j), model), 1:length(model)), map(j -> σˣ(m -> outdegree(m, j), model), 1:length(model))
+    σ̂_d̂_in, σ̂_d̂_out = map(j -> σˣ(m -> Graphs.indegree(m, j), model), 1:length(model)), map(j -> σˣ(m -> Graphs.outdegree(m, j), model), 1:length(model))
     # compute degree z-score (Squartini)
     z_d_in_sq, z_d_out_sq = (d_inˣ - d̂_in) ./ σ̂_d̂_in, (d_outˣ - d̂_out) ./ σ̂_d̂_out
     @info "$(round(now(), Minute)) - Computing distributions for degree sequences"
