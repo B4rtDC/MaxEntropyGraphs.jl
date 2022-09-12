@@ -20,6 +20,7 @@ begin
 	using Measures
 	using LaTeXStrings
 	using Distributions
+    using JLD
 end
 
 # ╔═╡ ce77d578-328b-11ed-34ef-7b8e9f47f3c5
@@ -43,7 +44,7 @@ For the Directed Binary Configuration Model (DBCM), we will be using a set of ne
 """
 
 # ╔═╡ 85ac94a3-160f-43ca-9a2a-bbf59eb6aede
-G = Graphs.loadgraph("../data/networks/floridabay_directed.lg")
+G = Graphs.loadgraph("../data/networks/maspalomas_directed.lg")
 
 # ╔═╡ e096d53b-64f2-469e-b05b-006565e0b06c
 md"""
@@ -59,10 +60,10 @@ data = jldopen(path)
 """
 
 # ╔═╡ c13394e0-7a86-4ab1-9504-25d60aa1b2bb
-DBCM_analysis(G)
+res = DBCM_analysis(G)
 
 # ╔═╡ 5cdf0f9e-f65d-48bb-9da7-73963b1ba2b7
-
+#data = jldopen("../data/computed_results/DBCM_complete.jld")
 
 # ╔═╡ f1e37b3a-e3ae-42e6-85d4-5c065d23e89a
 

@@ -68,7 +68,7 @@ function DBCM_analysis(  G::T;
     # compute degree z-score (Squartini)
     z_d_in_sq, z_d_out_sq = (d_inˣ - d̂_in) ./ σ̂_d̂_in, (d_outˣ - d̂_out) ./ σ̂_d̂_out
     @info "$(round(now(), Minute)) - Computing distributions for degree sequences"
-    d_in_dist, d_out_dist = indegree_dist(model), outdegree(model)
+    d_in_dist, d_out_dist = indegree_dist(model), outdegree_dist(model)
     z_d_in_dist, z_d_out_dist = (d_inˣ - mean.(d_in_dist)) ./ std.(d_in_dist), (d_outˣ - mean.(d_out_dist)) ./ std.(d_out_dist)
 
     # compute data for the sample
