@@ -131,7 +131,7 @@ data - actual data to write to the file
 function write_result(outfile::String, label::Union{String, SubString{String}, Symbol}, data)
     outfile = endswith(outfile, ".jld") ? outfile : outfile * ".jld"
     # append or create file
-    jldopen(outfile, isfile(outfile) ? "r+" : "w") do file
+    JLD2.jldopen(outfile, isfile(outfile) ? "r+" : "w") do file
         write(file, String(label), data)
     end
 end

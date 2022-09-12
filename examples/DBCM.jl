@@ -20,7 +20,6 @@ begin
 	using Measures
 	using LaTeXStrings
 	using Distributions
-    using JLD
 end
 
 # ╔═╡ ce77d578-328b-11ed-34ef-7b8e9f47f3c5
@@ -66,7 +65,10 @@ res = DBCM_analysis(G, N_max = 120)
 #data = jldopen("../data/computed_results/DBCM_complete.jld")
 
 # ╔═╡ f1e37b3a-e3ae-42e6-85d4-5c065d23e89a
-
+begin
+    outpath="../data/computed_results/DBCM_out_test.jld"
+    write_result(outpath,:maspalomas)
+end
 
 # ╔═╡ Cell order:
 # ╟─ce77d578-328b-11ed-34ef-7b8e9f47f3c5

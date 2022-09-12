@@ -465,6 +465,12 @@ git-tree-sha1 = "cd46c18390e9bbc37a2098dfb355ec5f18931900"
 uuid = "4138dd39-2aa7-5051-a626-17a0bb65d9c8"
 version = "0.13.2"
 
+[[deps.JLD2]]
+deps = ["FileIO", "MacroTools", "Mmap", "OrderedCollections", "Pkg", "Printf", "Reexport", "TranscodingStreams", "UUIDs"]
+git-tree-sha1 = "6c38bbe47948f74d63434abed68bdfc8d2c46b99"
+uuid = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+version = "0.4.23"
+
 [[deps.JLLWrappers]]
 deps = ["Preferences"]
 git-tree-sha1 = "abc9885a7ca2052a736a600f7fa66209f96506e1"
@@ -621,7 +627,7 @@ uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 
 [[deps.MaxEntropyGraphs]]
 deps = ["Dates", "Distributions", "Graphs", "JLD", "PyCall", "ReverseDiff", "StatsBase"]
-git-tree-sha1 = "977681a11ad589bb80ba408868bcaa72db4ac547"
+git-tree-sha1 = "7a539e6a4ca8dab15b88ff697fa656608a53c1c2"
 repo-rev = "main"
 repo-url = "/Users/bart/Documents/Stack/PhD/Coding (experiments)/MaxEntropyGraphs.jl"
 uuid = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"
