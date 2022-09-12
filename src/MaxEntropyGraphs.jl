@@ -11,6 +11,8 @@ module MaxEntropyGraphs
     import Graphs
     import PyCall                   # for calling NEMtropy package in Python, dependency should be removed in a future version
     import ReverseDiff              # for gradient
+    import StatsBase: mean, std     # for mean and standard deviation
+    import JLD                      # for saving and loading models
     
     include("models.jl")
     include("metrics.jl")

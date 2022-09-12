@@ -47,8 +47,15 @@ G = Graphs.loadgraph("../data/networks/floridabay_directed.lg")
 
 # ╔═╡ e096d53b-64f2-469e-b05b-006565e0b06c
 md"""
-The function below is a the helper function. It generates the model, computes the degree sequences and the motifs. This is done for the observed network, according to the Squartini method and based on the sample.
+The function below is a the helper function. It generates the model and a sample from the network ensemble. It also computes the degree sequences and the motifs. This is done for the observed network, according to the Squartini method and based on the sample.
 
+You can use this function to compute the different values and a new sample. Running everything might take some time (depending on your computer).
+The analysis has been done for each network and is stored in `/data/computed_results/DBCM_complete.jld`. This file can be loaded in 
+memory using `JLD`
+```Julia
+path = "./data/computed_results/DBCM_result_more.jld"
+data = jldopen(path)
+````
 """
 
 # ╔═╡ c13394e0-7a86-4ab1-9504-25d60aa1b2bb

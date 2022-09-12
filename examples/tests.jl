@@ -765,39 +765,6 @@ savefig(p_mot, """$(name)_$("$(round(now(), Day))"[1:10])_motifs_z-score.pdf""")
 =#
 
 
-"""
-    write_result(outfile::String, label::Union{String, Symbol}, data)
-
-write out data to jld file. Checks for existance of the file and appends if it exists.
-
-outfile::String - path to output file
-label - label for the data in the file
-data - actual data to write to the file
-"""
-function write_result(outfile::String, label::Union{String, SubString{String}, Symbol}, data)
-    outfile = endswith(outfile, ".jld") ? outfile : outfile * ".jld"
-    # append or create file
-    jldopen(outfile, isfile(outfile) ? "r+" : "w") do file
-        write(file, String(label), data)
-    end
-end
-
-function produce_squartini_dbcm_data(output = "./data/computed_results/DBCM_result_more.jld",
-                                     netdata = "./data/networks")
-    for network in filter(x-> occursin("_directed", x), joinpath.(netdata, readdir(netdata)))
-        @info "working on $(network)"
-        # reference name for storage
-        refname = split(split(network,"/")[end],"_")[1]
-        @info refname
-        # load network
-        G = Graphs.loadgraph(network)
-        # compute motifs
-        res = DBCM_analysis(G)
-        # write out results
-        #@info "storage result= $(Symbol($(write_result(output, refname, res))))"
-        write_result(output, refname, res)
-    end
-end
 
 
 ###############################################################################################
