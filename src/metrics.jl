@@ -224,7 +224,7 @@ indegree_dist(m::DBCM) = map(i -> indegree_dist(m, i), axes(m.G,1))
 
 Compute the Poisson-Binomial distribution for node `i` for the `DBCM` model `m`.
 """
-outdegree_dist(m::DBCM, i::Int) = PoissonBinomial(m.G[i, axes(m.G, 2) .!= i])
+outdegree_dist(m::DBCM, i::Int) = Distributions.PoissonBinomial(m.G[i, axes(m.G, 2) .!= i])
 
 """
     outdegree_dist(m::DBCM)

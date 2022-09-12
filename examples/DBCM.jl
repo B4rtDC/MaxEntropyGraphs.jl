@@ -60,7 +60,7 @@ data = jldopen(path)
 """
 
 # ╔═╡ c13394e0-7a86-4ab1-9504-25d60aa1b2bb
-res = DBCM_analysis(G)
+res = DBCM_analysis(G, N_max = 120)
 
 # ╔═╡ 5cdf0f9e-f65d-48bb-9da7-73963b1ba2b7
 #data = jldopen("../data/computed_results/DBCM_complete.jld")

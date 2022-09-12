@@ -621,7 +621,7 @@ uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 
 [[deps.MaxEntropyGraphs]]
 deps = ["Dates", "Distributions", "Graphs", "JLD", "PyCall", "ReverseDiff", "StatsBase"]
-git-tree-sha1 = "e37b9db9ad829f1ef56d032323a41d3a6c641407"
+git-tree-sha1 = "977681a11ad589bb80ba408868bcaa72db4ac547"
 repo-rev = "main"
 repo-url = "/Users/bart/Documents/Stack/PhD/Coding (experiments)/MaxEntropyGraphs.jl"
 uuid = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"
