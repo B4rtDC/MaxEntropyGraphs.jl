@@ -39,18 +39,12 @@ module MaxEntropyGraphs
 end
 
 
-    #import Statistics: std, mean    # for statistics
     #import Printf: @sprintf         # for specific printing
 #using Plots                     # for plotting
 #using Measures                  # for margin settings
 #using LaTeXStrings              # for LaTeX printing
 
 #using GraphIO                   # to read and write external graphs
-#using JLD2                      # for data storage
-#using Distributions, HypothesisTests
-#import Graphs: degree
-#import LinearAlgebra: diagind
-#import StatsBase: countmap
 
 
 # using SimpleWeightedGraphs

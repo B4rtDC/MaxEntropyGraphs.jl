@@ -20,6 +20,7 @@ begin
 	using Measures
 	using LaTeXStrings
 	using Distributions
+    using JLD2
 end
 
 # ╔═╡ ce77d578-328b-11ed-34ef-7b8e9f47f3c5
@@ -51,24 +52,22 @@ The function below is a the helper function. It generates the model and a sample
 
 You can use this function to compute the different values and a new sample. Running everything might take some time (depending on your computer).
 The analysis has been done for each network and is stored in `/data/computed_results/DBCM_complete.jld`. This file can be loaded in 
-memory using `JLD`
-```Julia
-path = "./data/computed_results/DBCM_result_more.jld"
-data = jldopen(path)
-````
+memory using `JLD2`.
 """
 
 # ╔═╡ c13394e0-7a86-4ab1-9504-25d60aa1b2bb
-res = DBCM_analysis(G, N_max = 120)
+let
+    res = DBCM_analysis(G, N_max = 120)
+    outpath="../data/computed_results/DBCM_out_test.jld"
+    MaxEntropyGraphs.write_result(outpath,:maspalomas, res)
+end
 
 # ╔═╡ 5cdf0f9e-f65d-48bb-9da7-73963b1ba2b7
-#data = jldopen("../data/computed_results/DBCM_complete.jld")
+# continuing with precomputed results
+data = JLD2.jldopen("../data/computed_results/DBCM_complete.jld")
 
 # ╔═╡ f1e37b3a-e3ae-42e6-85d4-5c065d23e89a
-begin
-    outpath="../data/computed_results/DBCM_out_test.jld"
-    write_result(outpath,:maspalomas)
-end
+
 
 # ╔═╡ Cell order:
 # ╟─ce77d578-328b-11ed-34ef-7b8e9f47f3c5
