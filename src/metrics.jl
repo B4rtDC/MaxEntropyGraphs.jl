@@ -51,22 +51,22 @@ degree_dist(m::UBCM) = map(i -> degree_dist(m, i), axes(m.G,1))
 # degree metrics
 Graphs.outdegree(A::T, i::Int) where T<: AbstractArray     = sum(@view A[i,:])             # out-degree of node i
 Graphs.outdegree(A::T)         where T<: AbstractArray     = reshape(sum(A, dims=2), :)    # out-degree vector for the entire network
-Graphs.outdegree(M::DBCM, i::Int)                          = outdegree(M.G, i)
-Graphs.outdegree(M::DBCM)                                  = outdegree(M.G)
+Graphs.outdegree(M::DBCM, i::Int)                          = Graphs.outdegree(M.G, i)
+Graphs.outdegree(M::DBCM)                                  = Graphs.outdegree(M.G)
 Graphs.indegree(A::T, i::Int) where T<: AbstractArray      = sum(@view A[:,i])             # out-degree of node i
 Graphs.indegree(A::T)         where T<: AbstractArray      = reshape(sum(A, dims=1), :)    # out-degree vector for the entire network
-Graphs.indegree(M::DBCM, i::Int)                           = indegree(M.G, i)
-Graphs.indegree(M::DBCM)                                   = indegree(M.G)
+Graphs.indegree(M::DBCM, i::Int)                           = Graphs.indegree(M.G, i)
+Graphs.indegree(M::DBCM)                                   = Graphs.indegree(M.G)
 # ANND metric
 ANND_in(G::T, i) where T<:Graphs.SimpleGraphs.SimpleDiGraph     = iszero(Graphs.indegree(G,i)) ? zero(Float64) : sum(map( n -> Graphs.indegree(G,n), Graphs.inneighbors(G,i))) / Graphs.indegree(G,i)
 ANND_in(G::T)       where T<:Graphs.SimpleGraphs.SimpleDiGraph  = map(i -> ANND_in(G,i), 1:Graphs.nv(G))
-ANND_in(A::T, i::Int) where T<: AbstractArray                   = sum(A[j,i] * indegree(A,j) for j=1:size(A,1) if j≠i) / indegree(A,i)
+ANND_in(A::T, i::Int) where T<: AbstractArray                   = sum(A[j,i] * Graphs.indegree(A,j) for j=1:size(A,1) if j≠i) / Graphs.indegree(A,i)
 ANND_in(A::T) where T<: AbstractArray                           = map(i -> ANND_in(A,i), 1:size(A,1))
 ANND_in(m::DBCM, i::Int)                                        = ANND_in(m.G, i)
 ANND_in(m::DBCM)                                                = ANND_in(m.G)
 ANND_out(G::T, i) where T<:Graphs.SimpleGraphs.SimpleDiGraph    = iszero(Graphs.outdegree(G,i)) ? zero(Float64) : sum(map( n -> Graphs.outdegree(G,n), Graphs.outneighbors(G,i))) / Graphs.outdegree(G,i)
 ANND_out(G::T)       where T<:Graphs.SimpleGraphs.SimpleDiGraph = map(i -> ANND_out(G,i), 1:Graphs.nv(G))
-ANND_out(A::T, i::Int) where T<: AbstractArray                  = sum(A[i,j] * outdegree(A,j) for j=1:size(A,1) if j≠i) / outdegree(A,i)
+ANND_out(A::T, i::Int) where T<: AbstractArray                  = sum(A[i,j] * Graphs.outdegree(A,j) for j=1:size(A,1) if j≠i) / Graphs.outdegree(A,i)
 ANND_out(A::T) where T<: AbstractArray                          = map(i -> ANND_out(A,i), 1:size(A,1))
 ANND_out(m::DBCM, i::Int)                                       = ANND_out(m.G, i)
 ANND_out(m::DBCM)                                               = ANND_out(m.G)
