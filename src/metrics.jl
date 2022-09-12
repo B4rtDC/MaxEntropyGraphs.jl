@@ -20,14 +20,25 @@ ANND(A::T) where T<: AbstractArray          = map(i -> ANND(A,i), 1:size(A,1))
 ANND(m::UBCM, i::Int)                       = ANND(m.G, i)
 ANND(m::UBCM)                               = ANND(m.G)
 # motifs
-#M₁(A::T) where T<: AbstractArray = sum(A[i,j]*A[j,k]*(1 - A[k,i]) for i = axes(A,1) for j=i+1:size(A,1) for k=j+1:size(A,1))   # v-motifs metric
-M₁(m::UBCM)                      = M₁(m.G)
-M₁(G::Graphs.SimpleGraph)        = M₁(Graphs.adjacency_matrix(G))
-#M₂(A::T) where T<: AbstractArray = sum(A[i,j]*A[j,k]*A[k,i] for i = axes(A,1) for j=i+1:size(A,1) for k=j+1:size(A,1))         # triangles metric
-# triangle count
-M₂(m::UBCM)                      = M₂(m.G)
-M₂(G::Graphs.SimpleGraph)        = M₂(Graphs.adjacency_matrix(G))
-# should become M₁₃ 
+"""
+    M₁(m::UBCM)
+
+compute the number of recipocrated v-motifs in the binary network. 
+
+*Note*: under the hood this uses the method that is defined for a directed network.
+"""
+M₁(m::UBCM)                      = M₈(m.G)
+M₁(G::Graphs.SimpleGraph)        = M₈(Graphs.adjacency_matrix(G))
+"""
+    M₂(m::UBCM)
+
+compute the number of recipocrated triangles in the binary network. 
+
+*Note*: under the hood this uses the method that is defined for a directed network.
+"""
+M₂(m::UBCM)                      = M₁₃(m.G)
+M₂(G::Graphs.SimpleGraph)        = M₁₃(Graphs.adjacency_matrix(G))
+
 
 #For undirected, unweighted, and unsigned networks, four types of triads exist: (1) triads without ties/edges (empty triads); (2) triads with one tie present, and two ties absent (one edge triads); (3) triads with one edge absent, and two edges present, referred to in the literature as two-path, two-star, or open triads (or forbidden triads in weighted networks when present edges are strong); and (4) triads with all edges present (triangles, closed triads) (Triads should not be confused with triplets. 
 
@@ -132,6 +143,8 @@ for i = 1:13 # mapping to different functions for adjacency matrix, DBCM model a
     end
 end
 
+const DBCM_motif_functions = [eval(x) for x in DBCM_motif_function_names] # vector of functions for DBCM motifs
+
 """
     motifs(M::DBCM, n::Int...)
 
@@ -153,7 +166,7 @@ julia> motifs(model, 1:13...)
 function motifs(M::DBCM, n::Int...)
     iszero(length(n)) && return nothing
 
-    return eval.(map(f -> :($(f)($M.G)), DBCM_motif_functions)) 
+    return eval.(map(f -> :($(f)($M.G)), [DBCM_motif_functions[i] for i in n])) 
 end
 
 motifs(M::DBCM) = motifs(M, 1:13...)

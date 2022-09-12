@@ -18,7 +18,7 @@ function DBCM_analysis(  G::T;
     NP = PyCall.pyimport("NEMtropy")
     G_nem =  NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(G), Graphs.indegree(G)))
     G_nem.solve_tool(model="dcm_exp", method="fixed-point", initial_guess="degrees", max_steps=3000)
-    if abs(G_nem.error) < 1e-6
+    if abs(G_nem.error) > 1e-6
         @warn "Method did not converge"
     end
     # generate the model
