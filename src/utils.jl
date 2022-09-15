@@ -90,8 +90,8 @@ function DBCM_analysis(  G::T;
                 :σ̂_m̂ => σ̂_m̂,        # standard deviation squartini
                 :z_m_a => z_m_a,    # z_motif squartini
                 :S_m => S_m,        # sample data
-                :m̂_S => m̂_S,        # expected sample
-                :σ̂_m̂_S => σ̂_m̂_S,    # standard deviation sample
+                :m̂_S => m̂_S,        # expected motifs in sample
+                :σ̂_m̂_S => σ̂_m̂_S,    # standard deviation motifs sample
                 :z_m_S => z_m_S,    # z_motif sample
                 # in/outdegree information
                 :d_inˣ => d_inˣ,                # observed
@@ -108,10 +108,10 @@ function DBCM_analysis(  G::T;
                 :σ̂_d_out_S => σ̂_d_out_S,        # standard deviation sample
                 :z_d_in_S => z_d_in_S,          # z_degree sample
                 :z_d_out_S => z_d_out_S,        # z_degree sample
-                :d_in_dist => d_in_dist,        # distribution (analytical PoissonBinomial)
-                :d_out_dist => d_out_dist,      # distribution (analytical PoissonBinomial)
                 :z_d_in_dist => z_d_in_dist,    # z_degree distribution (analytical PoissonBinomial)
                 :z_d_out_dist => z_d_out_dist,  # z_degree distribution (analytical PoissonBinomial)
+                :d_in_dist => d_in_dist,        # distribution (analytical PoissonBinomial)
+                :d_out_dist => d_out_dist,      # distribution (analytical PoissonBinomial)
                 :d_in_S => d_in_S,              # indegree sample
                 :d_out_S => d_out_S             # indegree sample
                 ) 
@@ -155,4 +155,35 @@ function produce_squartini_dbcm_data(output = "./data/computed_results/DBCM_resu
         # write out results
         write_result(output, refname, res)
     end
+end
+
+function readpajek(f::String; is_directed::Bool=true)
+    G = is_directed ? Graphs.SimpleDiGraph() : Graphs.SimpleGraph()
+    nv = r"\*vertices\s(\d+)"
+    arcs = r"\*arcs"
+    arc = r"(\d+)\s+(\d+)"
+    arcing, finished = false, false
+    for line in readlines(f)
+        if !isnothing(match(nv, line))
+            N = parse(Int,(match(nv, line).captures[1]))
+            Graphs.nv(G) == 0 && Graphs.add_vertices!(G, N) 
+        end
+        if !isnothing(match(arcs, line))
+            arcing = true
+            continue
+        end
+
+        if arcing 
+            # check empty line
+            if isempty(line)
+                arcing = false
+                return G
+            end
+
+            src, dst = parse.(Int, match(arc, line).captures)
+            Graphs.add_edge!(G, src, dst)
+        end
+
+    end
+    
 end
