@@ -1,6 +1,6 @@
 using Test
 using MaxEntropyGraphs
-using Graphs
 
-include("./models.jl")
+include("./utils.jl")
+#include("./models.jl")
 

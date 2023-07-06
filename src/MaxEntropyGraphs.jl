@@ -7,34 +7,37 @@ module MaxEntropyGraphs
     import Base: show, rand
     import Dates: now, Day, Minute  # for logmessages
     
-    import Distributions
+    # to work with graphs
     import Graphs
-    import PyCall                   # for calling NEMtropy package in Python, dependency should be removed in a future version
-    import ReverseDiff              # for gradient
-    import StatsBase: mean, std     # for mean and standard deviation
-    import JLD2                     # for saving and loading models
+
+    #import Distributions
     
-    include("models.jl")
-    include("metrics.jl")
+    #import PyCall                   # for calling NEMtropy package in Python, dependency should be removed in a future version
+    #import ReverseDiff              # for gradient
+    #import StatsBase: mean, std     # for mean and standard deviation
+    #import JLD2                     # for saving and loading models
+    #
+    #include("models.jl")
+    #include("metrics.jl")
     include("utils.jl")
     
     # models
-    export AbstractMaxEntropyModel, UBCM, DBCM
-    export rand
-    export σˣ
+    #export AbstractMaxEntropyModel, UBCM, DBCM
+    #export rand
+    #export σˣ
 
     # metrics
-    export degree, indegree, outdegree, indegree_dist, outdegree_dist
-    export ANND, ANND_in, ANND_out
-    for foo in DBCM_motif_function_names
-        @eval begin
-        export $(foo)
-        end
-    end
-    export motifs
+    #export degree, indegree, outdegree, indegree_dist, outdegree_dist
+    #export ANND, ANND_in, ANND_out
+    #for foo in DBCM_motif_function_names
+    #    @eval begin
+    #    export $(foo)
+    #    end
+    #end
+    #export motifs
 
     # utils
-    export DBCM_analysis
+    #export DBCM_analysis
 
 end
 

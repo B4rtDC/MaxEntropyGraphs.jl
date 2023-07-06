@@ -3,18 +3,55 @@
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://B4rtDC.github.io/MaxEntropyGraphs.jl/dev/)
 
 # MaxEntropyGraphs.jl
+A package to work with maximum entropy networks in the Julia ecosystem. The functionality of this package is similar to the [NEMtropy](https://github.com/nicoloval/NEMtropy) package for Python. 
+
+### Table of contents
+* [Installation](#installation)
+* [Differences with the NEMtropy package](#differences-with-the-nemtropy-package)
+* [Available models](#available-models)
+* [Example usage](#example-usage)
 
 
-A Julia package to use maximum entropy networks using the JuliaGraphs ecosystem.
+## Installation
+Assuming that you already have Julia correctly installed, it suffices to import MaxEntropyGraphs.jl in the standard way:
+```julia
+using Pkg
+Pkg.add("MaxEntropyGraphs")
+```
+
+## Differences with the NEMtropy package
+* We use the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package to maximise the entropy instead of relying on the solver methods proposed in NEMtropy. The fixed point methods proposed in [[4]](#4) are available and can be used.
+* Network models are generated from a `::Graph` from the [JuliaGraphs](https://juliagraphs.org/) ecosystem.
+* By making use of the automatic differentiation capabilities of Julia, we can:
+    - approximation the gradient of the likelihood function of the graphs
+    - compute the gradient of any metric with respect to its adjacency matrix without having to compute these by hand and implement for each possible metric
+* Sampling from a network ensemble generates `Graphs` from the [Graphs.jl]() package. The methods that are available in `Graphs.jl` have been extended for the different maximum entropy models wherever applicable. 
+
+## Available models
+`MaxEntropyGraphs.jl` is intended to do *network randomization*. The specific kind of network to randomize and to properties to preserve defines the model you need. The checklists below indicated which models are 
+currently available.
+
+* [ ] **UBCM** *Undirected Binary Configuration Model* [[1]](#1)
+* [ ] **UECM** *Undirected Enhanced Configuration Model* [[1]](#1)
+* [ ] **DBCM** *Directed Binary Configuration Model* [[1]](#1)
+* [ ] **DECM** *Directed Enhanced Configuration Model* [[1]](#1)
+* [ ] **CReMa** [[2]](#2)
+* [ ] **BiCM** *Bipartite Configuration Model* [[3]](#3)
 
 
-It provides the following functionalities (currently only for the UBCM and DBCM model):
-* sampling from a networks ensemble
-* computing expected value and variance for any metric that can be defined using the adjacence matrix of the network. This is done by using the automatic differentiation capabilities of Julia. In doing so, there is no need to compute the gradient of the metric explicitly and its also tends to be faster than doing it manually. 
-
-The computation of the parameters that maximize the likelihood is done using the [NEMtropy package](https://nemtropy.readthedocs.io/en/master/index.html) (making use of PyCall).
-
+## Example usage
 More detailed information is available in the documentation and some demo notebooks are available in the examples subfolder. These can be run locally, or you can just look at the html rendering of the notebook.
+```julia
+using MaxEntropyGraphs
+# generate a simple graph
+G = NEMTROPY.Graphs.smallgraph(:karate)
+# generate a model
+model = UBCM(G)
+# solve the model
+solve_model!(model)
+# generate a random instances from the ensemble
+G_sample = rand(model, 100)
+```
 
 
 
@@ -25,3 +62,26 @@ More detailed information is available in the documentation and some demo notebo
 - [ ] add GPU support (both for parameter and metric computation)
 
 
+_References_
+
+* <a id="1">[1]</a>
+    Squartini, Tiziano, Rossana Mastrandrea, and Diego Garlaschelli.
+    "Unbiased sampling of network ensembles."
+    New Journal of Physics 17.2 (2015): 023052.
+    https://arxiv.org/abs/1406.1197
+* <a id="2">[2]</a>
+    Parisi, Federica, Tiziano Squartini, and Diego Garlaschelli.
+    "A faster horse on a safer trail: generalized inference for the efficient reconstruction of weighted networks."
+    New Journal of Physics 22.5 (2020): 053053.
+    https://arxiv.org/abs/1811.09829
+* <a id="3">[3]</a>
+    Saracco, Fabio, Riccardo Di Clemente, Andrea Gabrielli, and Tiziano Squartini.
+	"Randomizing bipartite networks: the case of the World Trade Web." 
+	Scientific reports 5, no. 1 (2015): 1-18.
+    https://doi.org/10.1038/srep10595
+* <a id="4">[4]</a>
+    Nicolò Vallarano, Matteo Bruno, Emiliano Marchese, Giuseppe Trapani, Fabio Saracco, Giulio Cimini, Mario Zanon & Tiziano Squartini 
+    Saracco, Fabio, Riccardo Di Clemente, Andrea Gabrielli, and Tiziano Squartini.
+	"Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints." 
+	Scientific reports 11 (2021).
+    https://doi.org/10.1038/s41598-021-93830-4

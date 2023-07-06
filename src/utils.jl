@@ -1,3 +1,70 @@
+#############################################################################
+# utils.jl
+#
+# This file contains utility functions for the MaxEntropyGraphs.jl package
+#############################################################################
+
+
+"""
+    np_unique_clone(x::Vector; sorted::Bool=false)
+
+Julia replication of the numpy.unique(a, return_counts=True, return_index=True, return_inverse=True) function from Python.
+
+Returns a tuple of:
+ - vector of unique values in x
+ - vector of indices of the first occurence of each unique value in x. Follows the same order as the unique values.
+ - vector of inverse indices of the original data in the unique values
+ - vector of the counts of the unique values in x. Follows the same order as the unique values.
+
+ If sorted is true, the unique values are sorted by size and the other vectors are sorted accordingly.
+
+# Examples     
+```jldoctest
+julia> x = [1;2;2;4;1];
+julia> np_unique_clone(x)
+([1, 2, 4], [1, 2, 4], [1, 2, 2, 3, 1], [2, 2, 1])
+
+julia> x = [10;9;9;8];
+julia> np_unique_clone(x, sorted=true)
+([8, 9, 10], [4, 2, 1], [3, 2, 2, 1], [1, 2, 1]
+```
+"""
+function np_unique_clone(x::Vector; sorted::Bool=false)
+    T = eltype(x)
+    unique_x =  Vector{T}()         # unique values
+    seen =      Set{T}()            # unique values set
+    index =     Dict{T,Int}()       # first occurence of unique values (index)
+    reverse_index = Dict{T,Int}()   # position of value in unique values
+    counts =    Dict{T, Int}()      # unique values counts
+    
+    for i in eachindex(x)
+        if !in(x[i], seen)
+            push!(seen, x[i])
+            push!(unique_x, x[i])
+            index[x[i]] = i
+            reverse_index[x[i]] = length(unique_x)
+            counts[x[i]] = 1
+        else
+            counts[x[i]] += 1
+        end
+
+    end
+
+    first_occ = [index[v] for v in unique_x]
+    inverse_index = [reverse_index[v] for v in x]
+    freqs = [counts[v] for v in unique_x]
+    if sorted
+        inds = sortperm(unique_x)
+        unique_x = unique_x[inds]
+        first_occ = first_occ[inds]
+        inverse_index = [inds[x] for x in inverse_index]
+        freqs = freqs[inds]
+    end
+
+    return unique_x, first_occ, inverse_index, freqs
+end
+
+
 
 """
     DBCM_analysis
