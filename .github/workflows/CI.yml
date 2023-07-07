@@ -1,12 +1,5 @@
 name: Codecov CI
-on:
-  push:
-    branches:
-      - 2023rework
-  pull_request:
-    branches:
-      - 2023rework
-
+on: [push, pull_request]
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -19,6 +12,14 @@ jobs:
         uses: julia-actions/setup-julia@v1
         with:
           version: "1.9"
+      - name: Cache artifacts
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.julia/artifacts
+            ~/.julia/registries
+            ~/.julia/packages
+          key: ${{ runner.os }}-julia-${{ hashFiles('**/Project.toml') }}
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
       - uses: julia-actions/julia-processcoverage@v1
