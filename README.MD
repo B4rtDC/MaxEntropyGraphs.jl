@@ -20,7 +20,7 @@ Pkg.add("MaxEntropyGraphs")
 ```
 
 ## Differences with the NEMtropy package
-* We use the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package to maximise the entropy. The fixed point methods proposed in [[4]](#4) are available and can be used (cf. documentation).
+* We use the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package to maximise the entropy. The fixed point methods proposed in [[4]](#4) are available and can be used (cf. documentation). We have also maintained the different option for the initial values for each method.
 * We use the [JuliaGraphs](https://juliagraphs.org/) ecosystem for everything network related.
 * By making use of the automatic differentiation capabilities of Julia, we can:
     - approximation the gradient of the likelihood function of the graphs

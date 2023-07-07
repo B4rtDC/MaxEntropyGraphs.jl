@@ -1,2 +1,2 @@
-using PyCall
-PyCall.Conda.add("NEMtropy")
+#using PyCall
+#PyCall.Conda.add("NEMtropy")
