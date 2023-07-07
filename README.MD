@@ -20,18 +20,21 @@ Pkg.add("MaxEntropyGraphs")
 ```
 
 ## Differences with the NEMtropy package
-* We use the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package to maximise the entropy instead of relying on the solver methods proposed in NEMtropy. The fixed point methods proposed in [[4]](#4) are available and can be used.
-* Network models are generated from a `::Graph` from the [JuliaGraphs](https://juliagraphs.org/) ecosystem.
+* We use the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package to maximise the entropy. The fixed point methods proposed in [[4]](#4) are available and can be used (cf. documentation).
+* We use the [JuliaGraphs](https://juliagraphs.org/) ecosystem for everything network related.
 * By making use of the automatic differentiation capabilities of Julia, we can:
     - approximation the gradient of the likelihood function of the graphs
     - compute the gradient of any metric with respect to its adjacency matrix without having to compute these by hand and implement for each possible metric
-* Sampling from a network ensemble generates `Graphs` from the [Graphs.jl]() package. The methods that are available in `Graphs.jl` have been extended for the different maximum entropy models wherever applicable. 
+* Sampling from an `AbstractMaxEntropyModel` will generate a corresponding `AbstractGraph` from the [JuliaGraphs](https://juliagraphs.org/) ecosystem. The methods that are available in `Graphs.jl`, `SimpleWeightedGraphs` etc. have been extended for the different maximum entropy models wherever applicable. 
 
 ## Available models
-`MaxEntropyGraphs.jl` is intended to do *network randomization*. The specific kind of network to randomize and to properties to preserve defines the model you need. The checklists below indicated which models are 
+`MaxEntropyGraphs.jl` is intended to do *network randomization*. The specific kind of network to randomize and the properties to preserve defines the model you need. The checklists below indicated which models are 
 currently available.
 
 * [ ] **UBCM** *Undirected Binary Configuration Model* [[1]](#1)
+    - [x] Types
+    - [ ] Likelihood related functions
+    - [ ] $\dots$
 * [ ] **UECM** *Undirected Enhanced Configuration Model* [[1]](#1)
 * [ ] **DBCM** *Directed Binary Configuration Model* [[1]](#1)
 * [ ] **DECM** *Directed Enhanced Configuration Model* [[1]](#1)
@@ -49,7 +52,7 @@ G = NEMTROPY.Graphs.smallgraph(:karate)
 model = UBCM(G)
 # solve the model
 solve_model!(model)
-# generate a random instances from the ensemble
+# generate 100 random instances from the ensemble
 G_sample = rand(model, 100)
 ```
 
@@ -57,9 +60,11 @@ G_sample = rand(model, 100)
 
 ## To do list:
 - [ ] add additional models
-- [ ] use [NLsolve.jl](https://github.com/JuliaNLSolvers/NLsolve.jl) to obtain the model parameters instead of using PyCall 
-- [ ] optimize the code for speed
-- [ ] add GPU support (both for parameter and metric computation)
+- [ ] optimize the code for speed after benchmarking 
+- [ ] update documentation
+- [ ] add GPU support 
+    - [ ] maximum liklihood parametercomputation
+    - [ ] metric computation
 
 
 _References_

@@ -5,10 +5,24 @@ Julia module for working with maximum entropy graphs
 """
 module MaxEntropyGraphs
     import Base: show, rand
-    import Dates: now, Day, Minute  # for logmessages
-    
-    # to work with graphs
+     # for logmessages
+    #import Dates: now, Day, Minute 
+    import Printf: @sprintf
+
+    # to work with all sorts of graphs
     import Graphs
+    import SimpleWeightedGraphs
+
+    # to solve the optimization problem
+    import Optimization
+
+    # actual source code
+    include("utils.jl")
+    include("models.jl")
+
+    # exports
+    export AbstractMaxEntropyModel, UBCM
+
 
     #import Distributions
     
@@ -17,9 +31,9 @@ module MaxEntropyGraphs
     #import StatsBase: mean, std     # for mean and standard deviation
     #import JLD2                     # for saving and loading models
     #
-    #include("models.jl")
+    #
     #include("metrics.jl")
-    include("utils.jl")
+    
     
     # models
     #export AbstractMaxEntropyModel, UBCM, DBCM
