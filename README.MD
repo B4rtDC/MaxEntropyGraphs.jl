@@ -1,5 +1,5 @@
 [![Build status (Github Actions)](https://github.com/B4rtDC/MaxEntropyGraphs.jl/workflows/CI/badge.svg)](https://github.com/B4rtDC/MaxEntropyGraphs.jl/actions)
-[![codecov.io](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl/coverage.svg?branch=main)](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl?branch=main)
+[![codecov.io](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl/coverage.svg?branch=main)](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl?branch=2023rework)
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://B4rtDC.github.io/MaxEntropyGraphs.jl/dev/)
 
 # MaxEntropyGraphs.jl
@@ -20,12 +20,12 @@ Pkg.add("MaxEntropyGraphs")
 ```
 
 ## Differences with the NEMtropy package
-* We use the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package to maximise the entropy. The fixed point methods proposed in [[4]](#4) are available and can be used (cf. documentation). We have also maintained the different option for the initial values for each method.
+* We use the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package to maximise the entropy. The fixed point methods proposed in [[4]](#4) are available and can be used (cf. documentation). We have also maintained the different options for the initial values for each method.
 * We use the [JuliaGraphs](https://juliagraphs.org/) ecosystem for everything network related.
 * By making use of the automatic differentiation capabilities of Julia, we can:
     - approximation the gradient of the likelihood function of the graphs
     - compute the gradient of any metric with respect to its adjacency matrix without having to compute these by hand and implement for each possible metric
-* Sampling from an `AbstractMaxEntropyModel` will generate a corresponding `AbstractGraph` from the [JuliaGraphs](https://juliagraphs.org/) ecosystem. The methods that are available in `Graphs.jl`, `SimpleWeightedGraphs` etc. have been extended for the different maximum entropy models wherever applicable. 
+* Sampling from an `AbstractMaxEntropyModel` will generate a corresponding subtype of  `AbstractGraph` from the [JuliaGraphs](https://juliagraphs.org/) ecosystem. The methods that are available in `Graphs.jl`, `SimpleWeightedGraphs` etc. have been extended for the different maximum entropy models wherever applicable. 
 
 ## Available models
 `MaxEntropyGraphs.jl` is intended to do *network randomization*. The specific kind of network to randomize and the properties to preserve defines the model you need. The checklists below indicated which models are 

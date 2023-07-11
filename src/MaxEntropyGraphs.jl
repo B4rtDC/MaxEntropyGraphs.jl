@@ -15,6 +15,7 @@ module MaxEntropyGraphs
 
     # to solve the optimization problem
     import Optimization
+    import OptimizationOptimJL
 
     # actual source code
     include("utils.jl")

@@ -53,6 +53,9 @@ Base.show(io::IO, m::UBCM{T,N}) where {T,N} = print(io, """UBCM{$(T), $(N)} ($(m
 """Return the reduced number of nodes in the UBCM network"""
 Base.length(m::UBCM) = length(m.dᵣ)
 
+#"""E"""
+#Base.precision(m::UBCM) = eltype(m.Θᵣ)
+
 
 """
     UBCM(G::T; precision::N=Float64, kwargs...) where {T<:Graphs.AbstractGraph, N<:Real}
@@ -189,13 +192,103 @@ end
 
 
 """
-    ∇L_UBCM_reduced()
+    ∇L_UBCM_reduced!(θ::Vector, K::Vector, F::Vector, ∇L::Vector, x::Vector)
 
 Compute the gradient of the log-likelihood of the reduced UBCM model using the exponential formulation in order to maintain convexity.
 
-For the optimisation, this function will be used togenerate an anonymous function associated with a specific model.
+For the optimisation, this function will be used togenerate an anonymous function associated with a specific model. The function 
+will update pre-allocated vectors (`∇L` and `x`) for speed.
+
+The arguments of the function are:
+    - `θ`: the maximum likelihood parameters of the model
+    - `K`: the reduced degree sequence
+    - `F`: the frequency of each degree in the degree sequence
+    - `∇L`: the gradient of the log-likelihood of the reduced model
+    - `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-θᵢ) )
+
+# Examples
+```jldoctest
+# Explicit use with UBCM model:
+julia> G = Graphs.SimpleGraphs.smallgraph(:karate);
+julia> model = UBCM(G);
+julia> ∇L = zeros(Real, length(model.Θᵣ);
+juliaW x  = zeros(Real, length(model.Θᵣ);
+julia> ∇model_fun! = θ -> ∇L_UBCM_reduced!(θ::AbstractVector, K, F, ∇L, x);
+julia> ∇model_fun!(model.Θᵣ)
+# Use within optimisation.jl framework:
+julia> fun =   (θ, p) ->  - MaxEntropyGraphs.L_UBCM_reduced(θ, model.dᵣ, model.f)
+julia> ∇fun! = (θ, p) -> MaxEntropyGraphs.∇L_UBCM_reduced!(θ::AbstractVector, K, F, ∇L, x);
+julia> θ₀ = -log.( model.dᵣ ./ maximum(model.dᵣ)) # initial condition
+julia> prob = MaxEntropyGraphs.Optimization.OptimizationProblem(fun, θ₀)
+julia> fun  = MaxEntropyGraphs.Optimization.OptimizationFunction(prob, grad=∇fun!)
+julia> method = MaxEntropyGraphs.OptimizationOptimJL.NLopt.LD_LBFGS()
+julia> solve(fun, method)
+...
+```
 """
-∇L_UBCM_reduced() = throw(MethodError("The gradient of the log-likelihood of the reduced UBCM model has not been implemented yet"))
+function ∇L_UBCM_reduced!(θ::AbstractVector, K::Vector, F::Vector, ∇L::AbstractVector, x::AbstractVector)
+    x .= np.exp.(-θ)
+    @simd for i in eachindex(K)
+        ∇L[i] = - F[i] * k[i]
+        for j in eachindex(K)
+            if i == j
+                aux = x[i] ^ 2
+                ∇L[i] += F[i] * (F[i] - 1) * (aux / (1 + aux))
+            else
+                aux = x[i] * x[j]
+                ∇L[i] += F[i] * F[j]       * (aux / (1 + aux))
+            end
+        end
+
+    return ∇L
+end
+
+"""
+    UBCM_reduced_iter!(θ::Vector, K::Vector, F::Vector, x::Vector, G::Vector)
+
+Computer the next fixed-point iteration for the UBCM model using the exponential formulation in order to maintain convexity.
+The function will update pre-allocated vectors (`G` and `x`) for speed.
+
+The arguments of the function are:
+    - `θ`: the maximum likelihood parameters of the model
+    - `K`: the reduced degree sequence
+    - `F`: the frequency of each degree in the degree sequence
+    - `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-θᵢ) )
+    - `G`: the next fixed-point iteration for the UBCM model
+
+
+# Examples
+```jldoctest
+# Use with UBCM model:
+julia> G = Graphs.SimpleGraphs.smallgraph(:karate);
+julia> model = UBCM(G);
+julia> G = zeros(eltype(model.Θᵣ), length(model.Θᵣ);
+julia> x = zeros(eltype(model.Θᵣ), length(model.Θᵣ);
+julia> UBCM_FP! = θ -> UBCM_reduced_iter!(θ::AbstractVector, K, F, x, G);
+julia> UBCM_FP!(model.Θᵣ)
+```
+"""
+function UBCM_reduced_iter!(θ::AbstractVector, K::Vector, F::Vector, x::AbstractVector, G::AbstractVector)
+    x .= np.exp.(-θ)
+    G .= zeros(eltype(G), length(G))
+    @simd for i in eachindex(K)
+        for j in eachindex(K)
+            if i == j
+                G[i] += (F[j] - 1) * (x[j] / (1 + x[j] * x[i]))
+            else
+                G[i] += (F[j]) *     (x[j] / (1 + x[j] * x[i]))
+            end
+        end
+
+        if !iszero(G[i])
+            G[i] = -log(K[i] / G[i])
+        end
+    end
+    return G
+end
+
+
+
 
 """
     set_xᵣ!(m::UBCM)
@@ -206,7 +299,7 @@ function set_x!(m::UBCM)
     if m.status[:params_computed]
         m.xᵣ .= exp.(-m.Θᵣ)
     else
-        throw(UndefRefError("The parameters have not been computed yet"))
+        throw(ArgumentError("The parameters have not been computed yet"))
     end
 end
 
@@ -226,9 +319,10 @@ Compute the expected adjacency matrix for the UBCM model `m`
 """
 function Ĝ(m::UBCM{T,N}) where {T,N}
     # check if possible
-    m.status[:params_computed] ? nothing : throw(UndefRefError("The parameters have not been computed yet"))
-    # check network size
-    n = length(m.status[:d])
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    
+    # get network size => this is the full size
+    n = m.status[:d]
     # initiate G
     G = zeros(N, n, n)
     # initiate x
@@ -264,7 +358,7 @@ Compute the standard deviation for the elements of the adjacency matrix for the 
 """
 function σˣ(m::UBCM{T,N}) where {T,N}
     # check if possible
-    m.status[:params_computed] ? nothing : throw(UndefRefError("The parameters have not been computed yet"))
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # check network size
     n = length(m.status[:d])
     # initiate G
@@ -286,7 +380,7 @@ end
 
 
 
-solve_model(::T, method::Symbol) where {T<:AbstractMaxEntropyModel} = throw(MethodError("The model type $(T) is not implemented yet"))
+solve_model(::T, method::Symbol) where {T<:AbstractMaxEntropyModel} = throw(MethodError(solve_model, method))
 
 
 
