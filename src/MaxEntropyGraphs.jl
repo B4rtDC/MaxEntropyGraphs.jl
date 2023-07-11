@@ -21,9 +21,14 @@ module MaxEntropyGraphs
     include("utils.jl")
     include("models.jl")
 
-    # exports
-    export AbstractMaxEntropyModel, UBCM
-
+    ## exports
+    # common types
+    export AbstractMaxEntropyModel
+    # common functions
+    export initial_guess, set_xᵣ!, Ĝ, set_Ĝ!, σˣ, set_σ!
+    # model specific types and functions
+    export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
+    export DBCM
 
     #import Distributions
     

@@ -70,7 +70,7 @@ If you want to work from an adjacency matrix, or edge list, you can use the grap
 # Examples     
 ```jldoctest
 # generating a model from a graph
-julia> G = Graphs.SimpleGraphs.smallgraph(:karate)
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
 {34, 78} undirected simple Int64 graph
 julia> model = UBCM(G)
 UBCM{SimpleGraph{Int64}, Float64} (34 vertices, 11 unique degrees, 0.32 compression ratio)
@@ -85,15 +85,15 @@ UBCM{Nothing, Float16} (5 vertices, 3 unique degrees, 0.60 compression ratio)
 
 # generating a model from an adjacency matrix
 julia> A = [0 1 1;1 0 0;1 0 0];
-julia> G = Graphs.SimpleGraph(A)
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(A)
 {3, 2} undirected simple Int64 graph
 julia> model = UBCM(G)
 UBCM{SimpleGraph{Int64}, Float64} (3 vertices, 2 unique degrees, 0.67 compression ratio)
 
 # generating a model from an edge list
 julia> E = [(1,2),(1,3),(2,3)];
-julia> edgelist = [Graphs.Edge(x,y) for (x,y) in E];
-julia> G = Graphs.SimpleGraphFromIterator(edgelist)
+julia> edgelist = [MaxEntropyGraphs.Graphs.Edge(x,y) for (x,y) in E];
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraphFromIterator(edgelist)
 {3, 3} undirected simple Int64 graph
 julia> model = UBCM(G)
 UBCM{SimpleGraph{Int64}, Float64} (3 vertices, 1 unique degrees, 0.33 compression ratio)
@@ -167,7 +167,7 @@ julia> F = [1, 2, 3, 4, 5];
 julia> L_UBCM_reduced(θ, K, F)
 
 # Use with UBCM model:
-julia> G = Graphs.SimpleGraphs.smallgraph(:karate);
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
 julia> model = UBCM(G);
 julia> model_fun = θ -> L_UBCM_reduced(θ, model.dᵣ, model.f)
 julia> model_fun(model.Θᵣ)
@@ -187,6 +187,7 @@ function L_UBCM_reduced(θ::Vector, K::Vector, F::Vector)
             end
         end
     end
+
     return res
 end
 
@@ -227,9 +228,9 @@ julia> solve(fun, method)
 ```
 """
 function ∇L_UBCM_reduced!(θ::AbstractVector, K::Vector, F::Vector, ∇L::AbstractVector, x::AbstractVector)
-    x .= np.exp.(-θ)
+    x .= exp.(-θ)
     @simd for i in eachindex(K)
-        ∇L[i] = - F[i] * k[i]
+        ∇L[i] = - F[i] * K[i]
         for j in eachindex(K)
             if i == j
                 aux = x[i] ^ 2
@@ -239,12 +240,13 @@ function ∇L_UBCM_reduced!(θ::AbstractVector, K::Vector, F::Vector, ∇L::Abst
                 ∇L[i] += F[i] * F[j]       * (aux / (1 + aux))
             end
         end
+    end
 
     return ∇L
 end
 
 """
-    UBCM_reduced_iter!(θ::Vector, K::Vector, F::Vector, x::Vector, G::Vector)
+    UBCM_reduced_iter!(θ, K, F, x, G)
 
 Computer the next fixed-point iteration for the UBCM model using the exponential formulation in order to maintain convexity.
 The function will update pre-allocated vectors (`G` and `x`) for speed.
@@ -268,9 +270,9 @@ julia> UBCM_FP! = θ -> UBCM_reduced_iter!(θ::AbstractVector, K, F, x, G);
 julia> UBCM_FP!(model.Θᵣ)
 ```
 """
-function UBCM_reduced_iter!(θ::AbstractVector, K::Vector, F::Vector, x::AbstractVector, G::AbstractVector)
-    x .= np.exp.(-θ)
-    G .= zeros(eltype(G), length(G))
+function UBCM_reduced_iter!(θ::AbstractVector, K::AbstractVector, F::AbstractVector, x::AbstractVector, G::AbstractVector)
+    x .= exp.(-θ)
+    G .= zero(eltype(G))#, length(G))
     @simd for i in eachindex(K)
         for j in eachindex(K)
             if i == j
@@ -287,7 +289,28 @@ function UBCM_reduced_iter!(θ::AbstractVector, K::Vector, F::Vector, x::Abstrac
     return G
 end
 
+"""
+    initial_guess(m::UBCM, method::Symbol=:degrees)
 
+Compute an initial guess for the maximum likelihood parameters of the UBCM model `m` using the method `method`.
+
+The methods available are: `:degrees` (default), `:degrees_minor`, `:random`, `:uniform`, `:chung_lu`.
+"""
+function initial_guess(m::UBCM{T,N}, method::Symbol=:degrees) where {T,N}
+    if isequal(method, :degrees)
+        return Vector{N}(-log.(m.dᵣ))
+    elseif isequal(method, :degrees_minor)
+        return Vector{N}(-log.(m.dᵣ ./ (sqrt(Graphs.ne(m.G)) + 1)))
+    elseif isequal(method, :random)
+        return Vector{N}(-log.(rand(N, length(m.dᵣ))))
+    elseif isequal(method, :uniform)
+        return Vector{N}(-log.(0.5 .* ones(N, length(m.dᵣ))))
+    elseif isequal(method, :chung_lu)
+        return Vector{N}(-log.(m.dᵣ ./ (2 * Graphs.ne(m.G))))
+    else
+        throw(ArgumentError("The method $(method) is not supported"))
+    end
+end
 
 
 """
@@ -295,7 +318,7 @@ end
 
 Set the value of xᵣ to exp(-θᵣ) for the UBCM model `m`
 """
-function set_x!(m::UBCM)
+function set_xᵣ!(m::UBCM)
     if m.status[:params_computed]
         m.xᵣ .= exp.(-m.Θᵣ)
     else
@@ -309,7 +332,7 @@ end
 Set the expected adjacency matrix for the UBCM model `m`
 """
 function set_Ĝ!(m::UBCM)
-    m.Ĝ .= Ĝ(m)
+    m.Ĝ = Ĝ(m)
 end
 
 """
@@ -346,7 +369,7 @@ end
 Set the standard deviation for the elements of the adjacency matrix for the UBCM model `m`
 """
 function set_σ!(m::UBCM)
-    m.σ .= σˣ(m)
+    m.σ = σˣ(m)
 end
 
 """
@@ -359,8 +382,8 @@ Compute the standard deviation for the elements of the adjacency matrix for the 
 function σˣ(m::UBCM{T,N}) where {T,N}
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    # check network size
-    n = length(m.status[:d])
+    # check network size => this is the full size
+    n = m.status[:d]
     # initiate G
     σ = zeros(N, n, n)
     # initiate x
@@ -369,8 +392,8 @@ function σˣ(m::UBCM{T,N}) where {T,N}
     for i = 1:n
         @simd for j = i+1:n
             @inbounds xij =  x[i]*x[j]
-            @inbounds res[i,j] = sqrt(xij)/(1 + xij)
-            @inbounds res[j,i] = sqrt(xij)/(1 + xij)
+            @inbounds σ[i,j] = sqrt(xij)/(1 + xij)
+            @inbounds σ[j,i] = sqrt(xij)/(1 + xij)
         end
     end
 
@@ -378,11 +401,51 @@ function σˣ(m::UBCM{T,N}) where {T,N}
 end
 
 
+function rand(m::UBCM)
+    @info "Not implemented yet"
+end
 
 
 solve_model(::T, method::Symbol) where {T<:AbstractMaxEntropyModel} = throw(MethodError(solve_model, method))
+jebroer() = @info "dag brave jongens, waar is je moeder?"
+vake() = @info "dag brave jongens"
+jemoeder() = @warn "Wee je gebeente!"
+jevader() = @warn "Je vader zal er van horen!"
+
+test(m::UBCM{T}) where T = @info T
+newtest() = @warn "Succes?"
 
 
+
+
+
+
+mutable struct DBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
+    "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleDiGraph for the computation" # can also be empty
+    const G::T 
+    "Maximum likelihood parameters for reduced model"
+    const Θᵣ::Vector{N}
+    "Exponentiated maximum likelihood parameters for reduced model ( xᵢ = exp(-θᵢ) )"
+    const xᵣ::Vector{N}
+    "Degree sequence of the graph" # evaluate usefulness of this field later on
+    const d::Vector{Int}
+    "Reduced degree sequence of the graph"
+    const dᵣ::Vector{Int}
+    "Frequency of each degree in the degree sequence"
+    const f::Vector{Int}
+    "Indices to reconstruct the degree sequence from the reduced degree sequence"
+    const d_ind::Vector{Int}
+    "Indices to reconstruct the reduced degree sequence from the degree sequence"
+    const dᵣ_ind::Vector{Int}
+    "Expected adjacency matrix" # not always computed/required
+    Ĝ::Union{Nothing, Matrix{N}}
+    "Variance of the expected adjacency matrix" # not always computed/required
+    σ::Union{Nothing, Matrix{N}}
+    "Status indicators: parameters computed, expected adjacency matrix computed, variance computed, etc."
+    const status::Dict{Symbol, Any}
+    "Function used to computed the log-likelihood of the (reduced) model"
+    fun::Union{Nothing, Function}
+end
 
 
 
