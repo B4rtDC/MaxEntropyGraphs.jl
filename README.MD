@@ -20,11 +20,16 @@ Pkg.add("MaxEntropyGraphs")
 ```
 
 ## Differences with the NEMtropy package
-* We use the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package to maximise the entropy. The fixed point methods proposed in [[4]](#4) are available and can be used (cf. documentation). We have also maintained the different options for the initial values for each method.
+* To obtain the maximum likelihood parameters of a model we use either:
+    - the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package (this maximises the loglikelihood of the networks ensemble) 
+    - [NLsolve.jl](https://github.com/JuliaNLSolvers/NLsolve.jl#anderson-acceleration)'s Anderson acceleration for the fixed point methods proposed in [[4]](#4) (cf. documentation/examples). 
+
+  We have also maintained the different options for the initial values for each method (cf. `initial_guess(::AbstractMaxEntropyModel)`).
 * We use the [JuliaGraphs](https://juliagraphs.org/) ecosystem for everything network related.
 * By making use of the automatic differentiation capabilities of Julia, we can:
     - approximation the gradient of the likelihood function of the graphs
     - compute the gradient of any metric with respect to its adjacency matrix without having to compute these by hand and implement for each possible metric
+* For both the models and the computing functions we make a clear distinction between the likelihood maximising paramers and the variable substitution which alleviates the compute (e.g. $\theta_i \leftrightarrow x_i = e^{-\theta_i}$ for the UBCM).
 * Sampling from an `AbstractMaxEntropyModel` will generate a corresponding subtype of  `AbstractGraph` from the [JuliaGraphs](https://juliagraphs.org/) ecosystem. The methods that are available in `Graphs.jl`, `SimpleWeightedGraphs` etc. have been extended for the different maximum entropy models wherever applicable. 
 
 ## Available models
@@ -33,7 +38,8 @@ currently available.
 
 * [ ] **UBCM** *Undirected Binary Configuration Model* [[1]](#1)
     - [x] Types
-    - [ ] Likelihood related functions
+    - [x] Likelihood related functions
+    - [x] Likelihood maximisation in pure Julia
     - [ ] $\dots$
 * [ ] **UECM** *Undirected Enhanced Configuration Model* [[1]](#1)
 * [ ] **DBCM** *Directed Binary Configuration Model* [[1]](#1)
