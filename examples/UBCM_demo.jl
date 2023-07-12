@@ -136,7 +136,6 @@ UBCM_FP_perf = @benchmark fixedpoint($(FP_model!), $(θ₀), method=:anderson, f
 @info "Median compute time for FP iteration:  $(MaxEntropyGraphs.@sprintf("%2.2es", median(UBCM_FP_perf).time/1e9)) - speedup vs. NEMtropy (fixedpoint): x$(MaxEntropyGraphs.@sprintf("%1.2f", UBCM_fixedpoint_time/(median(UBCM_FP_perf).time/1e9))))";
 end
 
-UBCM_fixedpoint_time / 3.85e-05
 # obtain the expected adjacency matrix of the UBCM model
 # ______________________________________________________
 begin

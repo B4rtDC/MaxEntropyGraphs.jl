@@ -296,7 +296,8 @@ Compute an initial guess for the maximum likelihood parameters of the UBCM model
 
 The methods available are: `:degrees` (default), `:degrees_minor`, `:random`, `:uniform`, `:chung_lu`.
 """
-function initial_guess(m::UBCM{T,N}, method::Symbol=:degrees) where {T,N}
+function initial_guess(m::UBCM{T,N}; method::Symbol=:degrees) where {T,N}
+    #N = typeof(m).parameters[2]
     if isequal(method, :degrees)
         return Vector{N}(-log.(m.dᵣ))
     elseif isequal(method, :degrees_minor)
@@ -308,7 +309,7 @@ function initial_guess(m::UBCM{T,N}, method::Symbol=:degrees) where {T,N}
     elseif isequal(method, :chung_lu)
         return Vector{N}(-log.(m.dᵣ ./ (2 * Graphs.ne(m.G))))
     else
-        throw(ArgumentError("The method $(method) is not supported"))
+        throw(ArgumentError("The initial guess method $(method) is not supported"))
     end
 end
 
@@ -333,6 +334,8 @@ Set the expected adjacency matrix for the UBCM model `m`
 """
 function set_Ĝ!(m::UBCM)
     m.Ĝ = Ĝ(m)
+    m.status[:G_computed] = true
+    return m.Ĝ
 end
 
 """
@@ -370,6 +373,8 @@ Set the standard deviation for the elements of the adjacency matrix for the UBCM
 """
 function set_σ!(m::UBCM)
     m.σ = σˣ(m)
+    m.status[:σ_computed] = true
+    return m.σ
 end
 
 """
@@ -400,11 +405,187 @@ function σˣ(m::UBCM{T,N}) where {T,N}
     return σ
 end
 
+"""
+    rand(m::UBCM; precomputed=false)
 
-function rand(m::UBCM)
-    @info "Not implemented yet"
+Generate a random graph from the UBCM model `m`.
+
+Keyword arguments:
+- `precomputed::Bool`: if `true`, the precomputed expected adjacency matrix (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
+  recommended to not precompute the expected adjacency matrix to limit memory pressure.
+
+# Examples
+```jldoctest
+# generate a UBCM model from the karate club network
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
+julia> model = MaxEntropyGraphs.UBCM(G);
+# compute the maximum likelihood parameters
+using NLsolve
+x_buffer = zeros(length(model.dᵣ));G_buffer = zeros(length(model.dᵣ));
+FP_model! = (θ::Vector) -> MaxEntropyGraphs.UBCM_reduced_iter!(θ, model.dᵣ, model.f, x_buffer, G_buffer);
+sol = fixedpoint(FP_model!, θ₀, method=:anderson, ftol=1e-12, iterations=1000);
+model.Θᵣ .= sol.zero;
+model.status[:params_computed] = true;
+set_xᵣ!(model);
+# set the expected adjacency matrix
+MaxEntropyGraphs.set_Ĝ!(model);
+# sample a random graph
+julia> rand(model)
+{34, 78} undirected simple Int64 graph
+```
+"""
+function rand(m::UBCM; precomputed::Bool=false)
+    if precomputed
+        # check if possible to use precomputed Ĝ
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
+        # generate random graph
+        G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()<m.Ĝ[i,j]]))
+    else
+        # check if possible to use parameters
+        m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+        # generate x vector
+        x = m.xᵣ[m.dᵣ_ind]
+        # generate random graph
+        G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()< (x[i]*x[j])/(1 + x[i]*x[j]) ]))
+    end
+
+    # deal with edge case where no edges are generated for the last node(s) in the graph
+    while Graphs.nv(G) < m.status[:d]
+        Graphs.add_vertex!(G)
+    end
+
+    return G
 end
 
+
+"""
+    rand(m::UBCM, n::Int; precomputed=false)
+
+Generate `n` random graphs from the UBCM model `m`. If multithreading is available, the graphs are generated in parallel.
+
+Keyword arguments:
+- `precomputed::Bool`: if `true`, the precomputed expected adjacency matrix (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
+  recommended to not precompute the expected adjacency matrix to limit memory pressure.
+
+# Examples
+```jldoctest
+# generate a UBCM model from the karate club network
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
+julia> model = MaxEntropyGraphs.UBCM(G);
+# compute the maximum likelihood parameters
+using NLsolve
+x_buffer = zeros(length(model.dᵣ));G_buffer = zeros(length(model.dᵣ));
+FP_model! = (θ::Vector) -> MaxEntropyGraphs.UBCM_reduced_iter!(θ, model.dᵣ, model.f, x_buffer, G_buffer);
+sol = fixedpoint(FP_model!, θ₀, method=:anderson, ftol=1e-12, iterations=1000);
+model.Θᵣ .= sol.zero;
+model.status[:params_computed] = true;
+set_xᵣ!(model);
+# set the expected adjacency matrix
+MaxEntropyGraphs.set_Ĝ!(model);
+# sample a random graph
+julia> rand(model, 10)
+10-element Vector{Graphs.SimpleGraphs.SimpleGraph{Int64}}
+```
+"""
+function rand(m::UBCM, n::Int; precomputed::Bool=false)
+    # pre-allocate
+    res = Vector{Graphs.SimpleGraph{Int}}(undef, n)
+    # fill vector using threads
+    Threads.@threads for i in 1:n
+        res[i] = rand(m; precomputed=precomputed)
+    end
+
+    return res
+end
+
+"""
+    ConvergenceError
+
+Exception thrown when the optimisation method does not converge. 
+
+When using and optimisation method from the `optimisation.jl` framework, the return code of the optimisation method is stored in the `retcode` field.
+When using the fixed point iteration method, the `retcode` field is set to `nothing`.
+"""
+struct ConvergenceError{T} <: Exception where {T<:Optimization.SciMLBase.EnumX.Enum{Int32}}
+    method::Symbol
+    retcode::Union{Nothing, T}
+end
+
+Base.showerror(io::IO, e::ConvergenceError) = print(io, """method `$(e.method)` did not converge $(isnothing(e.retcode) ? "" : "(Optimization.jl return code: $(e.retcode))")""")
+
+const optimization_methods = Dict(  :LBFGS      => OptimizationOptimJL.LBFGS(),
+                                    :BFGS       => OptimizationOptimJL.BFGS(),
+                                    :Newton     => OptimizationOptimJL.Newton(),
+                                    :NelderMead => OptimizationOptimJL.NelderMead())
+
+const AD_methods = Dict(:AutoZygote         => Optimization.AutoZygote(),
+                        :AutoForwardDiff    => Optimization.AutoForwardDiff(),
+                        :AutoReverseDiff    => Optimization.AutoReverseDiff(),
+                        :AutoFiniteDiff     => Optimization.AutoFiniteDiff())
+
+"""
+    solve_model!(m::UBCM)
+
+Compute the likelihood maximising parameters of the UBCM model `m`. By default the parameters are computed using the fixed point iteration method with the degree sequence as initial guess.
+"""
+function solve_model!(m::UBCM;  # common settings
+                                method::Symbol=:fixedpoint, 
+                                initial_method::Symbol=:degrees,
+                                maxiters::Int=1000, 
+                                verbose::Bool=false,
+                                # NLsolve.jl specific settings (fixed point method)
+                                ftol::Real=1e-8,
+                                # optimisation.jl specific settings (optimisation methods)
+                                abstol::Union{Number, Nothing}=nothing,
+                                reltol::Union{Number, Nothing}=nothing,
+                                AD_method::Symbol=:AutoZygote)
+    # initial guess
+    θ₀ = initial_guess(m, method=initial_method)
+    if method==:fixedpoint
+        # initiate buffers
+        x_buffer = zeros(length(m.dᵣ)); # buffer for x = exp(-θ)
+        G_buffer = zeros(length(m.dᵣ)); # buffer for G(x)
+        # define fixed point function
+        FP_model! = (θ::Vector) -> UBCM_reduced_iter!(θ, m.dᵣ, m.f, x_buffer, G_buffer);
+        # obtain solution
+        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        if NLsolve.converged(sol)
+            if verbose 
+                @info "Fixed point iteration converged after $(sol.iterations) iterations"
+            end
+            m.Θᵣ .= sol.zero;
+            m.status[:params_computed] = true;
+            set_xᵣ!(m);
+        else
+            throw(ConvergenceError(method, nothing))
+        end
+    else
+        # define objective function and with its AD method
+        f = AD_method ∈ keys(AD_methods)            ? Optimization.OptimizationFunction( (θ, p) ->  - L_UBCM_reduced(θ, m.dᵣ, m.f), AD_methods[AD_method])  : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
+        prob = Optimization.OptimizationProblem(f, θ₀);
+        # obtain solution
+        sol = method ∈ keys(optimization_methods)   ? Optimization.solve(prob, optimization_methods[method])                                                : throw(ArgumentError("The method $(method) is not supported (yet)"))
+        # check convergence
+        if Optimization.SciMLBase.successful_retcode(sol.retcode)
+            if verbose 
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
+            end
+            m.Θᵣ .= sol.u;
+            m.status[:params_computed] = true;
+            set_xᵣ!(m);
+        else
+            throw(ConvergenceError(method, sol.retcode))
+        end
+    end
+
+    return m
+end
+
+
+
+
+"""
+    solve_model(m::UBCM, method::Symbol)
 
 solve_model(::T, method::Symbol) where {T<:AbstractMaxEntropyModel} = throw(MethodError(solve_model, method))
 jebroer() = @info "dag brave jongens, waar is je moeder?"
@@ -450,7 +631,7 @@ end
 
 
 """
-    Ĝ(m::UBCM)
+#    Ĝ(m::UBCM)
 
 
 # G = MODELS.Graphs.SimpleGraphs.smallgraph(:karate)

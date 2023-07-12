@@ -4,7 +4,7 @@
 Julia module for working with maximum entropy graphs
 """
 module MaxEntropyGraphs
-    import Base: show, rand
+    import Base: show, rand, showerror
      # for logmessages
     #import Dates: now, Day, Minute 
     import Printf: @sprintf
@@ -16,6 +16,8 @@ module MaxEntropyGraphs
     # to solve the optimization problem
     import Optimization
     import OptimizationOptimJL
+    import NLsolve
+    import Zygote
 
     # actual source code
     include("utils.jl")
@@ -25,7 +27,7 @@ module MaxEntropyGraphs
     # common types
     export AbstractMaxEntropyModel
     # common functions
-    export initial_guess, set_xᵣ!, Ĝ, set_Ĝ!, σˣ, set_σ!
+    export initial_guess, solve_model!, set_xᵣ!, Ĝ, set_Ĝ!, σˣ, set_σ!
     # model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
     export DBCM

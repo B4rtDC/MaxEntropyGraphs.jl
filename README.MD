@@ -39,7 +39,8 @@ currently available.
 * [ ] **UBCM** *Undirected Binary Configuration Model* [[1]](#1)
     - [x] Types
     - [x] Likelihood related functions
-    - [x] Likelihood maximisation in pure Julia
+    - [x] Likelihood maximisation in pure Julia (FP + optimisation)
+    - [ ] Check for behavior of zero degree nodes
     - [ ] $\dots$
 * [ ] **UECM** *Undirected Enhanced Configuration Model* [[1]](#1)
 * [ ] **DBCM** *Directed Binary Configuration Model* [[1]](#1)
