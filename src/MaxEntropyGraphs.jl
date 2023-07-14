@@ -18,6 +18,7 @@ module MaxEntropyGraphs
     import OptimizationOptimJL
     import NLsolve
     import Zygote
+    import LoopVectorization: @tturbo, @turbo
 
     # actual source code
     include("utils.jl")
