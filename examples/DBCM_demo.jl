@@ -224,7 +224,7 @@ begin
     
     res = MaxEntropyGraphs.DBCM_reduced_iter!(θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, x, y, G, H, model.status[:d_unique])
 
-    @assert  res ≈ DBCM_pysol_iter
+    @assert res ≈ DBCM_pysol_iter
     @btime MaxEntropyGraphs.DBCM_reduced_iter!(θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, x, y, G, H, model.status[:d_unique]);
     nothing
 
@@ -254,6 +254,12 @@ begin
     @btime ∇L_model_minus(θ);
     nothing
 end
+
+
+
+
+
+
 
 ## Evaluating allocations for other function to make them faster
 # ______________________________________________________________
