@@ -530,7 +530,7 @@ Compute the likelihood maximising parameters of the UBCM model `m`. By default t
 """
 function solve_model!(m::UBCM;  # common settings
                                 method::Symbol=:fixedpoint, 
-                                initial_method::Symbol=:degrees,
+                                initial::Symbol=:degrees,
                                 maxiters::Int=1000, 
                                 verbose::Bool=false,
                                 # NLsolve.jl specific settings (fixed point method)
@@ -540,7 +540,7 @@ function solve_model!(m::UBCM;  # common settings
                                 reltol::Union{Number, Nothing}=nothing,
                                 AD_method::Symbol=:AutoZygote)
     # initial guess
-    θ₀ = initial_guess(m, method=initial_method)
+    θ₀ = initial_guess(m, method=initial)
     if method==:fixedpoint
         # initiate buffers
         x_buffer = zeros(length(m.dᵣ)); # buffer for x = exp(-θ)
@@ -581,38 +581,33 @@ function solve_model!(m::UBCM;  # common settings
     return m
 end
 
-
-
-
 """
-    solve_model(m::UBCM, method::Symbol)
+    DBCM{T,N} <: AbstractMaxEntropyModel
 
-solve_model(::T, method::Symbol) where {T<:AbstractMaxEntropyModel} = throw(MethodError(solve_model, method))
-jebroer() = @info "dag brave jongens, waar is je moeder?"
-vake() = @info "dag brave jongens"
-jemoeder() = @warn "Wee je gebeente!"
-jevader() = @warn "Je vader zal er van horen!"
-
-test(m::UBCM{T}) where T = @info T
-newtest() = @warn "Succes?"
-
-
-
-
-
-
+Type definition for the Directed Binary Configuration Model (DBCM) model.
+"""
 mutable struct DBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleDiGraph for the computation" # can also be empty
     const G::T 
-    "Maximum likelihood parameters for reduced model"
-    const Θᵣ::Vector{N}
-    "Exponentiated maximum likelihood parameters for reduced model ( xᵢ = exp(-θᵢ) )"
+    "Vector holding all maximum likelihood parameters for reduced model (α ; β)"
+    const θᵣ::Vector{N}
+    "Exponentiated maximum likelihood parameters for reduced model ( xᵢ = exp(-αᵢ) ) linked with out-degree"
     const xᵣ::Vector{N}
-    "Degree sequence of the graph" # evaluate usefulness of this field later on
-    const d::Vector{Int}
-    "Reduced degree sequence of the graph"
-    const dᵣ::Vector{Int}
-    "Frequency of each degree in the degree sequence"
+    "Exponentiated maximum likelihood parameters for reduced model ( yᵢ = exp(-βᵢ) ) linked with in-degree"
+    const yᵣ::Vector{N}
+    "Outdegree sequence of the graph" # evaluate usefulness of this field later on
+    const d_out::Vector{Int}
+    "Indegree sequence of the graph" # evaluate usefulness of this field later on
+    const d_in::Vector{Int}
+    "Reduced outdegree sequence of the graph"
+    const dᵣ_out::Vector{Int}
+    "Reduced indegree sequence of the graph"
+    const dᵣ_in::Vector{Int}
+    "Indices of non-zero elements in the reduced outdegree sequence"
+    const dᵣ_out_nz::Vector{Int}
+    "Indices of non-zero elements in the reduced indegree sequence"
+    const dᵣ_in_nz::Vector{Int}
+    "Frequency of each (outdegree, indegree) pair in the graph"
     const f::Vector{Int}
     "Indices to reconstruct the degree sequence from the reduced degree sequence"
     const d_ind::Vector{Int}
@@ -623,30 +618,270 @@ mutable struct DBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.Abstr
     "Variance of the expected adjacency matrix" # not always computed/required
     σ::Union{Nothing, Matrix{N}}
     "Status indicators: parameters computed, expected adjacency matrix computed, variance computed, etc."
-    const status::Dict{Symbol, Any}
+    const status::Dict{Symbol, Real}
     "Function used to computed the log-likelihood of the (reduced) model"
     fun::Union{Nothing, Function}
 end
 
 
+Base.show(io::IO, m::DBCM{T,N}) where {T,N} = print(io, """UBCM{$(T), $(N)} ($(m.status[:d]) vertices, $(m.status[:d_unique]) unique degree pairs, $(@sprintf("%.2f", m.status[:cᵣ])) compression ratio)""")
+
+"""Return the reduced number of nodes in the UBCM network"""
+Base.length(m::DBCM) = length(m.dᵣ)
+
 
 """
-#    Ĝ(m::UBCM)
+    DBCM(G::T; precision::N=Float64, kwargs...) where {T<:Graphs.AbstractGraph, N<:Real}
+    DBCM(;d_out::Vector{T}, d_in::Vector{T}, precision::Type{<:AbstractFloat}=Float64, kwargs...)
+
+Constructor function for the `DBCM` type. 
+    
+By default and dependng on the graph type `T`, the definition of in- and outdegree from ``Graphs.jl`` is applied. 
+If you want to use a different definition of degrees, you can pass vectors of degrees sequences as keyword arguments (`d_out`, `d_in`).
+If you want to generate a model directly from degree sequences without an underlying graph , you can simply pass the degree sequences as arguments (`d_out`, `d_in`).
+If you want to work from an adjacency matrix, or edge list, you can use the graph constructors from the ``JuliaGraphs`` ecosystem.
+
+# Examples     
+```jldoctest
+# generating a model from a graph
 
 
-# G = MODELS.Graphs.SimpleGraphs.smallgraph(:karate)
-# model = MODELS.UBCM(G,)
+# generating a model directly from a degree sequence
 
-# G = Graphs.SimpleDiGraph(5)
-# nv(G)
-# res = MODELS.UBCM(G, precision=Float16)
-# res = MODELS.UBCM(G, [4;3;3;3;2])
-# res.Θᵣ, res.dᵣ
 
-# res.dᵣ[res.dᵣ_ind] == res.d
-# res.Θᵣ[res.dᵣ_ind]
-# res.Θᵣ
-# """
+# generating a model directly from a degree sequence with a different precision
+
+
+# generating a model from an adjacency matrix
+
+
+# generating a model from an edge list
+
+
+```
+
+See also [`Graphs.outdegree`](@ref), [`Graphs.indegree`](@ref), [`SimpleWeightedGraphs.outdegree`](@ref), [`SimpleWeightedGraphs.indegree`](@ref).
+"""
+function DBCM(G::T; d_out::Vector=Graphs.outdegree(G), 
+                    d_in::Vector=Graphs.indegree(G), 
+                    precision::Type{N}=Float64, 
+                    kwargs...) where {T,N<:AbstractFloat}
+    T <: Union{Graphs.AbstractGraph, Nothing} ? nothing : throw(TypeError("G must be a subtype of AbstractGraph or Nothing"))
+    length(d_out) == length(d_in) ? nothing : throw(DimensionMismatch("The outdegree and indegree sequences must have the same length"))
+    # coherence checks
+    if T <: Graphs.AbstractGraph # Graph specific checks
+        if !Graphs.is_directed(G)
+            @warn "The graph is undirected, while the DBCM model is directed, the in- and out-degree will be the same"
+        end
+
+        if T <: SimpleWeightedGraphs.AbstractSimpleWeightedGraph
+            @warn "The graph is weighted, while DBCM model is unweighted, the weight information will be lost"
+        end
+
+        Graphs.nv(G) == 0 ? throw(ArgumentError("The graph is empty")) : nothing
+        Graphs.nv(G) == 1 ? throw(ArgumentError("The graph has only one vertex")) : nothing
+        Graphs.nv(G) != length(d_out) ? throw(DimensionMismatch("The number of vertices in the graph ($(Graphs.nv(G))) and the length of the degree sequence ($(length(d))) do not match")) : nothing
+    end
+    # coherence checks specific to the degree sequences
+    length(d_out) == 0 ? throw(ArgumentError("The degree sequences are empty")) : nothing
+    length(d_out) == 1 ? throw(ArgumentError("The degree sequences only contain a single node")) : nothing
+    maximum(d_out) >= length(d_out) ? throw(DomainError("The maximum outdegree in the graph is greater or equal to the number of vertices, this is not allowed")) : nothing
+    maximum(d_in)  >= length(d_in)  ? throw(DomainError("The maximum indegree in the graph is greater or equal to the number of vertices, this is not allowed")) : nothing
+
+    # field generation
+    dᵣ, d_ind , dᵣ_ind, f = np_unique_clone(collect(zip(d_out, d_in)), sorted=true)
+    dᵣ_out = [d[1] for d in dᵣ]
+    dᵣ_in =  [d[2] for d in dᵣ]
+    dᵣ_out_nz = findall(!iszero, dᵣ_out)
+    dᵣ_in_nz  = findall(!iszero, dᵣ_in)
+    Θᵣ = Vector{precision}(undef, 2*length(dᵣ))
+    xᵣ = Vector{precision}(undef, length(dᵣ))
+    yᵣ = Vector{precision}(undef, length(dᵣ))
+    status = Dict{Symbol, Real}(:params_computed=>false,            # are the parameters computed?
+                                :G_computed=>false,                 # is the expected adjacency matrix computed and stored?
+                                :σ_computed=>false,                 # is the standard deviation computed and stored?
+                                :cᵣ => length(dᵣ)/length(d_out),    # compression ratio of the reduced model
+                                :d_unique => length(dᵣ),            # number of unique (outdegree, indegree) pairs in the reduced model
+                                :d => length(d_out)                 # number of vertices in the original graph 
+                )
+    
+    return DBCM{T,precision}(G, Θᵣ, xᵣ, yᵣ, d_out, d_in, dᵣ_out, dᵣ_in, dᵣ_out_nz, dᵣ_in_nz, f, d_ind, dᵣ_ind, nothing, nothing, status, nothing)
+end
+
+DBCM(; d_out::Vector{T}, d_in::Vector{T}, precision::Type{N}=Float64, kwargs...) where {T<:Signed, N<:AbstractFloat} = DBCM(nothing; d_out=d_out, d_in=d_in, precision=precision, kwargs...)
+
+
+"""
+    L_DBCM_reduced(θ::Vector, k_out::Vector, k_in::Vector, F::Vector, nz_out::Vector, nz_in::Vector, n::Int=length(k_out))
+
+Compute the log-likelihood of the reduced DBCM model using the exponential formulation in order to maintain convexity.
+
+The arguments of the function are:
+    - `θ`: the maximum likelihood parameters of the model ([α; β])
+    - `k_out`: the reduced outdegree sequence
+    - `k_in`: the reduced indegree sequence
+    - `F`: the frequency of each pair in the degree sequence
+    - `nz_out`: the indices of non-zero elements in the reduced outdegree sequence
+    - `nz_in`: the indices of non-zero elements in the reduced indegree sequence
+    - `n`: the number of nodes in the reduced model
+
+The function returns the log-likelihood of the reduced model. For the optimisation, this function will be used to
+generate an anonymous function associated with a specific model.
+
+# Examples
+```jldoctest
+# Generic use:
+julia> k_out  = [1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5];
+julia> k_in   = [2, 3, 4, 1, 3, 5, 2, 4, 1, 2, 4, 0, 4];
+julia> F      = [2, 2, 1, 1, 1, 2, 3, 1, 1, 2, 2, 1, 1];
+julia> θ      = rand(length(k_out));
+julia> nz_out = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+julia> nz_in  = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13];
+julia> n      = length(k_out);
+julia> L_DBCM_reduced(θ, k_out, k_in, F, nz_out, nz_in, n)
+
+# Use with UBCM model:
+julia> G = 
+julia> model = DBCM(G);
+julia> model_fun = θ -> L_DBCM_reduced(θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, model.status[:d_unique])
+julia> model_fun(model.Θᵣ)
+```
+"""
+function L_DBCM_reduced(θ::Vector, k_out::Vector, k_in::Vector, F::Vector, nz_out::Vector, nz_in::Vector, n::Int=length(k_out))
+    α = @view θ[1:n]
+    β = @view θ[n+1:end]
+    res = zero(eltype(θ))
+    for i in nz_out
+        res -= F[i] * k_out[i] * α[i]
+        for j in nz_in
+            if i ≠ j 
+                res -= F[i] * F[j]       * log(1 + exp(-α[i] - β[j]))
+            else
+                res -= F[i] * (F[i] - 1) * log(1 + exp(-α[i] - β[j]))
+            end
+        end
+    end
+
+    for j in nz_in
+        res -= F[j] * k_in[j]  * β[j]
+    end
+
+    return res
+end
+
+
+"""
+    L_DBCM_reduced(m::DBCM)
+
+Return the log-likelihood of the DBCM model `m` based on the computed maximum likelihood parameters.
+
+TO DO: include check for parameters computed
+"""
+L_DBCM_reduced(m::DBCM) = L_DBCM_reduced(m.θᵣ, m.dᵣ_out, m.dᵣ_in, m.f, m.dᵣ_out_nz, m.dᵣ_in_nz, m.status[:d_unique])
+
+
+"""
+    DBCM_reduced_iter!(θ::AbstractVector, k_out::AbstractVector, k_in::AbstractVector, F::AbstractVector, nz_out::Vector, nz_in::Vector,x::AbstractVector, y::AbstractVector, G::AbstractVector, H::AbstractVector, n::Int)
+
+Computer the next fixed-point iteration for the DBCM model using the exponential formulation in order to maintain convexity.
+The function is non-allocating and will update pre-allocated vectors (`θ`, `x`, `y`, `G` and `H`) for speed.
+
+The arguments of the function are:
+    - `θ`: the maximum likelihood parameters of the model ([α; β])
+    - `k_out`: the reduced outdegree sequence
+    - `k_in`: the reduced indegree sequence
+    - `F`: the frequency of each pair in the degree sequence
+    - `nz_out`: the indices of non-zero elements in the reduced outdegree sequence
+    - `nz_in`: the indices of non-zero elements in the reduced indegree sequence
+    - `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-αᵢ) )
+    - `y`: the exponentiated maximum likelihood parameters of the model ( yᵢ = exp(-βᵢ) )
+    - `G`: buffer for out-degree related computations
+    - `H`: buffer for in-degree related computations
+    - `n`: the number of nodes in the reduced model
+
+
+# Examples
+```jldoctest
+# Use with DBCM model:
+julia> G = 
+julia> model = DBCM(G);
+julia> G = zeros(eltype(model.Θᵣ), length(model.xᵣ);
+julia> H = zeros(eltype(model.Θᵣ), length(model.yᵣ);
+julia> x = zeros(eltype(model.Θᵣ), length(model.xᵣ);
+julia> y = zeros(eltype(model.Θᵣ), length(model.yᵣ);
+julia> DBCM_FP! = θ -> DBCM_reduced_iter!(θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, x, y, G, H, model.status[:d_unique])
+julia> UBCM_FP!(model.Θᵣ)
+```
+"""
+function DBCM_reduced_iter!(θ::AbstractVector, 
+                            k_out::AbstractVector, k_in::AbstractVector, 
+                            F::AbstractVector, 
+                            nz_out::Vector, nz_in::Vector,
+                            x::AbstractVector, y::AbstractVector, 
+                            G::AbstractVector, H::AbstractVector, n::Int)
+    α = @view θ[1:n]
+    β = @view θ[n+1:end]
+    @simd for i in eachindex(α) # to obtain a non-allocating function <> x .= exp.(-α), y .= exp.(-β) (1.8μs, 6 allocs -> 1.2μs, 0 allocs)
+        @inbounds x[i] = exp(-α[i])
+        @inbounds y[i] = exp(-β[i])
+    end
+    G .= zero(eltype(G))
+    H .= zero(eltype(H))
+    # part related to α
+    @simd for i in nz_out
+        for j in nz_in
+            if i ≠ j
+                @inbounds G[i] += F[j]        * y[j] / (1 + x[i] * y[j])
+            else
+                @inbounds G[i] += (F[j] - 1)  * y[j] / (1 + x[i] * y[j])
+            end
+        end
+        @inbounds θ[i] = -log(k_out[i] / G[i])
+    end
+    # part related to β
+    @simd for j in nz_in
+        for i in nz_out
+            if i ≠ j
+                @inbounds H[j] += F[i]        * x[i] / (1 + x[i] * y[j])
+            else
+                @inbounds H[j] += (F[i] - 1)  * x[i] / (1 + x[i] * y[j])
+            end
+        end
+        @inbounds θ[n+j] = -log(k_in[j] / H[j])
+    end
+
+    return θ
+end
+
+
+
+function ∇L_DBCM_reduced!(∇L::AbstractVector, θ::AbstractVector, k_out::AbstractVector, k_in::AbstractVector, F::AbstractVector, nz_out::Vector, nz_in::Vector, G::AbstractVector, H::AbstractVector, n::Int)
+    return nothing
+end
+#=
+function UBCM_reduced_iter!(θ::AbstractVector, K::AbstractVector, F::AbstractVector, x::AbstractVector, G::AbstractVector)
+    x .= exp.(-θ)
+    G .= zero(eltype(G))#, length(G))
+    @simd for i in eachindex(K)
+        for j in eachindex(K)
+            if i == j
+                G[i] += (F[j] - 1) * (x[j] / (1 + x[j] * x[i]))
+            else
+                G[i] += (F[j]) *     (x[j] / (1 + x[j] * x[i]))
+            end
+        end
+
+        if !iszero(G[i])
+            G[i] = -log(K[i] / G[i])
+        end
+    end
+    return G
+end
+=#
+
+
+
+
 # Idea: starting from models with known parameters:
 # - obtain expected values and variances for adjacency/weight matrix elements
 # - sample networks, returning 

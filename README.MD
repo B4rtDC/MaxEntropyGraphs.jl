@@ -40,10 +40,19 @@ currently available.
     - [x] Types
     - [x] Likelihood related functions
     - [x] Likelihood maximisation in pure Julia (FP + optimisation)
-    - [ ] Check for behavior of zero degree nodes
+    - [ ] Check for:
+        - [ ] behavior of zero degree nodes
+        - [ ] networks with self links (in principle not allowed in SimpleGraphs, TBC)
+    - [ ] $\dots$
+* [ ] **DBCM** *Directed Binary Configuration Model* [[1]](#1)
+    - [x] Types
+    - [x] Likelihood related functions
+    - [ ] Likelihood maximisation in pure Julia (FP ok + optimisation to do)
+    - [ ] Check for:
+        - [X] behavior of zero degree nodes
+        - [ ] networks with self links (in principle not allowed in SimpleGraphs, TBC)
     - [ ] $\dots$
 * [ ] **UECM** *Undirected Enhanced Configuration Model* [[1]](#1)
-* [ ] **DBCM** *Directed Binary Configuration Model* [[1]](#1)
 * [ ] **DECM** *Directed Enhanced Configuration Model* [[1]](#1)
 * [ ] **CReMa** [[2]](#2)
 * [ ] **BiCM** *Bipartite Configuration Model* [[3]](#3)
