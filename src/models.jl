@@ -193,18 +193,18 @@ end
 
 
 """
-    ∇L_UBCM_reduced!(θ::Vector, K::Vector, F::Vector, ∇L::Vector, x::Vector)
+    ∇L_UBCM_reduced!( ∇L::Vector, θ::Vector, K::Vector, F::Vector, x::Vector)
 
 Compute the gradient of the log-likelihood of the reduced UBCM model using the exponential formulation in order to maintain convexity.
 
 For the optimisation, this function will be used togenerate an anonymous function associated with a specific model. The function 
-will update pre-allocated vectors (`∇L` and `x`) for speed.
+will update pre-allocated vectors (`∇L` and `x`) for speed. The gradient is non-allocating.
 
 The arguments of the function are:
+    - `∇L`: the gradient of the log-likelihood of the reduced model
     - `θ`: the maximum likelihood parameters of the model
     - `K`: the reduced degree sequence
     - `F`: the frequency of each degree in the degree sequence
-    - `∇L`: the gradient of the log-likelihood of the reduced model
     - `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-θᵢ) )
 
 # Examples
@@ -218,18 +218,21 @@ julia> ∇model_fun! = θ -> ∇L_UBCM_reduced!(θ::AbstractVector, K, F, ∇L, 
 julia> ∇model_fun!(model.Θᵣ)
 # Use within optimisation.jl framework:
 julia> fun =   (θ, p) ->  - MaxEntropyGraphs.L_UBCM_reduced(θ, model.dᵣ, model.f)
-julia> ∇fun! = (θ, p) -> MaxEntropyGraphs.∇L_UBCM_reduced!(θ::AbstractVector, K, F, ∇L, x);
+julia> ∇fun! = (∇L, θ, p) -> MaxEntropyGraphs.∇L_UBCM_reduced!(∇L, θ, K, F, x);
 julia> θ₀ = -log.( model.dᵣ ./ maximum(model.dᵣ)) # initial condition
-julia> prob = MaxEntropyGraphs.Optimization.OptimizationProblem(fun, θ₀)
-julia> fun  = MaxEntropyGraphs.Optimization.OptimizationFunction(prob, grad=∇fun!)
+julia> foo = MaxEntropyGraphs.Optimization.OptimizationProblem(fun, grad=∇fun!)
+julia> prob  = MaxEntropyGraphs.Optimization.OptimizationFunction(prob, θ₀)
 julia> method = MaxEntropyGraphs.OptimizationOptimJL.NLopt.LD_LBFGS()
-julia> solve(fun, method)
+julia> solve(prob, method)
 ...
 ```
 """
-function ∇L_UBCM_reduced!(θ::AbstractVector, K::Vector, F::Vector, ∇L::AbstractVector, x::AbstractVector)
-    x .= exp.(-θ)
-    @simd for i in eachindex(K)
+function ∇L_UBCM_reduced!(∇L::AbstractVector, θ::AbstractVector, K::Vector, F::Vector, x::AbstractVector)
+    @simd for i in eachindex(x) # to avoid the allocation of exp.(-θ)
+        @inbounds x[i] = exp(-θ[i])
+    end
+
+    for i in eachindex(K)
         ∇L[i] = - F[i] * K[i]
         for j in eachindex(K)
             if i == j
@@ -244,6 +247,27 @@ function ∇L_UBCM_reduced!(θ::AbstractVector, K::Vector, F::Vector, ∇L::Abst
 
     return ∇L
 end
+
+function ∇L_UBCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector, K::Vector, F::Vector, x::AbstractVector)
+    @simd for i in eachindex(x) # to avoid the allocation of exp.(-θ)
+        @inbounds x[i] = exp(-θ[i])
+    end
+    @simd for i in eachindex(K)
+        @inbounds ∇L[i] =  F[i] * K[i]
+        for j in eachindex(K)
+            if i == j
+                aux = x[i] ^ 2
+                @inbounds ∇L[i] -= F[i] * (F[i] - 1) * (aux / (1 + aux))
+            else
+                aux = x[i] * x[j]
+                @inbounds ∇L[i] -= F[i] * F[j]       * (aux / (1 + aux))
+            end
+        end
+    end
+
+    return ∇L
+end
+
 
 """
     UBCM_reduced_iter!(θ, K, F, x, G)
@@ -271,23 +295,62 @@ julia> UBCM_FP!(model.Θᵣ)
 ```
 """
 function UBCM_reduced_iter!(θ::AbstractVector, K::AbstractVector, F::AbstractVector, x::AbstractVector, G::AbstractVector)
-    x .= exp.(-θ)
-    G .= zero(eltype(G))#, length(G))
+    @simd for i in eachindex(θ) # to avoid the allocation of exp.(-θ)
+        @inbounds x[i] = exp(-θ[i])
+    end
+    G .= zero(eltype(G))
     @simd for i in eachindex(K)
         for j in eachindex(K)
             if i == j
-                G[i] += (F[j] - 1) * (x[j] / (1 + x[j] * x[i]))
+                @inbounds G[i] += (F[j] - 1) * (x[j] / (1 + x[j] * x[i]))
             else
-                G[i] += (F[j]) *     (x[j] / (1 + x[j] * x[i]))
+                @inbounds G[i] += (F[j]) *     (x[j] / (1 + x[j] * x[i]))
             end
         end
 
         if !iszero(G[i])
-            G[i] = -log(K[i] / G[i])
+            @inbounds G[i] = -log(K[i] / G[i])
         end
     end
     return G
 end
+
+#=
+"""
+# results seem to vary with FP iterartion , not to be used
+"""
+function UBCM_reduced_iter_turbo!(θ::AbstractVector, K::AbstractVector, F::AbstractVector, x::AbstractVector, G::AbstractVector)
+    @tturbo for i in eachindex(θ) # to avoid the allocation of exp.(-θ)
+        x[i] = exp(-θ[i])
+    end
+    G .= zero(eltype(G))#, length(G))
+    @tturbo for i in eachindex(K)
+        for j in eachindex(K)
+            # add "normal" contribution
+            @inbounds G[i] += (F[j]) *     (x[j] / (1 + x[j] * x[i]))
+        end
+        # retify
+        @inbounds G[i] -= x[i] / (1 + x[i] * x[i])
+        #     if i == j
+        #         @inbounds G[i] += (F[j] - 1) * (x[j] / (1 + x[j] * x[i]))
+        #     else
+        #         @inbounds G[i] += (F[j]) *     (x[j] / (1 + x[j] * x[i]))
+        #     end
+        # end
+
+        #if !iszero(G[i])
+        @inbounds G[i] = -log(K[i] / G[i])
+        #end
+    end
+    # rectify the log of zero operation
+    @simd for i in eachindex(G)
+        if iszero(K[i])
+            @inbounds G[i] = Inf
+        end
+    end
+    return G
+end
+=#
 
 """
     initial_guess(m::UBCM, method::Symbol=:degrees)
@@ -526,7 +589,9 @@ const AD_methods = Dict(:AutoZygote         => Optimization.AutoZygote(),
 """
     solve_model!(m::UBCM)
 
-Compute the likelihood maximising parameters of the UBCM model `m`. By default the parameters are computed using the fixed point iteration method with the degree sequence as initial guess.
+Compute the likelihood maximising parameters of the UBCM model `m`. 
+
+By default the parameters are computed using the fixed point iteration method with the degree sequence as initial guess.
 """
 function solve_model!(m::UBCM;  # common settings
                                 method::Symbol=:fixedpoint, 
@@ -538,7 +603,8 @@ function solve_model!(m::UBCM;  # common settings
                                 # optimisation.jl specific settings (optimisation methods)
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
-                                AD_method::Symbol=:AutoZygote)
+                                AD_method::Symbol=:AutoZygote,
+                                analytical_gradient::Bool=false)
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     if method==:fixedpoint
@@ -560,11 +626,18 @@ function solve_model!(m::UBCM;  # common settings
             throw(ConvergenceError(method, nothing))
         end
     else
-        # define objective function and with its AD method
-        f = AD_method ∈ keys(AD_methods)            ? Optimization.OptimizationFunction( (θ, p) ->  - L_UBCM_reduced(θ, m.dᵣ, m.f), AD_methods[AD_method])  : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
+        if analytical_gradient
+            # initialise gradient buffer
+            gx_buffer = zeros(length(m.dᵣ));
+            # define gradient function for optimisation.jl
+            grad! = (G, θ, p) -> ∇L_UBCM_reduced_minus!(G, θ, m.dᵣ, m.f, gx_buffer);
+        end
+        # define objective function and its AD method
+        f = AD_method ∈ keys(AD_methods)            ? Optimization.OptimizationFunction( (θ, p) ->   -L_UBCM_reduced(θ, m.dᵣ, m.f), AD_methods[AD_method],
+                                                                                         grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
         prob = Optimization.OptimizationProblem(f, θ₀);
         # obtain solution
-        sol = method ∈ keys(optimization_methods)   ? Optimization.solve(prob, optimization_methods[method])                                                : throw(ArgumentError("The method $(method) is not supported (yet)"))
+        sol = method ∈ keys(optimization_methods)   ? Optimization.solve(prob, optimization_methods[method], abstol=abstol, reltol=reltol)                                                : throw(ArgumentError("The method $(method) is not supported (yet)"))
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
             if verbose 
@@ -578,8 +651,11 @@ function solve_model!(m::UBCM;  # common settings
         end
     end
 
-    return m
+    return m, sol
 end
+
+
+
 
 """
     DBCM{T,N} <: AbstractMaxEntropyModel
@@ -751,19 +827,19 @@ function L_DBCM_reduced(θ::Vector, k_out::Vector, k_in::Vector, F::Vector, nz_o
     α = @view θ[1:n]
     β = @view θ[n+1:end]
     res = zero(eltype(θ))
-    for i in nz_out
-        res -= F[i] * k_out[i] * α[i]
-        for j in nz_in
+    for i ∈ nz_out
+        @inbounds res -= F[i] * k_out[i] * α[i]
+        for j ∈ nz_in
             if i ≠ j 
-                res -= F[i] * F[j]       * log(1 + exp(-α[i] - β[j]))
+                @inbounds res -= F[i] * F[j]       * log(1 + exp(-α[i] - β[j]))
             else
-                res -= F[i] * (F[i] - 1) * log(1 + exp(-α[i] - β[j]))
+                @inbounds res -= F[i] * (F[i] - 1) * log(1 + exp(-α[i] - β[j]))
             end
         end
     end
 
-    for j in nz_in
-        res -= F[j] * k_in[j]  * β[j]
+    for j ∈ nz_in
+        @inbounds res -= F[j] * k_in[j]  * β[j]
     end
 
     return res
@@ -828,8 +904,8 @@ function DBCM_reduced_iter!(θ::AbstractVector,
     G .= zero(eltype(G))
     H .= zero(eltype(H))
     # part related to α
-    @simd for i in nz_out
-        for j in nz_in
+    @simd for i ∈ nz_out
+        for j ∈ nz_in
             if i ≠ j
                 @inbounds G[i] += F[j]        * y[j] / (1 + x[i] * y[j])
             else
@@ -839,8 +915,8 @@ function DBCM_reduced_iter!(θ::AbstractVector,
         @inbounds θ[i] = -log(k_out[i] / G[i])
     end
     # part related to β
-    @simd for j in nz_in
-        for i in nz_out
+    @simd for j ∈ nz_in
+        for i ∈ nz_out
             if i ≠ j
                 @inbounds H[j] += F[i]        * x[i] / (1 + x[i] * y[j])
             else
@@ -855,30 +931,98 @@ end
 
 
 
-function ∇L_DBCM_reduced!(∇L::AbstractVector, θ::AbstractVector, k_out::AbstractVector, k_in::AbstractVector, F::AbstractVector, nz_out::Vector, nz_in::Vector, G::AbstractVector, H::AbstractVector, n::Int)
-    return nothing
-end
-#=
-function UBCM_reduced_iter!(θ::AbstractVector, K::AbstractVector, F::AbstractVector, x::AbstractVector, G::AbstractVector)
-    x .= exp.(-θ)
-    G .= zero(eltype(G))#, length(G))
-    @simd for i in eachindex(K)
-        for j in eachindex(K)
-            if i == j
-                G[i] += (F[j] - 1) * (x[j] / (1 + x[j] * x[i]))
-            else
-                G[i] += (F[j]) *     (x[j] / (1 + x[j] * x[i]))
-            end
-        end
-
-        if !iszero(G[i])
-            G[i] = -log(K[i] / G[i])
-        end
+function ∇L_DBCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector, 
+                            k_out::AbstractVector, k_in::AbstractVector, 
+                            F::AbstractVector, 
+                            nz_out::Vector, nz_in::Vector,
+                            x::AbstractVector, y::AbstractVector,
+                            n::Int)
+    # set pre-allocated values
+    α = @view θ[1:n]
+    β = @view θ[n+1:end]
+    @simd for i in eachindex(α) # to obtain a non-allocating function <> x .= exp.(-α), y .= exp.(-β)
+        @inbounds x[i] = exp(-α[i])
+        @inbounds y[i] = exp(-β[i])
     end
-    return G
-end
-=#
+    # reset gradient to zero
+    ∇L .= zero(eltype(∇L))
+    
+    # part related to α
+    @simd for i ∈ nz_out
+        fx = zero(eltype(∇L))
+        for j ∈ nz_in
+            if i ≠ j
+                @inbounds c = F[i] * F[j]
+            else
+                @inbounds c = F[i] * (F[j] - 1)
+            end
+            @inbounds fx += c * y[j] / (1 + x[i] * y[j])
+        end
+        @inbounds ∇L[i] = x[i] * fx - F[i] * k_out[i]
+    end
+    # part related to β
+    @simd for j ∈ nz_in
+        fy = zero(eltype(∇L))
+        for i ∈ nz_out
+            if i≠j
+                @inbounds c = F[i] * F[j]
+            else
+                @inbounds c = F[i] * (F[j] - 1)
+            end
+            @inbounds fy += c * x[i] / (1 + x[i] * y[j])
+        end
+        @inbounds ∇L[n+j] = y[j] * fy - F[j] * k_in[j]
+    end
 
+    return ∇L
+end
+
+
+function ∇L_DBCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector,
+                                k_out::AbstractVector, k_in::AbstractVector, 
+                                F::AbstractVector, 
+                                nz_out::Vector, nz_in::Vector,
+                                x::AbstractVector, y::AbstractVector,
+                                n::Int)
+    # set pre-allocated values
+    α = @view θ[1:n]
+    β = @view θ[n+1:end]
+    @simd for i in eachindex(α) # to obtain a non-allocating function <> x .= exp.(-α), y .= exp.(-β)
+        @inbounds x[i] = exp(-α[i])
+        @inbounds y[i] = exp(-β[i])
+    end
+    # reset gradient to zero
+    ∇L .= zero(eltype(∇L))
+
+    # part related to α
+    @simd for i ∈ nz_out
+        fx = zero(eltype(∇L))
+        for j ∈ nz_in
+            if i ≠ j
+                @inbounds c = F[i] * F[j]
+            else
+                @inbounds c = F[i] * (F[j] - 1)
+            end
+            @inbounds fx -= c * y[j] / (1 + x[i] * y[j])
+        end
+        @inbounds ∇L[i] = x[i] * fx + F[i] * k_out[i]
+    end
+    # part related to β
+    @simd for j ∈ nz_in
+        fy = zero(eltype(∇L))
+        for i ∈ nz_out
+            if i≠j
+                @inbounds c = F[i] * F[j]
+            else
+                @inbounds c = F[i] * (F[j] - 1)
+            end
+            @inbounds fy -= c * x[i] / (1 + x[i] * y[j])
+        end
+        @inbounds ∇L[n+j] = y[j] * fy + F[j] * k_in[j]
+    end
+
+    return ∇L
+end
 
 
 
