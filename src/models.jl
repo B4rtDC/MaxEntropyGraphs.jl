@@ -5,6 +5,34 @@
 ##################################################################################
 
 """
+    ConvergenceError
+
+Exception thrown when the optimisation method does not converge. 
+
+When using and optimisation method from the `optimisation.jl` framework, the return code of the optimisation method is stored in the `retcode` field.
+When using the fixed point iteration method, the `retcode` field is set to `nothing`.
+"""
+struct ConvergenceError{T} <: Exception where {T<:Optimization.SciMLBase.EnumX.Enum{Int32}}
+    method::Symbol
+    retcode::Union{Nothing, T}
+end
+
+Base.showerror(io::IO, e::ConvergenceError) = print(io, """method `$(e.method)` did not converge $(isnothing(e.retcode) ? "" : "(Optimization.jl return code: $(e.retcode))")""")
+
+const optimization_methods = Dict(  :LBFGS      => OptimizationOptimJL.LBFGS(),
+                                    :BFGS       => OptimizationOptimJL.BFGS(),
+                                    :Newton     => OptimizationOptimJL.Newton(),
+                                    :NelderMead => OptimizationOptimJL.NelderMead())
+
+const AD_methods = Dict(:AutoZygote         => Optimization.AutoZygote(),
+                        :AutoForwardDiff    => Optimization.AutoForwardDiff(),
+                        :AutoReverseDiff    => Optimization.AutoReverseDiff(),
+                        :AutoFiniteDiff     => Optimization.AutoFiniteDiff())
+
+
+
+
+"""
     AbstractMaxEntropyModel
 
 An abstract type for a MaxEntropyModel. Each model has one or more structural constraints  
@@ -53,8 +81,7 @@ Base.show(io::IO, m::UBCM{T,N}) where {T,N} = print(io, """UBCM{$(T), $(N)} ($(m
 """Return the reduced number of nodes in the UBCM network"""
 Base.length(m::UBCM) = length(m.dᵣ)
 
-#"""E"""
-#Base.precision(m::UBCM) = eltype(m.Θᵣ)
+
 
 
 """
@@ -101,7 +128,7 @@ UBCM{SimpleGraph{Int64}, Float64} (3 vertices, 1 unique degrees, 0.33 compressio
 
 See also [`Graphs.degree`](@ref), [`SimpleWeightedGraphs.degree`](@ref).
 """
-function UBCM(G::T, d::Vector=Graphs.degree(G); precision::Type{<:AbstractFloat}=Float64, kwargs...) where {T}
+function UBCM(G::T; d::Vector=Graphs.degree(G), precision::Type{<:AbstractFloat}=Float64, kwargs...) where {T}
     T <: Union{Graphs.AbstractGraph, Nothing} ? nothing : throw(TypeError("G must be a subtype of AbstractGraph or Nothing"))
     # coherence checks
     if T <: Graphs.AbstractGraph # Graph specific checks
@@ -142,7 +169,7 @@ function UBCM(G::T, d::Vector=Graphs.degree(G); precision::Type{<:AbstractFloat}
     return UBCM{T,precision}(G, Θᵣ, xᵣ, d, dᵣ, f, d_ind, dᵣ_ind, nothing, nothing, status, nothing)
 end
 
-UBCM(d::Vector{T}; precision::Type{<:AbstractFloat}=Float64, kwargs...) where {T<:Signed} = UBCM(nothing, d; precision=precision, kwargs...)
+UBCM(;d::Vector{T}, precision::Type{<:AbstractFloat}=Float64, kwargs...) where {T<:Signed} = UBCM(nothing, d=d, precision=precision, kwargs...)
 
 
 """
@@ -191,6 +218,14 @@ function L_UBCM_reduced(θ::Vector, K::Vector, F::Vector)
     return res
 end
 
+"""
+    L_UBCM_reduced(m::UBCM)
+
+Return the log-likelihood of the UBCM model `m` based on the computed maximum likelihood parameters.
+
+TO DO: include check for parameters computed
+"""
+L_UBCM_reduced(m::DBCM) = L_UBCM_reduced(m.θᵣ, m.dᵣ, m.f)
 
 """
     ∇L_UBCM_reduced!( ∇L::Vector, θ::Vector, K::Vector, F::Vector, x::Vector)
@@ -248,6 +283,14 @@ function ∇L_UBCM_reduced!(∇L::AbstractVector, θ::AbstractVector, K::Vector,
     return ∇L
 end
 
+
+"""
+    ∇L_UBCM_reduced_minus!(args...)
+
+Compute minus the gradient of the log-likelihood of the reduced UBCM model using the exponential formulation in order to maintain convexity. Used for optimisation in a non-allocating manner.
+
+See also [`∇L_UBCM_reduced!`](@ref)
+"""
 function ∇L_UBCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector, K::Vector, F::Vector, x::AbstractVector)
     @simd for i in eachindex(x) # to avoid the allocation of exp.(-θ)
         @inbounds x[i] = exp(-θ[i])
@@ -364,12 +407,14 @@ function initial_guess(m::UBCM{T,N}; method::Symbol=:degrees) where {T,N}
     if isequal(method, :degrees)
         return Vector{N}(-log.(m.dᵣ))
     elseif isequal(method, :degrees_minor)
+        isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
         return Vector{N}(-log.(m.dᵣ ./ (sqrt(Graphs.ne(m.G)) + 1)))
     elseif isequal(method, :random)
         return Vector{N}(-log.(rand(N, length(m.dᵣ))))
     elseif isequal(method, :uniform)
         return Vector{N}(-log.(0.5 .* ones(N, length(m.dᵣ))))
     elseif isequal(method, :chung_lu)
+        isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
         return Vector{N}(-log.(m.dᵣ ./ (2 * Graphs.ne(m.G))))
     else
         throw(ArgumentError("The initial guess method $(method) is not supported"))
@@ -561,30 +606,6 @@ function rand(m::UBCM, n::Int; precomputed::Bool=false)
     return res
 end
 
-"""
-    ConvergenceError
-
-Exception thrown when the optimisation method does not converge. 
-
-When using and optimisation method from the `optimisation.jl` framework, the return code of the optimisation method is stored in the `retcode` field.
-When using the fixed point iteration method, the `retcode` field is set to `nothing`.
-"""
-struct ConvergenceError{T} <: Exception where {T<:Optimization.SciMLBase.EnumX.Enum{Int32}}
-    method::Symbol
-    retcode::Union{Nothing, T}
-end
-
-Base.showerror(io::IO, e::ConvergenceError) = print(io, """method `$(e.method)` did not converge $(isnothing(e.retcode) ? "" : "(Optimization.jl return code: $(e.retcode))")""")
-
-const optimization_methods = Dict(  :LBFGS      => OptimizationOptimJL.LBFGS(),
-                                    :BFGS       => OptimizationOptimJL.BFGS(),
-                                    :Newton     => OptimizationOptimJL.Newton(),
-                                    :NelderMead => OptimizationOptimJL.NelderMead())
-
-const AD_methods = Dict(:AutoZygote         => Optimization.AutoZygote(),
-                        :AutoForwardDiff    => Optimization.AutoForwardDiff(),
-                        :AutoReverseDiff    => Optimization.AutoReverseDiff(),
-                        :AutoFiniteDiff     => Optimization.AutoFiniteDiff())
 
 """
     solve_model!(m::UBCM)
@@ -857,6 +878,142 @@ L_DBCM_reduced(m::DBCM) = L_DBCM_reduced(m.θᵣ, m.dᵣ_out, m.dᵣ_in, m.f, m.
 
 
 """
+    ∇L_DBCM_reduced!(∇L::AbstractVector, θ::AbstractVector, k_out::AbstractVector, k_in::AbstractVector, F::AbstractVector, nz_out::Vector, nz_in::Vector, x::AbstractVector, y::AbstractVector,n::Int)
+
+Compute the gradient of the log-likelihood of the reduced DBCM model using the exponential formulation in order to maintain convexity.
+
+For the optimisation, this function will be used togenerate an anonymous function associated with a specific model. The function 
+will update pre-allocated vectors (`∇L`,`x` and `y`) for speed. The gradient is non-allocating.
+
+The arguments of the function are:
+    - `∇L`: the gradient of the log-likelihood of the reduced model
+    - `θ`: the maximum likelihood parameters of the model ([α; β])
+    - `k_out`: the reduced outdegree sequence
+    - `k_in`: the reduced indegree sequence
+    - `F`: the frequency of each pair in the degree sequence
+    - `nz_out`: the indices of non-zero elements in the reduced outdegree sequence
+    - `nz_in`: the indices of non-zero elements in the reduced indegree sequence
+    - `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-αᵢ) )
+    - `y`: the exponentiated maximum likelihood parameters of the model ( yᵢ = exp(-βᵢ) )
+    - `n`: the number of nodes in the reduced model
+
+# Examples
+```jldoctest
+# Explicit use with DBCM model:
+
+# Use within optimisation.jl framework:
+julia> fun =   (θ, p)
+julia> ∇fun! = (∇L, θ, p)
+julia> θ₀ =  # initial condition
+julia> foo = MaxEntropyGraphs.Optimization.OptimizationProblem(fun, grad=∇fun!)
+julia> prob  = MaxEntropyGraphs.Optimization.OptimizationFunction(prob, θ₀)
+julia> method = MaxEntropyGraphs.OptimizationOptimJL.NLopt.LD_LBFGS()
+julia> solve(prob, method)
+...
+```
+"""
+function ∇L_DBCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector, 
+                            k_out::AbstractVector, k_in::AbstractVector, 
+                            F::AbstractVector, 
+                            nz_out::Vector, nz_in::Vector,
+                            x::AbstractVector, y::AbstractVector,
+                            n::Int)
+    # set pre-allocated values
+    α = @view θ[1:n]
+    β = @view θ[n+1:end]
+    @simd for i in eachindex(α) # to obtain a non-allocating function <> x .= exp.(-α), y .= exp.(-β)
+        @inbounds x[i] = exp(-α[i])
+        @inbounds y[i] = exp(-β[i])
+    end
+    # reset gradient to zero
+    ∇L .= zero(eltype(∇L))
+    
+    # part related to α
+    @simd for i ∈ nz_out
+        fx = zero(eltype(∇L))
+        for j ∈ nz_in
+            if i ≠ j
+                @inbounds c = F[i] * F[j]
+            else
+                @inbounds c = F[i] * (F[j] - 1)
+            end
+            @inbounds fx += c * y[j] / (1 + x[i] * y[j])
+        end
+        @inbounds ∇L[i] = x[i] * fx - F[i] * k_out[i]
+    end
+    # part related to β
+    @simd for j ∈ nz_in
+        fy = zero(eltype(∇L))
+        for i ∈ nz_out
+            if i≠j
+                @inbounds c = F[i] * F[j]
+            else
+                @inbounds c = F[i] * (F[j] - 1)
+            end
+            @inbounds fy += c * x[i] / (1 + x[i] * y[j])
+        end
+        @inbounds ∇L[n+j] = y[j] * fy - F[j] * k_in[j]
+    end
+
+    return ∇L
+end
+
+
+"""
+    ∇L_DBCM_reduced_minus!(args...)
+
+Compute minus the gradient of the log-likelihood of the reduced DBCM model using the exponential formulation in order to maintain convexity. Used for optimisation in a non-allocating manner.
+
+See also [`∇L_DBCM_reduced!`](@ref)
+"""
+function ∇L_DBCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector,
+                                k_out::AbstractVector, k_in::AbstractVector, 
+                                F::AbstractVector, 
+                                nz_out::Vector, nz_in::Vector,
+                                x::AbstractVector, y::AbstractVector,
+                                n::Int)
+    # set pre-allocated values
+    α = @view θ[1:n]
+    β = @view θ[n+1:end]
+    @simd for i in eachindex(α) # to obtain a non-allocating function <> x .= exp.(-α), y .= exp.(-β)
+        @inbounds x[i] = exp(-α[i])
+        @inbounds y[i] = exp(-β[i])
+    end
+    # reset gradient to zero
+    ∇L .= zero(eltype(∇L))
+
+    # part related to α
+    @simd for i ∈ nz_out
+        fx = zero(eltype(∇L))
+        for j ∈ nz_in
+            if i ≠ j
+                @inbounds c = F[i] * F[j]
+            else
+                @inbounds c = F[i] * (F[j] - 1)
+            end
+            @inbounds fx -= c * y[j] / (1 + x[i] * y[j])
+        end
+        @inbounds ∇L[i] = x[i] * fx + F[i] * k_out[i]
+    end
+    # part related to β
+    @simd for j ∈ nz_in
+        fy = zero(eltype(∇L))
+        for i ∈ nz_out
+            if i≠j
+                @inbounds c = F[i] * F[j]
+            else
+                @inbounds c = F[i] * (F[j] - 1)
+            end
+            @inbounds fy -= c * x[i] / (1 + x[i] * y[j])
+        end
+        @inbounds ∇L[n+j] = y[j] * fy + F[j] * k_in[j]
+    end
+
+    return ∇L
+end
+
+
+"""
     DBCM_reduced_iter!(θ::AbstractVector, k_out::AbstractVector, k_in::AbstractVector, F::AbstractVector, nz_out::Vector, nz_in::Vector,x::AbstractVector, y::AbstractVector, G::AbstractVector, H::AbstractVector, n::Int)
 
 Computer the next fixed-point iteration for the DBCM model using the exponential formulation in order to maintain convexity.
@@ -931,99 +1088,278 @@ end
 
 
 
-function ∇L_DBCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector, 
-                            k_out::AbstractVector, k_in::AbstractVector, 
-                            F::AbstractVector, 
-                            nz_out::Vector, nz_in::Vector,
-                            x::AbstractVector, y::AbstractVector,
-                            n::Int)
-    # set pre-allocated values
-    α = @view θ[1:n]
-    β = @view θ[n+1:end]
-    @simd for i in eachindex(α) # to obtain a non-allocating function <> x .= exp.(-α), y .= exp.(-β)
-        @inbounds x[i] = exp(-α[i])
-        @inbounds y[i] = exp(-β[i])
+"""
+    initial_guess(m::DBCM, method::Symbol=:degrees)
+
+Compute an initial guess for the maximum likelihood parameters of the DBCM model `m` using the method `method`.
+
+The methods available are: `:degrees` (default), `:degrees_minor`, `:random`, `:uniform`, `:chung_lu`.
+"""
+function initial_guess(m::DBCM{T,N}; method::Symbol=:degrees) where {T,N}
+    #N = typeof(m).parameters[2]
+    if isequal(method, :degrees)
+        return Vector{N}(vcat(-log.(m.dᵣ_out), -log.(m.dᵣ_in)))
+    elseif isequal(method, :degrees_minor)
+        isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
+        return Vector{N}(vcat(-log.(m.dᵣ_out ./ (sqrt(Graphs.ne(m.G)) + 1)), -log.(m.dᵣ_in ./ (sqrt(Graphs.ne(m.G)) + 1)) ))
+    elseif isequal(method, :random)
+        return Vector{N}(-log.(rand(N, 2*length(m.dᵣ_out))))
+    elseif isequal(method, :uniform)
+        return Vector{N}(-log.(0.5 .* ones(N, 2*length(m.dᵣ_out))))
+    elseif isequal(method, :chung_lu)
+        isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
+        return Vector{N}(vcat(-log.(m.dᵣ_out ./ (2 * Graphs.ne(m.G))), -log.(m.dᵣ_in ./ (2 * Graphs.ne(m.G)))))
+    else
+        throw(ArgumentError("The initial guess method $(method) is not supported"))
     end
-    # reset gradient to zero
-    ∇L .= zero(eltype(∇L))
+end
+
+
+"""
+    set_xᵣ!(m::DBCM)
+
+Set the value of xᵣ to exp(-αᵣ) for the DBCM model `m`
+"""
+function set_xᵣ!(m::DBCM)
+    if m.status[:params_computed]
+        αᵣ = @view m.Θᵣ[1:m.status[:d_unique]]
+        m.xᵣ .= exp.(-αᵣ)
+    else
+        throw(ArgumentError("The parameters have not been computed yet"))
+    end
+end
+
+"""
+    set_yᵣ!(m::DBCM)
+
+Set the value of yᵣ to exp(-βᵣ) for the DBCM model `m`
+"""
+function set_yᵣ!(m::DBCM)
+    if m.status[:params_computed]
+        βᵣ = @view m.Θᵣ[m.status[:d_unique]+1:end]
+        m.xᵣ .= exp.(-βᵣ)
+    else
+        throw(ArgumentError("The parameters have not been computed yet"))
+    end
+end
+
+
+"""
+    Ĝ(m::DBCM)
+
+Compute the expected adjacency matrix for the DBCM model `m`
+"""
+function Ĝ(m::DBCM{T,N}) where {T,N}
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     
-    # part related to α
-    @simd for i ∈ nz_out
-        fx = zero(eltype(∇L))
-        for j ∈ nz_in
-            if i ≠ j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fx += c * y[j] / (1 + x[i] * y[j])
-        end
-        @inbounds ∇L[i] = x[i] * fx - F[i] * k_out[i]
-    end
-    # part related to β
-    @simd for j ∈ nz_in
-        fy = zero(eltype(∇L))
-        for i ∈ nz_out
+    # get network size => this is the full size
+    n = m.status[:d] 
+    # initiate G
+    G = zeros(N, n, n)
+    # initiate x and y
+    x = m.xᵣ[m.dᵣ_ind]
+    y = m.yᵣ[m.dᵣ_ind]
+    # compute G
+    for i = 1:n
+        @simd for j = 1:n
             if i≠j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
+                @inbounds xiyj = x[i]*y[j]
+                @inbounds G[i,j] = xiyj/(1 + xiyj)
             end
-            @inbounds fy += c * x[i] / (1 + x[i] * y[j])
         end
-        @inbounds ∇L[n+j] = y[j] * fy - F[j] * k_in[j]
     end
 
-    return ∇L
+    return G    
 end
 
 
-function ∇L_DBCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector,
-                                k_out::AbstractVector, k_in::AbstractVector, 
-                                F::AbstractVector, 
-                                nz_out::Vector, nz_in::Vector,
-                                x::AbstractVector, y::AbstractVector,
-                                n::Int)
-    # set pre-allocated values
-    α = @view θ[1:n]
-    β = @view θ[n+1:end]
-    @simd for i in eachindex(α) # to obtain a non-allocating function <> x .= exp.(-α), y .= exp.(-β)
-        @inbounds x[i] = exp(-α[i])
-        @inbounds y[i] = exp(-β[i])
-    end
-    # reset gradient to zero
-    ∇L .= zero(eltype(∇L))
+"""
+    set_Ĝ!(m::DBCM)
 
-    # part related to α
-    @simd for i ∈ nz_out
-        fx = zero(eltype(∇L))
-        for j ∈ nz_in
-            if i ≠ j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fx -= c * y[j] / (1 + x[i] * y[j])
-        end
-        @inbounds ∇L[i] = x[i] * fx + F[i] * k_out[i]
-    end
-    # part related to β
-    @simd for j ∈ nz_in
-        fy = zero(eltype(∇L))
-        for i ∈ nz_out
-            if i≠j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fy -= c * x[i] / (1 + x[i] * y[j])
-        end
-        @inbounds ∇L[n+j] = y[j] * fy + F[j] * k_in[j]
-    end
-
-    return ∇L
+Set the expected adjacency matrix for the DBCM model `m`
+"""
+function set_Ĝ!(m::DBCM)
+    m.Ĝ = Ĝ(m)
+    m.status[:G_computed] = true
+    return m.Ĝ
 end
 
+
+"""
+    σˣ(m::DBCM{T,N}) where {T,N}
+
+Compute the standard deviation for the elements of the adjacency matrix for the DBCM model `m`.
+
+**Note:** read as "sigma star"
+"""
+function σˣ(m::DBCM{T,N}) where {T,N}
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # check network size => this is the full size
+    n = m.status[:d]
+    # initiate G
+    σ = zeros(N, n, n)
+    # initiate x and y
+    x = m.xᵣ[m.dᵣ_ind]
+    y = m.yᵣ[m.dᵣ_ind]
+    # compute σ
+    for i = 1:n
+        @simd for j = i+1:n
+            @inbounds xiyj =  x[i]*y[j]
+            @inbounds xjyi =  x[j]*y[i]
+            @inbounds res[i,j] = sqrt(xiyj)/(1 + xiyj)
+            @inbounds res[j,i] = sqrt(xjyi)/(1 + xjyi)
+        end
+    end
+
+    return σ
+end
+
+"""
+    set_σ!(m::DBCM)
+
+Set the standard deviation for the elements of the adjacency matrix for the DBCM model `m`
+"""
+function set_σ!(m::DBCM)
+    m.σ = σˣ(m)
+    m.status[:σ_computed] = true
+    return m.σ
+end
+
+
+"""
+    rand(m::DBCM; precomputed=false)
+
+Generate a random graph from the DBCM model `m`.
+
+Keyword arguments:
+- `precomputed::Bool`: if `true`, the precomputed expected adjacency matrix (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
+  recommended to not precompute the expected adjacency matrix to limit memory pressure.
+
+# Examples
+```jldoctest
+# generate a DBCM model from the karate club network
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
+julia> model = MaxEntropyGraphs.DBCM(G);
+# compute the maximum likelihood parameters
+using NLsolve
+x_buffer = zeros(length(model.dᵣ));G_buffer = zeros(length(model.dᵣ));
+FP_model! = (θ::Vector) -> MaxEntropyGraphs.DBCM_reduced_iter!(θ, model.dᵣ, model.f, x_buffer, G_buffer);
+sol = fixedpoint(FP_model!, θ₀, method=:anderson, ftol=1e-12, iterations=1000);
+model.Θᵣ .= sol.zero;
+model.status[:params_computed] = true;
+set_xᵣ!(model);
+# set the expected adjacency matrix
+MaxEntropyGraphs.set_Ĝ!(model);
+# sample a random graph
+julia> rand(model)
+{34, 78} undirected simple Int64 graph
+```
+"""
+function rand(m::DBCM; precomputed::Bool=false)
+    if precomputed
+        # check if possible to use precomputed Ĝ
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
+        # generate random graph
+        #G = Graphs.SimpleGraphFromIterator(  Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()<m.Ĝ[i,j]]))
+        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in 1:m.status[:d] if (rand()<m.Ĝ[i,j] && i≠j)  ]))
+    else
+        # check if possible to use parameters
+        m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+        # initiate x and y
+        x = m.xᵣ[m.dᵣ_ind]
+        y = m.yᵣ[m.dᵣ_ind]
+        # generate random graph
+        # G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()< (x[i]*x[j])/(1 + x[i]*x[j]) ]))
+        G = Graphs.SimpleDiGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in   1:m.status[:d] if (rand() < (x[i]*y[j])/(1 + x[i]*y[j]) && i≠j) ]))
+    end
+
+    # deal with edge case where no edges are generated for the last node(s) in the graph
+    while Graphs.nv(G) < m.status[:d]
+        Graphs.add_vertex!(G)
+    end
+
+    return G
+end
+
+
+"""
+    rand(m::DBCM, n::Int; precomputed=false)
+
+Generate `n` random graphs from the DBCM model `m`. If multithreading is available, the graphs are generated in parallel.
+
+Keyword arguments:
+- `precomputed::Bool`: if `true`, the precomputed expected adjacency matrix (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
+  recommended to not precompute the expected adjacency matrix to limit memory pressure.
+
+# Examples
+```jldoctest
+# generate a DBCM model from the karate club network
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
+julia> model = MaxEntropyGraphs.DBCM(G);
+# compute the maximum likelihood parameters
+using NLsolve
+x_buffer = zeros(length(model.dᵣ));G_buffer = zeros(length(model.dᵣ));
+FP_model! = (θ::Vector) -> MaxEntropyGraphs.DBCM_reduced_iter!(θ, model.dᵣ, model.f, x_buffer, G_buffer);
+sol = fixedpoint(FP_model!, θ₀, method=:anderson, ftol=1e-12, iterations=1000);
+model.Θᵣ .= sol.zero;
+model.status[:params_computed] = true;
+set_xᵣ!(model);
+# set the expected adjacency matrix
+MaxEntropyGraphs.set_Ĝ!(model);
+# sample a random graph
+julia> rand(model, 10)
+10-element Vector{Graphs.SimpleGraphs.SimpleDiGraph{Int64}}
+```
+"""
+function rand(m::DBCM, n::Int; precomputed::Bool=false)
+    # pre-allocate
+    res = Vector{Graphs.SimpleDiGraph{Int}}(undef, n)
+    # fill vector using threads
+    Threads.@threads for i in 1:n
+        res[i] = rand(m; precomputed=precomputed)
+    end
+
+    return res
+end
+
+
+# """
+#     σˣ(x::Vector{T}, y::Vector{T}, ::Type{DBCM{T}}) where T
+
+# Compute the standard deviation for the elements of the adjacency matrix for the `DBCM` model using the maximum likelihood parameters `x` and `y`.
+
+# **Note:** read as "sigma star"
+# """
+# function σˣ(x::Vector{T}, y::Vector{T}, ::Type{DBCM{T}}) where T
+#     n = length(x)
+#     res = zeros(T, n, n)
+#     for i = 1:n
+#         @simd for j = i+1:n
+#             @inbounds xiyj =  x[i]*y[j]
+#             @inbounds xjyi =  x[j]*y[i]
+#             @inbounds res[i,j] = sqrt(xiyj)/(1 + xiyj)
+#             @inbounds res[j,i] = sqrt(xjyi)/(1 + xjyi)
+#         end
+#     end
+
+#     return res
+# end
+
+#=
+
+
+
+
+
+
+
+
+
+
+
+=#
 
 
 # Idea: starting from models with known parameters:
