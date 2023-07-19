@@ -28,7 +28,7 @@ module MaxEntropyGraphs
     # common types
     export AbstractMaxEntropyModel
     # common functions
-    export initial_guess, solve_model!, set_xᵣ!, Ĝ, set_Ĝ!, σˣ, set_σ!
+    export initial_guess, solve_model!, set_xᵣ!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_yᵣ!
     # model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
     export DBCM
