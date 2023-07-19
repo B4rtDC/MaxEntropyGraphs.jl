@@ -4,6 +4,7 @@
 # This file contains some demos for the UBCM model
 ##################################################################################
 
+# setup for the UBCM model
 begin
     using Revise
     using BenchmarkTools
@@ -59,60 +60,56 @@ begin
 end
 
 
-
-##################################################################################
-# UBCM_demo.jl
-##################################################################################
-# Julia version
+# Generate an UBCM model from a graph
 begin
-G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
-model = UBCM(G);
-θ₀ = initial_guess(model);
-# Python version
-python_model = deepcopy(model);
-python_model.xᵣ .= exp.(-UBCM_pysol);
-python_model.Θᵣ .= UBCM_pysol;
-python_model.status[:params_computed] = true;
-# pure likelihood function
-model_fun = θ -> - L_UBCM_reduced(θ, model.dᵣ, model.f);
-# likelihood function for `Optimization.jl`
-obj = (θ, p) ->  - L_UBCM_reduced(θ, model.dᵣ, model.f);
+    G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
+    model = UBCM(G);
+    θ₀ = initial_guess(model);
+    # Python version
+    python_model = deepcopy(model);
+    python_model.xᵣ .= exp.(-UBCM_pysol);
+    python_model.Θᵣ .= UBCM_pysol;
+    python_model.status[:params_computed] = true;
+    # pure likelihood function
+    model_fun = θ -> - L_UBCM_reduced(θ, model.dᵣ, model.f);
+    # likelihood function for `Optimization.jl`
+    obj = (θ, p) ->  - L_UBCM_reduced(θ, model.dᵣ, model.f);
 end
 
 # using a gradient-free method (Nelder-Mead) with Optim.jl
 # ________________________________________________________
 begin
-prob = MaxEntropyGraphs.Optimization.OptimizationProblem(obj, θ₀);
-# actual optimisation (gradient free)
-sol = MaxEntropyGraphs.Optimization.solve(prob, (MaxEntropyGraphs.OptimizationOptimJL.NelderMead()));
-model.Θᵣ .= sol.u; 
-model.status[:params_computed] = true;
-set_xᵣ!(model);
-# precision check on imposed constraints
-@info "Maximum degree error for NelderMead: $(MaxEntropyGraphs.@sprintf("%.2e", maximum(abs.(sum(Ĝ(model), dims=2) .- model.dᵣ[model.dᵣ_ind]))))"
-@info "Maximum degree error for NEMtropy:   $(MaxEntropyGraphs.@sprintf("%.2e", maximum(abs.(sum(Ĝ(python_model), dims=2) .- python_model.dᵣ[python_model.dᵣ_ind]))))"
-@info "Difference between entropy values:   $(MaxEntropyGraphs.@sprintf("%.2e", model_fun(model.Θᵣ) - model_fun(UBCM_pysol)))"
-UBCM_GF_perf = @benchmark MaxEntropyGraphs.Optimization.solve($(prob), $(MaxEntropyGraphs.OptimizationOptimJL.NelderMead()));
-@info "Median compute time for NelderMead:  $(MaxEntropyGraphs.@sprintf("%2.2es", median(UBCM_GF_perf).time/1e9)) - speedup vs. NEMtropy (quasinewton): x$(MaxEntropyGraphs.@sprintf("%1.2f", UBCM_quasinewton_time/(median(UBCM_GF_perf).time/1e9))))";
+    prob = MaxEntropyGraphs.Optimization.OptimizationProblem(obj, θ₀);
+    # actual optimisation (gradient free)
+    sol = MaxEntropyGraphs.Optimization.solve(prob, (MaxEntropyGraphs.OptimizationOptimJL.NelderMead()));
+    model.Θᵣ .= sol.u; 
+    model.status[:params_computed] = true;
+    set_xᵣ!(model);
+    # precision check on imposed constraints
+    @info "Maximum degree error for NelderMead: $(MaxEntropyGraphs.@sprintf("%.2e", maximum(abs.(sum(Ĝ(model), dims=2) .- model.dᵣ[model.dᵣ_ind]))))"
+    @info "Maximum degree error for NEMtropy:   $(MaxEntropyGraphs.@sprintf("%.2e", maximum(abs.(sum(Ĝ(python_model), dims=2) .- python_model.dᵣ[python_model.dᵣ_ind]))))"
+    @info "Difference between entropy values:   $(MaxEntropyGraphs.@sprintf("%.2e", model_fun(model.Θᵣ) - model_fun(UBCM_pysol)))"
+    UBCM_GF_perf = @benchmark MaxEntropyGraphs.Optimization.solve($(prob), $(MaxEntropyGraphs.OptimizationOptimJL.NelderMead()));
+    @info "Median compute time for NelderMead:  $(MaxEntropyGraphs.@sprintf("%2.2es", median(UBCM_GF_perf).time/1e9)) - speedup vs. NEMtropy (quasinewton): x$(MaxEntropyGraphs.@sprintf("%1.2f", UBCM_quasinewton_time/(median(UBCM_GF_perf).time/1e9))))";
 end
 
 
 # using a gradient based method (LBDFGS) with Optim.jl using Zygote for automatic differentiation
 # _______________________________________________________________________________________________
 begin
-using Zygote
-f = MaxEntropyGraphs.Optimization.OptimizationFunction(obj, MaxEntropyGraphs.Optimization.AutoZygote());
-prob = MaxEntropyGraphs.Optimization.OptimizationProblem(f, θ₀);
-sol = MaxEntropyGraphs.Optimization.solve(prob, MaxEntropyGraphs.OptimizationOptimJL.LBFGS(), );
-model.Θᵣ .= sol.u;
-model.status[:params_computed] = true;
-set_xᵣ!(model);
-# precision check on imposed constraints
-@info "Maximum degree error for L-FBGS with AutoZygote: $(MaxEntropyGraphs.@sprintf("%.2e", maximum(abs.(sum(Ĝ(model), dims=2) .- model.dᵣ[model.dᵣ_ind]))))"
-@info "Maximum degree error for NEMtropy:               $(MaxEntropyGraphs.@sprintf("%.2e", maximum(abs.(sum(Ĝ(python_model), dims=2) .- python_model.dᵣ[python_model.dᵣ_ind]))))"
-@info "Difference between entropy values:               $(MaxEntropyGraphs.@sprintf("%.2e", model_fun(model.Θᵣ) - model_fun(UBCM_pysol)))"
-UBCM_BG_perf = @benchmark MaxEntropyGraphs.Optimization.solve($(prob), $(MaxEntropyGraphs.OptimizationOptimJL.LBFGS()));
-@info "Median compute time for L-FBGS with AutoZygote:  $(MaxEntropyGraphs.@sprintf("%2.2es", median(UBCM_BG_perf).time/1e9)) - speedup vs. NEMtropy (quasinewton): x$(MaxEntropyGraphs.@sprintf("%1.2f", UBCM_quasinewton_time/(median(UBCM_BG_perf).time/1e9))))";
+    using Zygote
+    f = MaxEntropyGraphs.Optimization.OptimizationFunction(obj, MaxEntropyGraphs.Optimization.AutoZygote());
+    prob = MaxEntropyGraphs.Optimization.OptimizationProblem(f, θ₀);
+    sol = MaxEntropyGraphs.Optimization.solve(prob, MaxEntropyGraphs.OptimizationOptimJL.LBFGS(), );
+    model.Θᵣ .= sol.u;
+    model.status[:params_computed] = true;
+    set_xᵣ!(model);
+    # precision check on imposed constraints
+    @info "Maximum degree error for L-FBGS with AutoZygote: $(MaxEntropyGraphs.@sprintf("%.2e", maximum(abs.(sum(Ĝ(model), dims=2) .- model.dᵣ[model.dᵣ_ind]))))"
+    @info "Maximum degree error for NEMtropy:               $(MaxEntropyGraphs.@sprintf("%.2e", maximum(abs.(sum(Ĝ(python_model), dims=2) .- python_model.dᵣ[python_model.dᵣ_ind]))))"
+    @info "Difference between entropy values:               $(MaxEntropyGraphs.@sprintf("%.2e", model_fun(model.Θᵣ) - model_fun(UBCM_pysol)))"
+    UBCM_BG_perf = @benchmark MaxEntropyGraphs.Optimization.solve($(prob), $(MaxEntropyGraphs.OptimizationOptimJL.LBFGS()));
+    @info "Median compute time for L-FBGS with AutoZygote:  $(MaxEntropyGraphs.@sprintf("%2.2es", median(UBCM_BG_perf).time/1e9)) - speedup vs. NEMtropy (quasinewton): x$(MaxEntropyGraphs.@sprintf("%1.2f", UBCM_quasinewton_time/(median(UBCM_BG_perf).time/1e9))))";
 end
 
 
