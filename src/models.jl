@@ -225,7 +225,7 @@ Return the log-likelihood of the UBCM model `m` based on the computed maximum li
 
 TO DO: include check for parameters computed
 """
-L_UBCM_reduced(m::DBCM) = L_UBCM_reduced(m.θᵣ, m.dᵣ, m.f)
+L_UBCM_reduced(m::UBCM) = L_UBCM_reduced(m.θᵣ, m.dᵣ, m.f)
 
 """
     ∇L_UBCM_reduced!( ∇L::Vector, θ::Vector, K::Vector, F::Vector, x::Vector)
@@ -614,7 +614,7 @@ Compute the likelihood maximising parameters of the UBCM model `m`.
 
 By default the parameters are computed using the fixed point iteration method with the degree sequence as initial guess.
 """
-function solve_model!(m::UBCM;  # common settings
+function solve_model!(m::UBCM{T,N};  # common settings
                                 method::Symbol=:fixedpoint, 
                                 initial::Symbol=:degrees,
                                 maxiters::Int=1000, 
@@ -625,13 +625,13 @@ function solve_model!(m::UBCM;  # common settings
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
                                 AD_method::Symbol=:AutoZygote,
-                                analytical_gradient::Bool=false)
+                                analytical_gradient::Bool=false) where {T,N}
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     if method==:fixedpoint
         # initiate buffers
-        x_buffer = zeros(length(m.dᵣ)); # buffer for x = exp(-θ)
-        G_buffer = zeros(length(m.dᵣ)); # buffer for G(x)
+        x_buffer = zeros(N,length(m.dᵣ)); # buffer for x = exp(-θ)
+        G_buffer = zeros(N,length(m.dᵣ)); # buffer for G(x)
         # define fixed point function
         FP_model! = (θ::Vector) -> UBCM_reduced_iter!(θ, m.dᵣ, m.f, x_buffer, G_buffer);
         # obtain solution
@@ -649,9 +649,9 @@ function solve_model!(m::UBCM;  # common settings
     else
         if analytical_gradient
             # initialise gradient buffer
-            gx_buffer = zeros(length(m.dᵣ));
+            x_buffer = zeros(N,length(m.dᵣ));
             # define gradient function for optimisation.jl
-            grad! = (G, θ, p) -> ∇L_UBCM_reduced_minus!(G, θ, m.dᵣ, m.f, gx_buffer);
+            grad! = (G, θ, p) -> ∇L_UBCM_reduced_minus!(G, θ, m.dᵣ, m.f, x_buffer);
         end
         # define objective function and its AD method
         f = AD_method ∈ keys(AD_methods)            ? Optimization.OptimizationFunction( (θ, p) ->   -L_UBCM_reduced(θ, m.dᵣ, m.f), AD_methods[AD_method],
@@ -1051,7 +1051,7 @@ function DBCM_reduced_iter!(θ::AbstractVector,
                             F::AbstractVector, 
                             nz_out::Vector, nz_in::Vector,
                             x::AbstractVector, y::AbstractVector, 
-                            G::AbstractVector, H::AbstractVector, n::Int)
+                            G::AbstractVector,  n::Int) # H::AbstractVector,
     α = @view θ[1:n]
     β = @view θ[n+1:end]
     @simd for i in eachindex(α) # to obtain a non-allocating function <> x .= exp.(-α), y .= exp.(-β) (1.8μs, 6 allocs -> 1.2μs, 0 allocs)
@@ -1059,7 +1059,7 @@ function DBCM_reduced_iter!(θ::AbstractVector,
         @inbounds y[i] = exp(-β[i])
     end
     G .= zero(eltype(G))
-    H .= zero(eltype(H))
+    #H .= zero(eltype(H))
     # part related to α
     @simd for i ∈ nz_out
         for j ∈ nz_in
@@ -1069,21 +1069,25 @@ function DBCM_reduced_iter!(θ::AbstractVector,
                 @inbounds G[i] += (F[j] - 1)  * y[j] / (1 + x[i] * y[j])
             end
         end
-        @inbounds θ[i] = -log(k_out[i] / G[i])
+        @inbounds G[i] = -log(k_out[i] / G[i])
     end
     # part related to β
     @simd for j ∈ nz_in
         for i ∈ nz_out
             if i ≠ j
-                @inbounds H[j] += F[i]        * x[i] / (1 + x[i] * y[j])
+                @inbounds G[j+n] += F[i]        * x[i] / (1 + x[i] * y[j])
+                #@inbounds H[j] += F[i]        * x[i] / (1 + x[i] * y[j])
             else
-                @inbounds H[j] += (F[i] - 1)  * x[i] / (1 + x[i] * y[j])
+                @inbounds G[j+n] += (F[i] - 1)  * x[i] / (1 + x[i] * y[j])
+                #@inbounds H[j] += (F[i] - 1)  * x[i] / (1 + x[i] * y[j])
             end
         end
-        @inbounds θ[n+j] = -log(k_in[j] / H[j])
+        @inbounds G[n+j] = -log(k_in[j] / G[j+n])
+        #@inbounds θ[n+j] = -log(k_in[j] / H[j])
     end
 
-    return θ
+    return G
+    #return θ
 end
 
 
@@ -1122,7 +1126,7 @@ Set the value of xᵣ to exp(-αᵣ) for the DBCM model `m`
 """
 function set_xᵣ!(m::DBCM)
     if m.status[:params_computed]
-        αᵣ = @view m.Θᵣ[1:m.status[:d_unique]]
+        αᵣ = @view m.θᵣ[1:m.status[:d_unique]]
         m.xᵣ .= exp.(-αᵣ)
     else
         throw(ArgumentError("The parameters have not been computed yet"))
@@ -1136,8 +1140,8 @@ Set the value of yᵣ to exp(-βᵣ) for the DBCM model `m`
 """
 function set_yᵣ!(m::DBCM)
     if m.status[:params_computed]
-        βᵣ = @view m.Θᵣ[m.status[:d_unique]+1:end]
-        m.xᵣ .= exp.(-βᵣ)
+        βᵣ = @view m.θᵣ[m.status[:d_unique]+1:end]
+        m.yᵣ .= exp.(-βᵣ)
     else
         throw(ArgumentError("The parameters have not been computed yet"))
     end
@@ -1325,43 +1329,500 @@ function rand(m::DBCM, n::Int; precomputed::Bool=false)
 end
 
 
-# """
-#     σˣ(x::Vector{T}, y::Vector{T}, ::Type{DBCM{T}}) where T
 
-# Compute the standard deviation for the elements of the adjacency matrix for the `DBCM` model using the maximum likelihood parameters `x` and `y`.
+"""
+    solve_model!(m::DBCM)
 
-# **Note:** read as "sigma star"
-# """
-# function σˣ(x::Vector{T}, y::Vector{T}, ::Type{DBCM{T}}) where T
-#     n = length(x)
-#     res = zeros(T, n, n)
-#     for i = 1:n
-#         @simd for j = i+1:n
-#             @inbounds xiyj =  x[i]*y[j]
-#             @inbounds xjyi =  x[j]*y[i]
-#             @inbounds res[i,j] = sqrt(xiyj)/(1 + xiyj)
-#             @inbounds res[j,i] = sqrt(xjyi)/(1 + xjyi)
-#         end
-#     end
+Compute the likelihood maximising parameters of the DBCM model `m`. 
 
-#     return res
-# end
+By default the parameters are computed using the fixed point iteration method with the degree sequence as initial guess.
+"""
+function solve_model!(m::DBCM{T,N};  # common settings
+                                method::Symbol=:fixedpoint, 
+                                initial::Symbol=:degrees,
+                                maxiters::Int=1000, 
+                                verbose::Bool=false,
+                                # NLsolve.jl specific settings (fixed point method)
+                                ftol::Real=1e-8,
+                                # optimisation.jl specific settings (optimisation methods)
+                                abstol::Union{Number, Nothing}=nothing,
+                                reltol::Union{Number, Nothing}=nothing,
+                                AD_method::Symbol=:AutoZygote,
+                                analytical_gradient::Bool=false) where {T,N}
+    # initial guess
+    θ₀ = initial_guess(m, method=initial)
+    # find Inf values
+    ind_inf = findall(isinf, θ₀)
+    if method==:fixedpoint
+        # initiate buffers
+        x_buffer = zeros(N, length(m.dᵣ_out)); # buffer for x = exp(-α)
+        y_buffer = zeros(N, length(m.dᵣ_in));  # buffer for y = exp(-β)
+        G_buffer = zeros(N, length(m.θᵣ)); # buffer for G(x)
+        # define fixed point function
+        FP_model! = (θ::Vector) -> DBCM_reduced_iter!(θ, m.dᵣ_out, m.dᵣ_in, m.f, m.dᵣ_out_nz, m.dᵣ_in_nz, x_buffer, y_buffer, G_buffer, m.status[:d_unique])
+        # obtain solution
+        θ₀[ind_inf] .= zero(N);
+        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        if NLsolve.converged(sol)
+            if verbose 
+                @info "Fixed point iteration converged after $(sol.iterations) iterations"
+            end
+            m.θᵣ .= sol.zero;
+            m.θᵣ[ind_inf] .= Inf;
+            m.status[:params_computed] = true;
+            set_xᵣ!(m);
+            set_yᵣ!(m);
+        else
+            throw(ConvergenceError(method, nothing))
+        end
+    else
+        if analytical_gradient
+            # initiate buffers
+            x_buffer = zeros(N, length(m.dᵣ_out)); # buffer for x = exp(-α)
+            y_buffer = zeros(N, length(m.dᵣ_in));  # buffer for y = exp(-β)
+            # initialise gradient buffer
+            #gx_buffer = similar(θ₀)
+            # define gradient function for optimisation.jl
+            grad! = (G, θ, p) -> ∇L_DBCM_reduced_minus!(G, θ, m.dᵣ_out, m.dᵣ_in, m.f, m.dᵣ_out_nz, m.dᵣ_in_nz, x_buffer, y_buffer, m.status[:d_unique]);
+        end
+        # define objective function and its AD method
+        f = AD_method ∈ keys(AD_methods)            ? Optimization.OptimizationFunction( (θ, p) ->   -L_DBCM_reduced(θ, m.dᵣ_out, m.dᵣ_in, m.f, m.dᵣ_out_nz, m.dᵣ_in_nz, m.status[:d_unique]),
+                                                                                         AD_methods[AD_method],
+                                                                                         grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
+        prob = Optimization.OptimizationProblem(f, θ₀);
+        # obtain solution
+        sol = method ∈ keys(optimization_methods)   ? Optimization.solve(prob, optimization_methods[method], abstol=abstol, reltol=reltol)                                                : throw(ArgumentError("The method $(method) is not supported (yet)"))
+        # check convergence
+        if Optimization.SciMLBase.successful_retcode(sol.retcode)
+            if verbose 
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
+            end
+            m.Θᵣ .= sol.u;
+            m.status[:params_computed] = true;
+            set_xᵣ!(m);
+            set_yᵣ!(m);
+        else
+            throw(ConvergenceError(method, sol.retcode))
+        end
+    end
 
-#=
+    return m
+end
 
 
 
 
 
 
+"""
+    BiCM
+
+Maximum entropy model for the Undirected Bipartite Configuration Model (BiCM). 
+    
+The object holds the maximum likelihood parameters of the model (θ), the expected bi-adjacency matrix (Ĝ), 
+and the variance for the elements of the adjacency matrix (σ).
+
+cf. "Inferring monopartite projections of bipartite networks: an entropy-based approach", Fabio Saracco et al 2017 New J. Phys. 19 053022
+"""
+mutable struct BiCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
+    "Graph type, can be any bipartite subtype of AbstractGraph, but will be converted to SimpleGraph for the computation" # can also be empty
+    const G::T 
+    "Maximum likelihood parameters for reduced model" 
+    const θᵣ::Vector{N}
+    "Exponentiated maximum likelihood parameters for reduced model ( xᵢ = exp(-αᵢ) )"
+    const xᵣ::Vector{N}
+    "Exponentiated maximum likelihood parameters for reduced model ( yᵢ = exp(-βᵢ) )"
+    const yᵣ::Vector{N}
+    "Degree sequence of the ⊥ layer" # evaluate usefulness of this field later on
+    const d⊥::Vector{Int}
+    "Degree sequence of the ⊤ layer" # evaluate usefulness of this field later on
+    const d⊤::Vector{Int}
+    "Reduced degree sequence of the ⊥ layer"
+    const d⊥ᵣ::Vector{Int}
+    "Reduced degree sequence of the ⊤ layer"
+    const d⊤ᵣ::Vector{Int}
+    "Non-zero elements of the reduced degree sequence of the ⊥ layer"
+    const d⊥ᵣ_nz::UnitRange{Int}
+    "Non-zero elements of the reduced degree sequence of the ⊤ layer"
+    const d⊤ᵣ_nz::UnitRange{Int}
+    "Frequency of each degree in the ⊥ layer"
+    const f⊥::Vector{Int}
+    "Frequency of each degree in the ⊤ layer"
+    const f⊤::Vector{Int}
+    "Indices to reconstruct the degree sequence from the reduced degree sequence of the ⊥ layer"
+    const d⊥_ind::Vector{Int}
+    "Indices to reconstruct the degree sequence from the reduced degree sequence of the ⊤ layer"
+    const d⊤_ind::Vector{Int}
+    "Indices to reconstruct the reduced degree sequence from the degree sequence of the ⊥ layer"
+    const d⊥ᵣ_ind::Vector{Int}
+    "Indices to reconstruct the reduced degree sequence from the degree sequence of the ⊤ layer"
+    const d⊤ᵣ_ind::Vector{Int}
+    "membership of the ⊥ layer"
+    const ⊥nodes::Vector{Int}
+    "membership of the ⊤ layer"
+    const ⊤nodes::Vector{Int}
+    "Expected bi-adjacency matrix" # not always computed/required
+    Ĝ::Union{Nothing, Matrix{N}}
+    "Variance of the expected bi-adjacency matrix" # not always computed/required
+    σ::Union{Nothing, Matrix{N}}
+    "Status indicators: parameters computed, expected adjacency matrix computed, variance computed, etc."
+    const status::Dict{Symbol, Any}
+    "Function used to computed the log-likelihood of the (reduced) model"
+    fun::Union{Nothing, Function}
+end
+
+Base.show(io::IO, m::BiCM{T,N}) where {T,N} = print(io, """BiCM{$(T), $(N)} ($(m.status[:N⊥]) + $(m.status[:N⊤]) vertices, $(m.status[:d⊥_unique]) + $(m.status[:d⊤_unique]) unique degrees, $(@sprintf("%.2f", m.status[:cᵣ])) compression ratio)""")
+
+"""Return the reduced number of nodes in the UBCM network"""
+Base.length(m::BiCM) = length(m.d⊥_ᵣ) + length(m.d⊤_ᵣ)
+
+
+"""
+    BiCM(G::T; precision::N=Float64, kwargs...) where {T<:Graphs.AbstractGraph, N<:Real}
+    BiCM(;d⊥::Vector{T}, d⊤::Vector{T}, precision::Type{<:AbstractFloat}=Float64, kwargs...)
+
+Constructor function for the `BiCM` type. The graph you provide should be bipartite
+    
+By default and dependng on the graph type `T`, the definition of degree from ``Graphs.jl`` is applied. 
+If you want to use a different definition of degrees, you can pass vectors of degrees sequences as keyword arguments (`d⊥`, `d⊤`).
+If you want to generate a model directly from degree sequences without an underlying graph , you can simply pass the degree sequences as arguments (`d⊥`, `d⊤`).
+If you want to work from an adjacency matrix, or edge list, you can use the graph constructors from the ``JuliaGraphs`` ecosystem.
+
+
+DETAIL how zero degree nodes are treated
+
+# Examples     
+```jldoctest
+# generating a model from a graph
+
+
+# generating a model directly from a degree sequence
+
+
+# generating a model directly from a degree sequence with a different precision
+
+
+# generating a model from an adjacency matrix
+
+
+# generating a model from an edge list
+
+
+```
+
+See also [`Graphs.degree`](@ref)
+"""
+function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing, 
+                    d⊤::Union{Nothing, Vector}=nothing, 
+                    precision::Type{N}=Float64, 
+                    kwargs...) where {T,N<:AbstractFloat}
+    T <: Union{Graphs.AbstractGraph, Nothing} ? nothing : throw(TypeError("G must be a subtype of AbstractGraph or Nothing"))
+    
+
+    # coherence checks
+    if T <: Graphs.AbstractGraph # Graph specific checks
+        # check if the graph is bipartite
+        Graphs.is_bipartite(G) ? nothing : throw(ArgumentError("The graph is not bipartite"))
+        
+        if Graphs.is_directed(G)
+            @warn "The graph is directed, while the BiCM model is undirected, the directional information will be lost"
+        end
+
+        if T <: SimpleWeightedGraphs.AbstractSimpleWeightedGraph
+            @warn "The graph is weighted, while BiCM model is unweighted, the weight information will be lost"
+        end
+
+        # get layer membership
+        membership = Graphs.bipartite_map(G)
+        ⊥nodes, ⊤nodes = findall(membership .== 1), findall(membership .== 2)
+        # degree sequences
+        d⊥ = isnothing(d⊥) ? Graphs.degree(G, ⊥nodes) : d⊥
+        d⊤ = isnothing(d⊤) ? Graphs.degree(G, ⊤nodes) : d⊤
+
+
+        Graphs.nv(G) == 0 ? throw(ArgumentError("The graph is empty")) : nothing
+        Graphs.nv(G) == 1 ? throw(ArgumentError("The graph has only one vertex")) : nothing
+        Graphs.nv(G) != length(d⊥) + length(d⊤) ? throw(DimensionMismatch("The number of vertices in the graph ($(Graphs.nv(G))) and the length of the degree sequence ($(length(d))) do not match")) : nothing
+    end
+    # coherence checks specific to the degree sequences
+    !isnothing(d⊥) && length(d⊥) == 0 ? throw(ArgumentError("The degree sequences d⊥ is empty")) : nothing
+    !isnothing(d⊤) && length(d⊤) == 0 ? throw(ArgumentError("The degree sequences d⊤ is empty")) : nothing
+    !isnothing(d⊥) && length(d⊥) == 1 ? throw(ArgumentError("The degree sequences d⊥ only contains a single node")) : nothing
+    !isnothing(d⊤) && length(d⊤) == 1 ? throw(ArgumentError("The degree sequences d⊤ only contains a single node")) : nothing    
+    maximum(d⊥) >= length(d⊤) ? throw(DomainError("The maximum outdegree in the layer d⊥ is greater or equal to the number of vertices in layer d⊤, this is not allowed")) : nothing
+    maximum(d⊤) >= length(d⊥) ? throw(DomainError("The maximum outdegree in the layer d⊤ is greater or equal to the number of vertices in layer d⊥, this is not allowed")) : nothing
+
+
+    # field generation
+    d⊥ᵣ, d⊥_ind, d⊥ᵣ_ind, f⊥ = np_unique_clone(d⊥, sorted=true)
+    d⊥ᵣ_nz = iszero(first(d⊥ᵣ)) ? (2:length(d⊥ᵣ)) : (1:length(d⊥ᵣ)) # precomputed indices for the reduced degree sequence (works because sorted and unique values)
+    d⊤ᵣ, d⊤_ind, d⊤ᵣ_ind, f⊤ = np_unique_clone(d⊤, sorted=true)
+    d⊤ᵣ_nz = iszero(first(d⊤ᵣ)) ? (2:length(d⊤ᵣ)) : (1:length(d⊤ᵣ)) # precomputed indices for the reduced degree sequence
+
+    # initiate parameters
+    θᵣ = Vector{precision}(undef, length(d⊥ᵣ) + length(d⊤ᵣ))
+    xᵣ = Vector{precision}(undef, length(d⊥ᵣ))
+    yᵣ = Vector{precision}(undef, length(d⊤ᵣ)) 
+    status = Dict{Symbol, Real}(:params_computed=>false,            # are the parameters computed?
+                                :G_computed=>false,                 # is the expected adjacency matrix computed and stored?
+                                :σ_computed=>false,                 # is the standard deviation computed and stored?
+                                :cᵣ => (length(d⊥ᵣ) + length(d⊤ᵣ))/(length(d⊥)+length(d⊤)),    # compression ratio of the reduced model TODO: consider not counting the zero values?
+                                :N⊥ => length(d⊥),                  # number of nodes in layer ⊥
+                                :N⊤ => length(d⊤),                  # number of nodes in layer ⊤
+                                :d⊥_unique => length(d⊥ᵣ),         # number of unique degrees in layer ⊥
+                                :d⊤_unique => length(d⊤ᵣ),         # number of unique degrees in layer ⊤
+                                :N => length(d⊥) + length(d⊤)       # number of vertices in the original graph 
+                )   
+    
+    return BiCM{T,precision}(G, θᵣ, xᵣ, yᵣ, d⊥, d⊤, d⊥ᵣ, d⊤ᵣ, d⊥ᵣ_nz, d⊤ᵣ_nz, f⊥, f⊤, d⊥_ind, d⊤_ind, d⊥ᵣ_ind, d⊤ᵣ_ind, ⊥nodes, ⊤nodes, nothing, nothing, status, nothing)
+end
+
+BiCM(; d⊥::Vector{T}, d⊤::Vector{T}, precision::Type{N}=Float64, kwargs...) where {T<:Signed, N<:AbstractFloat} = BiCM(nothing; d⊥=d⊥, d⊤=d⊤, precision=precision, kwargs...)
 
 
 
+function L_BiCM_reduced(θ::Vector, k⊥::Vector, k⊤::Vector, f⊥::Vector, f⊤::Vector, nz⊥::UnitRange, nz⊤::UnitRange, n⊥ᵣ::Int)
+    # set pre-allocated values
+    α = @view θ[1:n⊥ᵣ]
+    β = @view θ[n⊥ᵣ+1:end]
+    res = zero(eltype(θ))
+    # actual compute
+    for i in nz⊥
+        res -=  f⊥[i]*k⊥[i]*α[i] 
+        for j in nz⊤
+            res -= f⊥[i] * f⊤[j] * log(1 + exp(-α[i] - β[j]))
+        end
+    end
+    for j in nz⊤
+        res -= f⊤[j]*k⊤[j]*β[j]
+    end
+    return res
+end
 
 
-=#
+L_BiCM_reduced(m::BiCM) = L_BiCM_reduced(m.θᵣ, m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, m.status[:d⊥_unique])
 
 
+function ∇L_BiCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector,
+                            k⊥::Vector, k⊤::Vector,
+                            f⊥::Vector, f⊤::Vector, 
+                            nz⊥::UnitRange{T}, nz⊤::UnitRange{T}, 
+                            x::AbstractVector, y::AbstractVector,
+                            n⊥::Int) where {T<:Signed}
+    # set pre-allocated values # keep these in model as views for more efficiency?
+    α = @view θ[1:n⊥]
+    β = @view θ[n⊥+1:end]
+    
+    for i in nz⊥ # non-allocating version of x .= exp.(-α)
+        x[i] = exp(-α[i])
+    end
+    for j in nz⊤
+        y[j] = exp(-β[j])
+    end
+
+    # reset gradient to zero
+    ∇L .= zero(eltype(θ))
+    
+    # actual compute
+    for i in nz⊥
+        ∇L[i] = - f⊥[i] * k⊥[i]
+        for j in nz⊤
+            ∇L[i]    += f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        end
+    end
+    for j in nz⊤
+        ∇L[n⊥+j] = - f⊤[j] * k⊤[j]
+        for i in nz⊥
+            ∇L[n⊥+j] += f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        end
+    end
+
+    return ∇L
+end
+
+
+
+function ∇L_BiCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector,
+                                k⊥::Vector, k⊤::Vector,
+                                f⊥::Vector, f⊤::Vector, 
+                                nz⊥::UnitRange{T}, nz⊤::UnitRange{T}, 
+                                x::AbstractVector, y::AbstractVector,
+                                n⊥::Int) where {T<:Signed}
+    # set pre-allocated values
+    α = @view θ[1:n⊥]
+    β = @view θ[n⊥+1:end]
+    
+    for i in nz⊥ # non-allocating version of x .= exp.(-α)
+        x[i] = exp(-α[i])
+    end
+    for j in nz⊤
+        y[j] = exp(-β[j])
+    end
+
+    # reset gradient to zero
+    ∇L .= zero(eltype(θ))
+
+    # actual compute
+    for i in nz⊥
+        ∇L[i] = f⊥[i] * k⊥[i]
+        for j in nz⊤
+            ∇L[i]    -= f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        end
+    end
+    for j in nz⊤
+        ∇L[n⊥+j] = f⊤[j] * k⊤[j]
+        for i in nz⊥
+            ∇L[n⊥+j] -= f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        end
+    end
+
+    return ∇L
+end
+
+function BiCM_reduced_iter!(θ::AbstractVector, k⊥::Vector, k⊤::Vector,
+                            f⊥::Vector, f⊤::Vector, 
+                            nz⊥::UnitRange{T}, nz⊤::UnitRange{T}, 
+                            x::AbstractVector, y::AbstractVector, G::AbstractVector,
+                            n⊥::Int) where {T<:Signed}
+    # set pre-allocated values
+    α = @view θ[1:n⊥]
+    β = @view θ[n⊥+1:end]
+    # non-allocating version of x .= exp.(-α)
+    for i in nz⊥
+        x[i] = exp(-α[i])
+    end
+    for j in nz⊤
+        y[j] = exp(-β[j])
+    end
+    # actual compute
+    for i in nz⊥
+        G[i] = zero(eltype(θ))
+        for j in nz⊤
+            G[i] += f⊤[j] * y[j]/(1 + x[i]*y[j])
+        end
+        G[i] = - log( k⊥[i] / G[i] )
+    end
+    for j in nz⊤
+        G[n⊥+j] = zero(eltype(θ))
+        for i in nz⊥
+            G[n⊥+j] += f⊥[i] * x[i]/(1 + x[i]*y[j])
+        end
+        G[n⊥+j] = - log( k⊤[j] / G[n⊥+j] )
+    end
+
+
+    return G
+end
+
+function initial_guess(m::BiCM{T,N}; method::Symbol=:degrees) where {T,N}
+    if isequal(method, :degrees)
+        return Vector{N}(vcat(-log.(m.d⊥ᵣ), -log.(m.d⊤ᵣ)))
+    elseif isequal(method, :random)
+        return Vector{N}(-log.(rand(N, length(m.θᵣ))))
+    elseif isequal(method, :uniform)
+        return Vector{N}(-log.(0.5 .* ones(N, length(m.θᵣ))))
+    elseif isequal(method, :chung_lu)
+        isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
+        return Vector{N}(vcat(-log.(m.d⊥ᵣ ./ sqrt(Graphs.ne(m.G)) ), -log.(m.d⊤ᵣ ./ sqrt(Graphs.ne(m.G)) ) ))
+    else
+        throw(ArgumentError("The initial guess method $(method) is not supported"))
+    end
+end
+
+function set_xᵣ!(m::BiCM)
+    if m.status[:params_computed]
+        αᵣ = @view m.θᵣ[1:m.status[:d⊥_unique]]
+        m.xᵣ .= exp.(-αᵣ)
+    else
+        throw(ArgumentError("The parameters have not been computed yet"))
+    end
+end
+
+function set_yᵣ!(m::BiCM)
+    if m.status[:params_computed]
+        βᵣ = @view m.θᵣ[m.status[:d⊥_unique]+1:end]
+        m.yᵣ .= exp.(-βᵣ)
+    else
+        throw(ArgumentError("The parameters have not been computed yet"))
+    end
+end
+
+# NOTE: this will compute the bi-adjacency matrix, and not the adjacency matrix
+function Ĝ(m::BiCM{T,N}) where {T,N}
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    
+    # get layer sizes => this is the full size of the network
+    n⊥, n⊤ = m.status[:N⊥], m.status[:N⊤] 
+
+    # initiate Ĝ
+    G = zeros(N, n⊥, n⊤)
+
+    # initiate x and y
+    x = m.xᵣ[m.d⊥ᵣ_ind]
+    y = m.yᵣ[m.d⊤ᵣ_ind]
+
+    # compute Ĝ
+    for i in 1:n⊥
+        for j in 1:n⊤
+            G[i,j] = x[i]*y[j]/(1 + x[i]*y[j])
+        end
+    end
+
+    return G
+end
+
+function set_Ĝ!(m::BiCM)
+    m.Ĝ = Ĝ(m)
+    m.status[:G_computed] = true
+    return m.Ĝ
+end
+
+"""
+    rand(m::BiCM; precomputed::Bool=false)
+
+Generate a random graph from the BiCM model `m`.
+
+**Note**: the generated matrix from the `BiCM` is a bi-adjacency matrix, not an adjacency matrix. The generated graph
+wil also be bipartite and respect the layer membership of the original graph.
+"""
+function rand(m::BiCM; precomputed::Bool=false)
+    if precomputed
+        # check if possible to use precomputed Ĝ
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
+        # generate random graph
+        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand()<m.Ĝ[i,j]]))
+    else
+        # check if possible to use parameters
+        m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+        # initiate x and y
+        x = m.xᵣ[m.d⊥ᵣ_ind]
+        y = m.yᵣ[m.d⊤ᵣ_ind]
+        G = Graphs.SimpleGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand()< x[i]*y[j]/(1 + x[i]*y[j]) ]))
+    end
+
+    # deal with edge case where no edges are generated for the last node(s) in the graph
+    while Graphs.nv(G) < m.status[:N]
+        Graphs.add_vertex!(G)
+    end
+
+    return G
+end
+
+function rand(m::BiCM, n::Int; precomputed::Bool=false)
+    # pre-allocate
+    res = Vector{Graphs.SimpleGraph{Int}}(undef, n)
+    # fill vector using threads
+    Threads.@threads for i in 1:n
+        res[i] = rand(m; precomputed=precomputed)
+    end
+
+    return res
+end
+
+
+function solve_model!(m::BiCM{T,N}) where {T,N}
+end
 # Idea: starting from models with known parameters:
 # - obtain expected values and variances for adjacency/weight matrix elements
 # - sample networks, returning 
@@ -1437,49 +1898,9 @@ end
 # #
 # # ----------------------------------------------------------------------------------------------------------------------
 
-# """
-#     UBCM
-
-# Maximum entropy model for the Undirected Binary Configuration Model (UBCM). 
-    
-# The object holds the maximum likelihood parameters of the model (x), the expected adjacency matrix (G), 
-# and the variance for the elements of the adjacency matrix (σ).
-
-# """
-# struct UBCM{T} <: AbstractMaxEntropyModel where {T<:Real}
-#     x::Vector{T}
-#     G::Matrix{T}
-#     σ::Matrix{T}
-# end
 
 
 
-# """
-#     UBCM(x::Vector{T}; compute::Bool=true) where {T<:Real}
-
-# Constructor for the `UBCM` type.
-# """
-# function UBCM(x::Vector{T}) where {T<:Real}
-#     G = Ĝ(x, UBCM{T})  # expected adjacency matrix
-#     σ = σˣ(x, UBCM{T}) # expected standard deviation matrix
-
-#     return UBCM(x, G, σ)
-# end
-
-# """
-#     UBCM(G::T) where T<:SimpleGraph
-
-# Constructor for the `UBCM` type based on a `SimpleGraph`. 
-# """
-# function UBCM(G::T; method="fixed-point", initial_guess="degrees", max_steps=5000, tol=1e-12, kwargs...) where T<:Graphs.SimpleGraph
-#     NP = PyCall.pyimport("NEMtropy")
-#     G_nem = NP.UndirectedGraph(degree_sequence=Graphs.degree(G))
-#     G_nem.solve_tool(model="cm_exp", method=method, initial_guess=initial_guess, max_steps=max_steps, tol=tol, kwargs...);
-#     if G_nem.error > 1e-7
-#         @warn "The model did not converge, maybe try some other options (solution error $(G_nem.error))"
-#     end
-#     return UBCM(G_nem.x)
-# end
 
 # """
 #     Ĝ(::UBCM, x::Vector{T}) where {T<:Real}
@@ -1521,24 +1942,7 @@ end
 #     return res
 # end
 
-# """
-#     rand(m::UBCM)
 
-# Generate a random graph from the UBCM model. The function returns a `Graphs.AbstractGraph` object.
-# """
-# function Base.rand(m::UBCM)
-#     n = length(m)
-#     g = Graphs.SimpleGraph(n)
-#     for i = 1:n
-#         for j = i+1:n
-#             if rand() < m.G[i,j]
-#                 Graphs.add_edge!(g, i, j)
-#             end
-#         end
-#     end
-
-#     return g
-# end
 
 
 # """
@@ -1556,54 +1960,8 @@ end
 # #
 # # ----------------------------------------------------------------------------------------------------------------------
 
-# """
-#     DBCM
 
-# Maximum entropy model for the Directed Binary Configuration Model (DBCM). 
-    
-# The object holds the maximum likelihood parameters of the model (x, y), the expected adjacency matrix (G), 
-# and the variance for the elements of the adjacency matrix (σ).
 
-# """
-# struct DBCM{T} <: AbstractMaxEntropyModel where {T<:Real}
-#     x::Vector{T}
-#     y::Vector{T}
-#     G::Matrix{T}
-#     σ::Matrix{T}
-# end
-
-# Base.show(io::IO, m::DBCM{T}) where T = print(io, "$(T) DBCM model ($(length(m)) vertices)")
-
-# """Return the number of nodes in the DBCM network"""
-# Base.length(m::DBCM) = length(m.x)
-
-# """
-#     DBCM(x::Vector{T}, y::Vector{T}; compute::Bool=true) where {T<:Real}
-
-# Constructor for the `DBCM` type. If `compute` is true, the expected adjacency matrix and variance are computed. 
-# Otherwise the memory is allocated but not initialized. (TBC)
-# """
-# function DBCM(x::Vector{T}, y::Vector{T}; compute::Bool=true) where {T<:Real}
-#     G = Ĝ( x, y, DBCM{T}) # expected adjacency matrix
-#     σ = σˣ(x, y, DBCM{T}) # expected standard deviation matrix
-
-#     return DBCM(x, y, G, σ)
-# end
-
-# """
-#     DBCM(G::T) where T<:SimpleDiGraph
-
-# Constructor for the `DBCM` type based on a `SimpleDiGraph`. 
-# """
-# function DBCM(G::T; method="fixed-point", initial_guess="degrees", max_steps=5000, tol=1e-12, kwargs...) where T<:Graphs.SimpleDiGraph
-#     NP = PyCall.pyimport("NEMtropy")
-#     G_nem =  NP.DirectedGraph(degree_sequence=vcat(Graphs.outdegree(G), Graphs.indegree(G)))
-#     G_nem.solve_tool(model="dcm_exp"; method=method, initial_guess=initial_guess, max_steps=max_steps, tol=tol, kwargs...);
-#     if G_nem.error > 1e-7
-#         @warn "The model did not converge, maybe try some other options (solution error $(G_nem.error))"
-#     end
-#     return DBCM(G_nem.x, G_nem.y)
-# end
 
 # """
 #     Ĝ(x::Vector{T}, y::Vector{T}, ::Type{DBCM{T}}) where {T<:Real}
@@ -1647,27 +2005,6 @@ end
 #     return res
 # end
 
-# """
-#     rand(m::DBCM)
-
-# Generate a random graph from the `DBCM` model. The function returns a `Graphs.AbstractGraph` object.
-# """
-# function Base.rand(m::DBCM)
-#     n = length(m)
-#     g = Graphs.SimpleDiGraph(n)
-#     for i = 1:n
-#         for j = i+1:n
-#             if rand() < m.G[i,j]
-#                 Graphs.add_edge!(g, i, j)
-#             end
-#             if rand() < m.G[j,i]
-#                 Graphs.add_edge!(g, j, i)
-#             end
-#         end
-#     end
-
-#     return g
-# end
 
 # """
 #     σˣ(X::Function, M::DBCM{T})
