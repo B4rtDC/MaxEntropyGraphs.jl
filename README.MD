@@ -29,7 +29,7 @@ Pkg.add("MaxEntropyGraphs")
     - approximation the gradient of the likelihood function of the graphs
     - compute the gradient of any metric with respect to its adjacency matrix without having to compute these by hand and implement the partial derivative for each possible metric (cf. examples for more details on this).
 * For both the models and the computing functions we make a clear distinction between the likelihood maximising paramers and the variable substitution (e.g. $\theta_i \leftrightarrow x_i = e^{-\theta_i}$ for the UBCM). Doing so makes the code more readable because it is closer to the mathematical formulation.
-* Sampling from an `AbstractMaxEntropyModel` will generate a corresponding subtype of  `AbstractGraph` from the [JuliaGraphs](https://juliagraphs.org/) ecosystem. The methods that are available in `Graphs.jl`, `SimpleWeightedGraphs` etc. have been extended for the different maximum entropy models wherever applicable. 
+* Sampling from an `<:AbstractMaxEntropyModel` will generate a corresponding subtype of  `<:AbstractGraph` from the [JuliaGraphs](https://juliagraphs.org/) ecosystem. The methods that are available in `Graphs.jl`, `SimpleWeightedGraphs` etc. have been extended for the different maximum entropy models wherever applicable. 
 
 ## Available models
 `MaxEntropyGraphs.jl` is intended to do *network randomization*. The specific kind of network to randomize and the properties to preserve defines the model you need. The checklists below indicated which models are 
@@ -39,6 +39,8 @@ currently available.
     - [x] Types
     - [x] Likelihood related functions
     - [x] Likelihood maximisation in pure Julia (FP + optimisation)
+    - [x] Sampling
+    - [ ] Unit tests
     - [ ] Check for:
         - [ ] behavior of zero degree nodes
         - [ ] networks with self links (in principle not allowed in SimpleGraphs, TBC)
@@ -46,12 +48,24 @@ currently available.
 * [ ] **DBCM** *Directed Binary Configuration Model* [[1]](#1)
     - [x] Types
     - [x] Likelihood related functions
-    - [ ] Likelihood maximisation in pure Julia (FP ok + optimisation to do)
+    - [x] Likelihood maximisation in pure Julia (FP ok + optimisation)
+    - [x] Sampling
+    - [ ] Unit tests
     - [ ] Check for:
         - [X] behavior of zero degree nodes
         - [ ] networks with self links (in principle not allowed in SimpleGraphs, TBC)
     - [ ] $\dots$
 * [ ] **BiCM** *Bipartite Configuration Model* [[3]](#3)
+    - [x] Types
+    - [x] Likelihood related functions
+    - [x] Likelihood maximisation in pure Julia (FP ok + optimisation). Note: possible problem in Nemtropy gradient implementation (difference when compared to autodiff and method does not converge)
+    - [x] Sampling
+    - [ ] Unit tests
+    - [x] Check for:
+        - [x] behavior of zero degree nodes
+        - [ ] networks with self links (in principle not allowed in SimpleGraphs, TBC)
+    - [ ] $\dots$
+* [ ] **DBiCM** *Directed Bipartite Configuration Model*  **add ref**
 * [ ] **UECM** *Undirected Enhanced Configuration Model* [[1]](#1)
 * [ ] **DECM** *Directed Enhanced Configuration Model* [[1]](#1)
 * [ ] **CReMa** [[2]](#2)
