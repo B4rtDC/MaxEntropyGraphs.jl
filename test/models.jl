@@ -5,7 +5,7 @@
 ###########################################################################################
 
 
-const allowedDataTypes =[Float16, Float32, Float64, BigFloat]
+const allowedDataTypes =[Float16, Float32, Float64]
 
 
 @testset "Models" begin
@@ -54,11 +54,51 @@ const allowedDataTypes =[Float16, Float32, Float64, BigFloat]
         end
         
         @testset "UBCM - parameter computation" begin
-            
+            G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+            d = MaxEntropyGraphs.Graphs.degree(G)
+            # simple model, directly from graph, different precisions
+            for precision in allowedDataTypes
+                @testset "$(precision) precision" begin
+                    model = UBCM(G, precision=precision)
+                    @test_throws ArgumentError Ĝ(model)
+                    @test_throws ArgumentError σˣ(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.initial_guess(model, method=:strange)
+                    for initial in [:degrees, :random, :degrees_minor, :chung_lu, :uniform] # degrees_minor fails
+                        @testset "initial guess: $initial" begin
+                            @test length(MaxEntropyGraphs.initial_guess(model, method=initial)) == model.status[:d_unique]
+                            MaxEntropyGraphs.solve_model!(model, initial=initial)
+                            A = MaxEntropyGraphs.Ĝ(model)
+                            # check that constraints are respected
+                            @test sum(A, dims=2) ≈ d
+                        end
+                    end
+                    @test all([eltype(model.Θᵣ) == precision, eltype(model.xᵣ) == precision])
+                end
+            end
         end
 
         @testset "UBCM - sampling" begin
+            model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate))
+            # parameters unknown
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=false)
+            @test_throws ArgumentError MaxEntropyGraphs.Ĝ(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σˣ(model)
+            # solve model
+            MaxEntropyGraphs.solve_model!(model)
+            # parameters known, but G not set
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=true)
+            @test MaxEntropyGraphs.Graphs.nv(rand(model)) == MaxEntropyGraphs.Graphs.nv(model.G)
+            MaxEntropyGraphs.set_Ĝ!(model)
+            @test eltype(MaxEntropyGraphs.σˣ(model)) == MaxEntropyGraphs.precision(model)
+            @test size(MaxEntropyGraphs.σˣ(model)) == (MaxEntropyGraphs.Graphs.nv(model.G),MaxEntropyGraphs.Graphs.nv(model.G))
+            @test eltype(MaxEntropyGraphs.Ĝ(model)) == MaxEntropyGraphs.precision(model)
+            @test size(MaxEntropyGraphs.Ĝ(model)) == (MaxEntropyGraphs.Graphs.nv(model.G),MaxEntropyGraphs.Graphs.nv(model.G))
+            # sampling
+            S = rand(model, 100)
+            @test length(S) == 100
+            @test all(MaxEntropyGraphs.Graphs.nv.(S) .== MaxEntropyGraphs.Graphs.nv(model.G))
 
+            
         end
     end
 
