@@ -5,9 +5,10 @@ Julia module for working with maximum entropy graphs
 """
 module MaxEntropyGraphs
     import Base: show, rand, showerror
-     # for logmessages
-    #import Dates: now, Day, Minute 
+    # for logmessages
     import Printf: @sprintf
+    #import Dates: now, Day, Minute 
+    
 
     # to work with all sorts of graphs
     import Graphs
@@ -16,22 +17,31 @@ module MaxEntropyGraphs
     # to solve the optimization problem
     import Optimization
     import OptimizationOptimJL
-    import NLsolve
     import Zygote
-    import LoopVectorization: @tturbo, @turbo
+    import NLsolve
+    #import NaNMath # returns a NaN instead of a DomainError for some functions. The solver(s) will use the NaN within the error control routines to reject the out of bounds step.
+
+    import Distributions
+    #import LoopVectorization: @tturbo, @turbo  # not for now
 
     # actual source code
     include("utils.jl")
-    include("models.jl")
+    include("Models/models.jl")
+    include("Models/UBCM.jl")
+    include("Models/DBCM.jl")
+    include("Models/BiCM.jl")
+    include("Models/UECM.jl")
 
     ## exports
     # common types
     export AbstractMaxEntropyModel
     # common functions
-    export initial_guess, solve_model!, set_xᵣ!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_yᵣ!
+    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, set_yᵣ!
     # model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
-    export DBCM
+    export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
+    export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
+
 
     #import Distributions
     
