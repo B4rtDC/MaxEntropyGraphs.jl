@@ -73,8 +73,68 @@ function np_unique_clone(x::Vector; sorted::Bool=true)
 end
 
 
+"""
+    log_nan(x::T)
+
+Same as `log(x)`, but returns `NaN` if `x <= 0`. Inspired by `NaNMath.jl` and https://github.com/JuliaMath/NaNMath.jl/issues/63. This methods is prefered
+over the ones from `NaNMath.jl` version because it does not require a foreingcall expression to be evaluated, hence autodiff methods can be used.
+"""
+function log_nan(x::T)::T where {T<:Real}
+    x <= T(0) && return T(NaN)
+    return log(x)
+end
 
 
+
+"""
+    strength(g, T; dir)
+
+Construct the strength vector for the graph `g`, filled with element type `T` and considering edge direction `dir ∈ [:in, :out, :both]` (default is `:out`).
+"""
+function strength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(g); dir::Symbol=:out)
+    if Graphs.is_directed(g)
+        if dir == :out
+            d = vec(sum(g.weights; dims=1))
+        elseif dir == :in
+            d = vec(sum(g.weights; dims=2))
+        elseif dir == :both
+            d = vec(sum(g.weights; dims=1)) + vec(sum(g.weights; dims=2))
+        else
+            throw(DomainError(dir, "invalid argument, only accept :in, :out and :both"))
+        end
+    else
+        d = vec(sum(g.weights; dims=1))
+    end
+    
+    return T.(d)
+end
+
+instrength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(g); dir::Symbol=:in)   = strength(g, T, dir=dir)
+outstrength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(g); dir::Symbol=:out) = strength(g, T, dir=dir)
+
+
+"""
+    strength(g, i, T; dir)
+
+Construct the strength of node `i` for the graph `g`, filled with element type `T` and considering edge direction `dir ∈ [:in, :out, :both]` (default is `:out`).
+"""
+function strength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, i::N, T::DataType=SimpleWeightedGraphs.weighttype(g); dir::Symbol=:out) where N<:Integer
+    if Graphs.is_directed(g)
+        if dir == :out
+            d = vec(sum(g.weights; dims=1))
+        elseif dir == :in
+            d = vec(sum(g.weights; dims=2))
+        elseif dir == :both
+            d = vec(sum(g.weights; dims=1)) + vec(sum(g.weights; dims=2))
+        else
+            throw(DomainError(dir, "invalid argument, only accept :in, :out and :both"))
+        end
+    else
+        d = vec(sum(g.weights; dims=1))
+    end
+    
+    return T.(d)
+end
 
 
 # """
