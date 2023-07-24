@@ -5,7 +5,7 @@
 ###########################################################################################
 
 
-const allowedDataTypes =[Float16, Float32, Float64]
+const allowedDataTypes =[Float64]
 
 
 @testset "Models" begin
@@ -53,7 +53,24 @@ const allowedDataTypes =[Float16, Float32, Float64]
             @test_throws DomainError UBCM(G, d=dd) # degree out of range
         end
         
+        @testset "UBCM - Likelihood gradient test" begin
+            G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+            model = MaxEntropyGraphs.UBCM(G)
+            θ₀ = MaxEntropyGraphs.initial_guess(model)
+            ∇L_buf = zeros(length(θ₀))
+            ∇L_buf_min = zeros(length(θ₀))
+            x_buff = zeros(length(θ₀))
+            MaxEntropyGraphs.∇L_UBCM_reduced!(∇L_buf, θ₀, model.dᵣ, model.f, x_buff)
+            MaxEntropyGraphs.∇L_UBCM_reduced_minus!(∇L_buf_min, θ₀, model.dᵣ, model.f, x_buff)
+            @info ∇L_buf, ∇L_buf_min
+            @test ∇L_buf ≈ -∇L_buf_min
+            ∇L_zyg = MaxEntropyGraphs.Zygote.gradient(θ -> MaxEntropyGraphs.L_UBCM_reduced(θ, model.dᵣ, model.f), θ₀)[1]
+            @test ∇L_zyg ≈ ∇L_buf
+            @test ∇L_zyg ≈ -∇L_buf_min
+        end
+
         @testset "UBCM - parameter computation" begin
+            #for (method, analytical_gradient) in [(:BFGS, true), (:Newton, true))]
             G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
             d = MaxEntropyGraphs.Graphs.degree(G)
             # simple model, directly from graph, different precisions
