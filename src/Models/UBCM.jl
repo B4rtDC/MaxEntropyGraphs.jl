@@ -632,3 +632,5 @@ function solve_model!(m::UBCM{T,N};  # common settings
 
     return m, sol
 end
+
+precision(m::UBCM) = typeof(m).parameters[2]
