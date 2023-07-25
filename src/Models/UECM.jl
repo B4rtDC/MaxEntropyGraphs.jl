@@ -91,14 +91,6 @@ function UECM(G::T; d::Vector=Graphs.degree(G), s::Vector=strength(G), precision
             @warn "The graph is directed, the UECM model is undirected, the directional information will be lost"
         end
 
-        if zero(eltype(d)) ∈ d
-            @warn "The graph has vertices with zero degree, this may lead to convergence issues."
-        end
-
-        if zero(eltype(s)) ∈ s
-            @warn "The graph has vertices with zero strength, this may lead to convergence issues."
-        end
-
         Graphs.nv(G) == 0 ? throw(ArgumentError("The graph is empty")) : nothing
         Graphs.nv(G) == 1 ? throw(ArgumentError("The graph has only one vertex")) : nothing
 
@@ -107,7 +99,14 @@ function UECM(G::T; d::Vector=Graphs.degree(G), s::Vector=strength(G), precision
         length(d) != length(s) ? throw(DimensionMismatch("The dimensions of the degree ($(length(s))) and the strength sequence ($(length(s))) do not match")) : nothing
     end
 
-    # coherence checks specific to the degree sequence
+    # coherence checks specific to the degree/strength sequence
+    if any(iszero, d)
+        @warn "The graph has vertices with zero degree, this may lead to convergence issues."
+    end
+
+    if any(iszero, s)
+        @warn "The graph has vertices with zero strength, this may lead to convergence issues."
+    end
     any(!isinteger, d) ? throw(DomainError("Some of the degree values are not integers, this is not allowed")) : nothing
     any(!isinteger, s) ? throw(DomainError("Some of the strength values are not integers, this is not allowed")) : nothing
     length(d) == 0 ? throw(ArgumentError("The degree sequence is empty")) : nothing
