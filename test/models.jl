@@ -62,7 +62,6 @@ const allowedDataTypes =[Float64]
             x_buff = zeros(length(θ₀))
             MaxEntropyGraphs.∇L_UBCM_reduced!(∇L_buf, θ₀, model.dᵣ, model.f, x_buff)
             MaxEntropyGraphs.∇L_UBCM_reduced_minus!(∇L_buf_min, θ₀, model.dᵣ, model.f, x_buff)
-            @info ∇L_buf, ∇L_buf_min
             @test ∇L_buf ≈ -∇L_buf_min
             ∇L_zyg = MaxEntropyGraphs.Zygote.gradient(θ -> MaxEntropyGraphs.L_UBCM_reduced(θ, model.dᵣ, model.f), θ₀)[1]
             @test ∇L_zyg ≈ ∇L_buf
@@ -79,14 +78,23 @@ const allowedDataTypes =[Float64]
                     model = UBCM(G, precision=precision)
                     @test_throws ArgumentError Ĝ(model)
                     @test_throws ArgumentError σˣ(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.set_xᵣ!(model)
                     @test_throws ArgumentError MaxEntropyGraphs.initial_guess(model, method=:strange)
                     for initial in [:degrees, :random, :degrees_minor, :chung_lu, :uniform] # degrees_minor fails
                         @testset "initial guess: $initial" begin
                             @test length(MaxEntropyGraphs.initial_guess(model, method=initial)) == model.status[:d_unique]
-                            MaxEntropyGraphs.solve_model!(model, initial=initial)
-                            A = MaxEntropyGraphs.Ĝ(model)
-                            # check that constraints are respected
-                            @test sum(A, dims=2) ≈ d
+                            for (method, analytical_gradient) in [(:BFGS, true), (:BFGS, false), (:fixedpoint, false)]
+                                @testset "method: $method, analytical_gradient: $analytical_gradient" begin
+                                    MaxEntropyGraphs.solve_model!(model, initial=initial, method=method, analytical_gradient=analytical_gradient)
+                                    A = MaxEntropyGraphs.Ĝ(model)
+                                    # check that constraints are respected
+                                    @test sum(A, dims=2) ≈ d
+                                end
+                                MaxEntropyGraphs.solve_model!(model, initial=initial)
+                                A = MaxEntropyGraphs.Ĝ(model)
+                                # check that constraints are respected
+                                @test sum(A, dims=2) ≈ d
+                            end
                         end
                     end
                     @test all([eltype(model.Θᵣ) == precision, eltype(model.xᵣ) == precision])
@@ -106,6 +114,7 @@ const allowedDataTypes =[Float64]
             @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=true)
             @test MaxEntropyGraphs.Graphs.nv(rand(model)) == MaxEntropyGraphs.Graphs.nv(model.G)
             MaxEntropyGraphs.set_Ĝ!(model)
+            MaxEntropyGraphs.set_σ!(model)
             @test eltype(MaxEntropyGraphs.σˣ(model)) == MaxEntropyGraphs.precision(model)
             @test size(MaxEntropyGraphs.σˣ(model)) == (MaxEntropyGraphs.Graphs.nv(model.G),MaxEntropyGraphs.Graphs.nv(model.G))
             @test eltype(MaxEntropyGraphs.Ĝ(model)) == MaxEntropyGraphs.precision(model)
@@ -114,8 +123,6 @@ const allowedDataTypes =[Float64]
             S = rand(model, 100)
             @test length(S) == 100
             @test all(MaxEntropyGraphs.Graphs.nv.(S) .== MaxEntropyGraphs.Graphs.nv(model.G))
-
-            
         end
     end
 
