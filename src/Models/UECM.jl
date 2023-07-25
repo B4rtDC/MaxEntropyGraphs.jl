@@ -554,7 +554,7 @@ function solve_model!(m::UECM{T,N};  # common settings
             x_buffer = zeros(N, length(m.dᵣ)); # buffer for x = exp(-α)
             y_buffer = zeros(N, length(m.sᵣ));  # buffer for y = exp(-β)
             # define gradient function for optimisation.jl
-            grad! = (G, θ, p) -> MaxEntropyGraphs.∇L_UECM_reduced_minus!(G, θ, m.dᵣ, m.sᵣ, m.f, x_buffer, y_buffer, length(m.dᵣ));
+            grad! = (G, θ, p) -> ∇L_UECM_reduced_minus!(G, θ, m.dᵣ, m.sᵣ, m.f, x_buffer, y_buffer, length(m.dᵣ));
         end
         # define objective function and its AD method
         f = AD_method ∈ keys(AD_methods) ? Optimization.OptimizationFunction( (θ, p) -> - L_UECM_reduced(θ, m.dᵣ, m.sᵣ, m.f, length(m.dᵣ)),
@@ -564,7 +564,7 @@ function solve_model!(m::UECM{T,N};  # common settings
         prob = Optimization.OptimizationProblem(f, θ₀);
 
         # obtain solution
-        sol = method ∈ keys(optimization_methods)   ? Optimization.solve(prob, optimization_methods[method], abstol=abstol, reltol=reltol)                                                : throw(ArgumentError("The method $(method) is not supported (yet)"))
+        sol = method ∈ keys(optimization_methods) ? Optimization.solve(prob, optimization_methods[method], abstol=abstol, reltol=reltol) : throw(ArgumentError("The method $(method) is not supported (yet)"))
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
             if verbose 
