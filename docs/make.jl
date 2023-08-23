@@ -1,5 +1,5 @@
 using Documenter
-push!(LOAD_PATH, "../src/")
+#push!(LOAD_PATH, joinpath(pwd(),".."))
 using MaxEntropyGraphs
 #using Graphs
 
@@ -11,10 +11,10 @@ makedocs(sitename="MaxEntropyGraphs.jl",
          modules=[MaxEntropyGraphs],
          pages = [
             "Home" => "index.md",
-            "Models" => "models.md",
+            "Models" => Any["./Models/UBCM.md", "./Models/BDCM.md"],
             "Metrics" => Any["exact.md", "simulated.md"],
-            "GPU acceleration" => "GPU.md"#,
-            #"API" => "API.md"
+            "GPU acceleration" => "GPU.md",
+            "API" => "API.md"
          ]
 )
 
@@ -25,6 +25,6 @@ if ci
     @info "Deploying documentation to GitHub"
     deploydocs(
         repo = "github.com/B4rtDC/MaxEntropyGraphs.jl.git",
-        devbranch = "main"
+        devbranch = "2023rework"
         )
 end

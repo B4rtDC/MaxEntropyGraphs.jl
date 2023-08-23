@@ -4,11 +4,7 @@ The different models that are available are described below. Each of these model
 ```@docs
 MaxEntropyGraphs.AbstractMaxEntropyModel
 ```
-## UBCM
-```@docs
-MaxEntropyGraphs.UBCM
-```
-This type can be instantiated with the following methods:
+
 
 ## DBCM
 ```@docs
