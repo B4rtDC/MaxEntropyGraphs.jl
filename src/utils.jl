@@ -42,7 +42,7 @@ function np_unique_clone(x::Vector; sorted::Bool=true)
             push!(seen, x[i])
             push!(unique_x, x[i])
             index[x[i]] = i
-            reverse_index[x[i]] = length(unique_x)
+            reverse_index[x[i]] = length(unique_x) #
             counts[x[i]] = 1
         else
             counts[x[i]] += 1

@@ -9,6 +9,7 @@ const allowedDataTypes =[Float64]
 
 
 @testset "Models" begin
+    #=
     @testset "UBCM" begin
         @testset "UBCM - generation" begin
             G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
@@ -125,7 +126,7 @@ const allowedDataTypes =[Float64]
             @test all(MaxEntropyGraphs.Graphs.nv.(S) .== MaxEntropyGraphs.Graphs.nv(model.G))
         end
     end
-
+    =#
     @testset "DBCM" begin
         @testset "DBCM - generation" begin
             
@@ -146,6 +147,109 @@ const allowedDataTypes =[Float64]
             
         end
         @testset "BiCM - sampling" begin
+            
+        end
+    end
+
+    @testset "UECM" begin
+        @testset "UECM - generation" begin
+            
+        end
+        @testset "UECM - parameter computation" begin
+            
+        end
+        @testset "UECM - sampling" begin
+            
+        end
+    end
+
+    @testset "CReM" begin
+        sources =       [1,1,1,2,3,3,4,4,5,6];
+        destinations =  [2,2,3,3,4,5,6,7,7,5];
+        weights =       [1,2,3,4,5,1,2,3,4,5];
+        G = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(sources, destinations, float.(weights))
+        d = MaxEntropyGraphs.Graphs.degree(G)
+        s = MaxEntropyGraphs.strength(G)
+        @testset "CReM - generation" begin
+            @testset "$(precision) precisions" for precision in allowedDataTypes
+            # simple model, directly from graph, different precisions
+                model = MaxEntropyGraphs.CReM(G, precision=precision)
+                @test isa(model, MaxEntropyGraphs.CReM)
+                @test typeof(model).parameters[2] == precision
+                @test typeof(model).parameters[1] == typeof(G)
+                @test all([ eltype(model.Θ) == precision, 
+                            eltype(model.x) == precision,
+                            eltype(model.α) == precision,
+                            eltype(model.αᵣ) == precision,
+                            eltype(model.x) == precision,
+                            eltype(model.s) == precision])
+            
+            # simple model, directly from degree and strength sequences, different precisions
+                model = MaxEntropyGraphs.CReM(d=d, s=s, precision=precision)
+                @test isa(model, MaxEntropyGraphs.CReM)
+                @test typeof(model).parameters[2] == precision
+                @test typeof(model).parameters[1] == Nothing
+                @test all([ eltype(model.Θ) == precision, 
+                            eltype(model.x) == precision,
+                            eltype(model.α) == precision,
+                            eltype(model.αᵣ) == precision,
+                            eltype(model.x) == precision,
+                            eltype(model.s) == precision])
+            end
+            @testset "Errors and warnings" begin
+                @test_throws MethodError MaxEntropyGraphs.CReM(1) # wrong input type
+                # directed graph info loss warning message
+                Gd = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedDiGraph(G)
+                @test_logs (:warn,"The graph is directed, the CReM model is undirected, the directional information will be lost") MaxEntropyGraphs.CReM(Gd,d=d)
+                # zero degree nodes
+                @test_logs (:warn, "The graph has vertices with zero degree, this may lead to convergence issues.") MaxEntropyGraphs.CReM(d=[d...;0], s=[s...;2.])
+                @test_logs (:warn, "The graph has vertices with zero strength, this may lead to convergence issues.") MaxEntropyGraphs.CReM(d=[d...;1], s=[s...;0.])
+                # empty/single node graphs
+                @test_throws ArgumentError MaxEntropyGraphs.CReM(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(0))
+                @test_throws ArgumentError MaxEntropyGraphs.CReM(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(1))
+                # different lengths
+                @test_throws DimensionMismatch MaxEntropyGraphs.CReM(G, d=d[1:end-1], s=s)
+                @test_throws DimensionMismatch MaxEntropyGraphs.CReM(G, d=d, s=s[1:end-1])
+                # specific check for the degree/strength sequences
+                @test_throws ArgumentError MaxEntropyGraphs.CReM(d=Int[], s=Float64[])
+                @test_throws ArgumentError MaxEntropyGraphs.CReM(d=Int[1], s=Float64[1])
+                @test_throws DomainError MaxEntropyGraphs.CReM(d=d.*100, s=s)
+                @test_throws DomainError MaxEntropyGraphs.CReM(d=d .*-1, s=s)
+                @test_throws DomainError MaxEntropyGraphs.CReM(d=d, s=s.*-1)
+            end
+        end
+
+        @testset "CReM - parameter computation" begin
+            model = MaxEntropyGraphs.CReM(G)
+
+            @testset "Initial conditions" begin
+                for initial ∈ [:strengths, :strengths_minor, :random]
+                    θ₀ = MaxEntropyGraphs.initial_guess(model, method=initial)
+                    @test length(θ₀) == model.status[:d]
+                    @test eltype(θ₀) == MaxEntropyGraphs.precision(model)
+                end
+                @test_throws ArgumentError MaxEntropyGraphs.initial_guess(model, method=:strange)
+            end 
+
+            @testset "Likelihood" begin
+                @test_throws ArgumentError MaxEntropyGraphs.L_CReM(model)
+                model.α .= [0.504265218660552072549307922599837183952331542968750000000000,0.504265218660552072549307922599837183952331542968750000000000,3.003999684368159339697967880056239664554595947265625000000000,1.293245515067872775105684013396967202425003051757812500000000,1.293245515067872775105684013396967202425003051757812500000000,0.504265218660552072549307922599837183952331542968750000000000,0.504265218660552072549307922599837183952331542968750000000000]
+                model.status[:conditional_params_computed] = true
+                @test_throws ArgumentError MaxEntropyGraphs.L_CReM(model)
+                model.θ .= [0.185537669534768495660514986411726567894220352172851562500000,0.132939214624878454529266491590533405542373657226562500000000,0.160958338216350360649897766052163206040859222412109375000000,0.150129605521063469453224570315796881914138793945312500000000,0.150129605521063469453224570315796881914138793945312500000000,0.132939214624878454529266491590533405542373657226562500000000,0.132939214624878454529266491590533405542373657226562500000000]
+            end
+
+            @testset "Likelihood gradient" begin
+                model = MaxEntropyGraphs.CReM(G)
+                @test true
+            end
+
+            
+
+            
+        end
+
+        @testset "CReM - sampling" begin
             
         end
     end

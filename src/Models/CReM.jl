@@ -53,10 +53,6 @@ function CReM(G::T; d::Vector=Graphs.degree(G), s::Vector=strength(G), precision
             @warn "The graph is directed, the CReM model is undirected, the directional information will be lost"
         end
 
-        if zero(eltype(d)) ∈ d
-            @warn "The graph has vertices with zero degree, this may lead to convergence issues."
-        end
-
         Graphs.nv(G) == 0 ? throw(ArgumentError("The graph is empty")) : nothing
         Graphs.nv(G) == 1 ? throw(ArgumentError("The graph has only one vertex")) : nothing
 
@@ -64,6 +60,12 @@ function CReM(G::T; d::Vector=Graphs.degree(G), s::Vector=strength(G), precision
         Graphs.nv(G) != length(s) ? throw(DimensionMismatch("The number of vertices in the graph ($(Graphs.nv(G))) and the length of the strength sequence ($(length(s))) do not match")) : nothing
     end
     # coherence checks specific to the degree/strength sequence
+    if any(iszero, d)
+        @warn "The graph has vertices with zero degree, this may lead to convergence issues."
+    end
+    if any(iszero, s)
+        @warn "The graph has vertices with zero strength, this may lead to convergence issues."
+    end
     length(d) == 0 ? throw(ArgumentError("The degree sequence is empty")) : nothing
     length(d) == 1 ? throw(ArgumentError("The degree sequence has only one degree")) : nothing
     maximum(d) >= length(d) ? throw(DomainError("The maximum degree in the graph is greater or equal to the number of vertices, this is not allowed")) : nothing
@@ -88,7 +90,7 @@ function CReM(G::T; d::Vector=Graphs.degree(G), s::Vector=strength(G), precision
     return CReM{T, precision}(G, Θ, α, αᵣ, x, d, dᵣ, f, s, d_ind, dᵣ_ind, nothing, nothing, status)
 end
 
-CReM(; d::Vector{T}, s::Vector{S}, precision::Type{<:AbstractFloat}=Float64, kwargs...) where {T<:Signed, S<:Real} = UBCM(nothing, d=d, s=s, precision=precision, kwargs...)
+CReM(; d::Vector{T}, s::Vector{S}, precision::Type{<:AbstractFloat}=Float64, kwargs...) where {T<:Signed, S<:Real} = CReM(nothing, d=d, s=s, precision=precision, kwargs...)
 
 """
     L_CReM(θ::Vector, s::Vector, f::Vector)
@@ -372,6 +374,7 @@ function solve_model!(m::CReM{T,N}; # related to CReM
                                     method::Symbol=:fixedpoint,
                                     AD_method::Symbol=:AutoZygote,
                                     analytical_gradient::Bool=false,
+                                    store_adjacency::Bool=false,
                                     # related to UBCM
                                     initial_conditional::Symbol=:degrees,
                                     method_conditional::Symbol=:fixedpoint,
@@ -389,10 +392,67 @@ function solve_model!(m::CReM{T,N}; # related to CReM
     solve_model!(cond_model,initial=initial_conditional, method=method_conditional, 
                             AD_method=AD_method_conditional, analytical_gradient=analytical_gradient_conditional,
                             ftol=ftol, abstol=abstol, reltol=reltol, maxiters=maxiters, verbose=verbose)
+    m.αᵣ .= cond_model.xᵣ
+    m.α .= cond_model.xᵣ[cond_model.dᵣ_ind]
+    m.status[:conditional_params_computed] = true
+    if store_adjacency
+        m.Ĝ = Ĝ(cond_model)
+        m.status[:G_computed] = true
+    end
     
+
     ## Part 2 - CReM compute
     θ₀ = initial_guess(m; method=initial)
-
+    if method ==:fixedpoint
+        # initiate buffers
+        G_buffer = zeros(N, length(θ₀))
+        # define fixed point function
+        FP_model! = m.status[:G_computed] ? (θ::Vector) -> CReM_iter!(θ, m.s, m.Ĝ, G_buffer) : (θ::Vector) -> CReM_iter!(θ, m.s, m.α, G_buffer)
+        # obtain solution
+        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, maxiter=maxiters)
+        if NLsolve.converged(sol)
+            if verbose 
+                @info "Fixed point iteration converged after $(sol.iterations) iterations"
+            end
+            m.θ .= sol.zero;
+            m.status[:params_computed] = true;
+        else
+            throw(ConvergenceError(method, nothing))
+        end
+    else
+        # set gradient
+        if analytical_gradient
+            grad! = m.status[:G_computed] ? (G::Vector,θ::Vector) -> ∇L_CReM_minus!(G, θ, m.s, m.Ĝ) : (G::Vector,θ::Vector) -> ∇L_CReM_minus!(G, θ, m.s, m.α)
+        end
+        # define objective function and its AD method
+        if AD_method ∈ keys(AD_methods)
+            if m.status[:G_computed]
+                # use computed adjacency matrix
+                f = Optimization.OptimizationFunction( (θ::Vector, p) -> - L_CReM(θ, m.s, m.Ĝ), AD_methods[AD_method], grad=analytical_gradient ? grad! : nothing)
+            else
+                # compute fij on the fly
+                f = Optimization.OptimizationFunction( (θ::Vector, p) -> - L_CReM(θ, m.s, m.Gα), AD_methods[AD_method], grad=analytical_gradient ? grad! : nothing)
+            end
+        else
+            throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
+        end
+        prob = Optimization.OptimizationProblem(f, θ₀)
+        
+        # obtain solution
+        sol = method ∈ keys(optimization_methods) ? Optimization.solve(prob, optimization_methods[method], abstol=abstol, reltol=reltol) : throw(ArgumentError("The method $(method) is not supported (yet)"))
+        # check convergence
+        if Optimization.SciMLBase.successful_retcode(sol.retcode)
+            if verbose 
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))\n$(sol.original)"""
+            end
+            m.θ .= sol.u;
+            m.status[:params_computed] = true;
+        else
+            throw(ConvergenceError(method, sol.retcode))
+        end
+    end
 
     return m
 end
+
+precision(m::CReM) = typeof(m).parameters[2]
