@@ -482,6 +482,7 @@ Keyword arguments:
 
 # Examples
 ```jldoctest
+julia> using MaxEntropyGraphs
 # generate a UBCM model from the karate club network
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
 julia> model = MaxEntropyGraphs.UBCM(G);
@@ -535,6 +536,7 @@ Keyword arguments:
 
 # Examples
 ```jldoctest
+julia> using MaxEntropyGraphs
 # generate a UBCM model from the karate club network
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
 julia> model = MaxEntropyGraphs.UBCM(G);

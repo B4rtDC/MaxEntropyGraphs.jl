@@ -30,8 +30,6 @@ The maximum entropy principle is a general principle in statistical mechanics th
 
 In the context of networks, the idea is to specify a set of constraints that capture some of the structural features of the network, such as the degree sequence, the clustering coefficient, or the degree-degree correlations, and then to generate random networks that satisfy those constraints while being as unbiased or as uncertain as possible with respect to other structural features. The resulting null models can be used to test whether the observed structural features of a real-world network are statistically significant or whether they can be explained by chance alone. The principle and its applications are explained in detail in [[1]](#1).
 
-# Models
-All models share a common interface. They can be instantiated either from a substype of an ``AbstractGraph`` of model's constraint vector(s). Please refer to the page of each specific model for more details.
 
 
 _References_

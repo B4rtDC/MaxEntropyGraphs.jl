@@ -1,1 +1,8 @@
 # DCBM
+
+
+
+
+```@docs
+MaxEntropyGraphs.DBCM
+```

@@ -11,8 +11,11 @@ makedocs(sitename="MaxEntropyGraphs.jl",
          modules=[MaxEntropyGraphs],
          pages = [
             "Home" => "index.md",
-            "Models" => Any["./Models/UBCM.md", "./Models/BDCM.md"],
+            "Models" => Any["models.md",
+                            "UBCM" => "models/UBCM.md",
+                            "DBCM" => "models/DBCM.md"],
             "Metrics" => Any["exact.md", "simulated.md"],
+            "Helper functions" => "utils.md",
             "GPU acceleration" => "GPU.md",
             "API" => "API.md"
          ]
