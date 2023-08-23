@@ -43,14 +43,14 @@ Base.length(m::UBCM) = length(m.dᵣ)
 
 
 """
-    UBCM(G::T; precision::N=Float64, kwargs...) where {T<:Graphs.AbstractGraph, N<:Real}
+    UBCM(G::T; d::Vector=Graphs.degree(G), precision::N=Float64, kwargs...) where {T<:Graphs.AbstractGraph, N<:Real}
 
 Constructor function for the `UBCM` type. 
     
-By default and dependng on the graph type `T`, the definition of degree from ``Graphs.jl`` is applied. 
+By default and dependng on the graph type `T`, the definition of degree from `Graphs.jl` is applied. 
 If you want to use a different definition of degree, you can pass a vector of degrees as the second argument.
 If you want to generate a model directly from a degree sequence without an underlying graph , you can simply pass the degree sequence as an argument.
-If you want to work from an adjacency matrix, or edge list, you can use the graph constructors from the ``JuliaGraphs`` ecosystem.
+If you want to work from an adjacency matrix, or edge list, you can use the graph constructors from the `JuliaGraphs` ecosystem.
 
 # Examples     
 ```jldoctest
@@ -61,11 +61,11 @@ julia> model = UBCM(G)
 UBCM{SimpleGraph{Int64}, Float64} (34 vertices, 11 unique degrees, 0.32 compression ratio)
 
 # generating a model directly from a degree sequence
-julia> model = UBCM([4;3;3;3;2])
+julia> model = UBCM(d=[4;3;3;3;2])
 UBCM{Nothing, Float64} (5 vertices, 3 unique degrees, 0.60 compression ratio)
 
 # generating a model directly from a degree sequence with a different precision
-julia> model = UBCM([4;3;3;3;2], precision=Float16)
+julia> model = UBCM(d=[4;3;3;3;2], precision=Float16)
 UBCM{Nothing, Float16} (5 vertices, 3 unique degrees, 0.60 compression ratio)
 
 # generating a model from an adjacency matrix
