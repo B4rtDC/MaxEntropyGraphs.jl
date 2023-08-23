@@ -77,7 +77,16 @@ end
     log_nan(x::T)
 
 Same as `log(x)`, but returns `NaN` if `x <= 0`. Inspired by `NaNMath.jl` and https://github.com/JuliaMath/NaNMath.jl/issues/63. This methods is prefered
-over the ones from `NaNMath.jl` version because it does not require a foreingcall expression to be evaluated, hence autodiff methods can be used.
+over the ones from `NaNMath.jl` version because it does not require a foreign call expression to be evaluated, hence autodiff methods can be used with this.
+
+# Examples     
+```jldoctest
+julia> MaxEntropyGraphs.log_nan(10.)
+2.302585092994046
+
+julia> MaxEntropyGraphs.log_nan(-10.)
+NaN
+```
 """
 function log_nan(x::T)::T where {T<:Real}
     x <= T(0) && return T(NaN)
