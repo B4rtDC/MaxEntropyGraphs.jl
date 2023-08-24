@@ -54,13 +54,13 @@ If you want to work from an adjacency matrix, or edge list, you can use the grap
 
 # Examples     
 ```jldoctest
-
 # generating a model from a graph
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
 {34, 78} undirected simple Int64 graph
 
 julia> model = UBCM(G)
 UBCM{SimpleGraph{Int64}, Float64} (34 vertices, 11 unique degrees, 0.32 compression ratio)
+```
 
 # generating a model directly from a degree sequence
 julia> model = UBCM(d=[4;3;3;3;2])
@@ -87,7 +87,7 @@ julia> G = MaxEntropyGraphs.Graphs.SimpleGraphFromIterator(edgelist)
 {3, 3} undirected simple Int64 graph
 julia> model = UBCM(G)
 UBCM{SimpleGraph{Int64}, Float64} (3 vertices, 1 unique degrees, 0.33 compression ratio)
-```
+
 
 See also [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree), [`SimpleWeightedGraphs.inneighbors`](https://juliagraphs.org/SimpleWeightedGraphs.jl/stable/api/#Graphs.inneighbors-Tuple{SimpleWeightedDiGraph,%20Integer}).
 """
