@@ -21,10 +21,12 @@ Returns a tuple of:
 # Examples     
 ```jldoctest
 julia> x = [1;2;2;4;1];
+
 julia> np_unique_clone(x)
 ([1, 2, 4], [1, 2, 4], [1, 2, 2, 3, 1], [2, 2, 1])
 
 julia> x = [10;9;9;8];
+
 julia> np_unique_clone(x, sorted=true)
 ([8, 9, 10], [4, 2, 1], [3, 2, 2, 1], [1, 2, 1]
 ```
