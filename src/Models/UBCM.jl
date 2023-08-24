@@ -71,8 +71,9 @@ julia> model = UBCM(d=[4;3;3;3;2], precision=Float16)
 UBCM{Nothing, Float16} (5 vertices, 3 unique degrees, 0.60 compression ratio)
 ```
 ```jldoctest
-## generating a model from an adjacency matrix
+# generating a model from an adjacency matrix
 julia> A = [0 1 1;1 0 0;1 0 0];
+
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(A)
 {3, 2} undirected simple Int64 graph
 julia> model = UBCM(G)
@@ -81,7 +82,9 @@ UBCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (3 vertices, 2 unique degr
 ```jldoctest
 # generating a model from an edge list
 julia> E = [(1,2),(1,3),(2,3)];
+
 julia> edgelist = [MaxEntropyGraphs.Graphs.Edge(x,y) for (x,y) in E];
+
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphFromIterator(edgelist)
 {3, 3} undirected simple Int64 graph
 julia> model = UBCM(G)
