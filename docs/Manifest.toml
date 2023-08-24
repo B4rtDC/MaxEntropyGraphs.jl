@@ -293,9 +293,9 @@ uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 
 [[deps.DiffEqBase]]
 deps = ["ArrayInterface", "ChainRulesCore", "DataStructures", "DocStringExtensions", "EnumX", "FastBroadcast", "ForwardDiff", "FunctionWrappers", "FunctionWrappersWrappers", "LinearAlgebra", "Logging", "Markdown", "MuladdMacro", "Parameters", "PreallocationTools", "Printf", "RecursiveArrayTools", "Reexport", "Requires", "SciMLBase", "SciMLOperators", "Setfield", "SparseArrays", "Static", "StaticArraysCore", "Statistics", "Tricks", "TruncatedStacktraces", "ZygoteRules"]
-git-tree-sha1 = "5f9126d4fb0a114ef122610a902f23736e90e93c"
+git-tree-sha1 = "df8638dbfa03d1b336c410e23a9dfbf89cb53937"
 uuid = "2b5f629d-d688-5b77-993f-72d75c75574e"
-version = "6.128.1"
+version = "6.128.2"
 
     [deps.DiffEqBase.extensions]
     DiffEqBaseDistributionsExt = "Distributions"
@@ -321,9 +321,9 @@ version = "6.128.1"
 
 [[deps.DiffEqCallbacks]]
 deps = ["DataStructures", "DiffEqBase", "ForwardDiff", "LinearAlgebra", "Markdown", "NLsolve", "Parameters", "RecipesBase", "RecursiveArrayTools", "SciMLBase", "StaticArraysCore"]
-git-tree-sha1 = "2afa3ca067b78cad118ede8736e475bc0a08724a"
+git-tree-sha1 = "b93afdf0f82246e75a5d65750eca6b275df08e1c"
 uuid = "459566f4-90b8-5000-8ac3-15dfb0a30def"
-version = "2.28.0"
+version = "2.29.0"
 
     [deps.DiffEqCallbacks.weakdeps]
     OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
@@ -453,10 +453,15 @@ version = "1.16.1"
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
 [[deps.FillArrays]]
-deps = ["LinearAlgebra", "Random", "SparseArrays", "Statistics"]
-git-tree-sha1 = "048dd3d82558759476cff9cff999219216932a08"
+deps = ["LinearAlgebra", "Random"]
+git-tree-sha1 = "a20eaa3ad64254c61eeb5f230d9306e937405434"
 uuid = "1a297f60-69ca-5386-bcde-b61e274b549b"
-version = "1.6.0"
+version = "1.6.1"
+weakdeps = ["SparseArrays", "Statistics"]
+
+    [deps.FillArrays.extensions]
+    FillArraysSparseArraysExt = "SparseArrays"
+    FillArraysStatisticsExt = "Statistics"
 
 [[deps.FiniteDiff]]
 deps = ["ArrayInterface", "LinearAlgebra", "Requires", "Setfield", "SparseArrays"]
@@ -880,9 +885,9 @@ uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 
 [[deps.LinearSolve]]
 deps = ["ArrayInterface", "DocStringExtensions", "EnumX", "FastLapackInterface", "GPUArraysCore", "InteractiveUtils", "KLU", "Krylov", "Libdl", "LinearAlgebra", "PrecompileTools", "Preferences", "RecursiveFactorization", "Reexport", "Requires", "SciMLBase", "SciMLOperators", "Setfield", "SparseArrays", "Sparspak", "SuiteSparse", "UnPack"]
-git-tree-sha1 = "f746a5b9522815bf098049f9cbfbfcae53f29450"
+git-tree-sha1 = "69cbd612e6e67ba2f8121bc8725bc9d04d803599"
 uuid = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
-version = "2.5.0"
+version = "2.5.1"
 
     [deps.LinearSolve.extensions]
     LinearSolveCUDAExt = "CUDA"
@@ -890,6 +895,7 @@ version = "2.5.0"
     LinearSolveIterativeSolversExt = "IterativeSolvers"
     LinearSolveKrylovKitExt = "KrylovKit"
     LinearSolveMKLExt = "MKL_jll"
+    LinearSolveMetalExt = "Metal"
     LinearSolvePardisoExt = "Pardiso"
 
     [deps.LinearSolve.weakdeps]
@@ -898,6 +904,7 @@ version = "2.5.0"
     IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
     KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
     MKL_jll = "856f044c-d86e-5d09-b602-aeab76dc8ba7"
+    Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
     Pardiso = "46dd5b70-b6fb-5a00-ae2d-e8fea33afaf2"
 
 [[deps.LogExpFunctions]]
@@ -976,7 +983,7 @@ version = "0.7.8"
 
 [[deps.MaxEntropyGraphs]]
 deps = ["BenchmarkTools", "Dates", "Distributions", "FiniteDiff", "ForwardDiff", "Graphs", "Latexify", "Logging", "LoopVectorization", "ModelingToolkit", "NLsolve", "Optimization", "OptimizationNLopt", "OptimizationOptimJL", "PProf", "Printf", "Profile", "ReverseDiff", "Revise", "SimpleWeightedGraphs", "Symbolics", "Tracker", "Zygote"]
-git-tree-sha1 = "d17c45d14b588238b2fe83e8b80375640c830f4a"
+git-tree-sha1 = "d3370c2c8d495ec44a1b3d8ee66ec7ff345530b2"
 repo-rev = "2023rework"
 repo-url = "/Users/bart/Documents/Stack/PhD/Coding (experiments)/MaxEntropyGraphs.jl"
 uuid = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"
@@ -1120,10 +1127,10 @@ uuid = "3bd65402-5787-11e9-1adc-39752487f4e2"
 version = "0.2.20"
 
 [[deps.Optimization]]
-deps = ["ADTypes", "ArrayInterface", "ConsoleProgressMonitor", "DocStringExtensions", "LinearAlgebra", "Logging", "LoggingExtras", "Pkg", "Printf", "ProgressLogging", "Reexport", "Requires", "SciMLBase", "SparseArrays", "TerminalLoggers"]
-git-tree-sha1 = "80005bc7d96d4d00e56b8a58c5240a35bd638d4a"
+deps = ["ADTypes", "ArrayInterface", "ConsoleProgressMonitor", "DocStringExtensions", "LinearAlgebra", "Logging", "LoggingExtras", "Pkg", "Printf", "ProgressLogging", "Reexport", "Requires", "SciMLBase", "SparseArrays", "Symbolics", "TerminalLoggers"]
+git-tree-sha1 = "bf644c4b05ea7eb6fee7f25ebd45ff95ae960470"
 uuid = "7f7a1694-90dd-40f0-9382-eb1efda571ba"
-version = "3.15.2"
+version = "3.16.0"
 
     [deps.Optimization.extensions]
     OptimizationEnzymeExt = "Enzyme"
@@ -1131,6 +1138,8 @@ version = "3.15.2"
     OptimizationForwarddiffExt = "ForwardDiff"
     OptimizationMTKExt = "ModelingToolkit"
     OptimizationReversediffExt = "ReverseDiff"
+    OptimizationSparseFinitediffExt = ["SparseDiffTools", "FiniteDiff"]
+    OptimizationSparseForwarddiffExt = ["SparseDiffTools", "ForwardDiff"]
     OptimizationTrackerExt = "Tracker"
     OptimizationZygoteExt = "Zygote"
 
@@ -1140,6 +1149,7 @@ version = "3.15.2"
     ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
     ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
     ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
+    SparseDiffTools = "47a9eef4-7e08-11e9-0b38-333d64bd3804"
     Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
     Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 

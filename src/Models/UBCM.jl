@@ -206,7 +206,7 @@ The arguments of the function are:
 julia> G = Graphs.SimpleGraphs.smallgraph(:karate);
 julia> model = UBCM(G);
 julia> ∇L = zeros(Real, length(model.Θᵣ);
-juliaW x  = zeros(Real, length(model.Θᵣ);
+julia> x  = zeros(Real, length(model.Θᵣ);
 julia> ∇model_fun! = θ -> ∇L_UBCM_reduced!(θ::AbstractVector, K, F, ∇L, x);
 julia> ∇model_fun!(model.Θᵣ)
 # Use within optimisation.jl framework:
