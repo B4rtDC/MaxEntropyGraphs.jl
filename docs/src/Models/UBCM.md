@@ -1,21 +1,13 @@
 ## Description
 The Undirected Binary Configuration Model is a maximum-entropy null model for undirected networks. It is based on the idea of fixing the degree sequence of the network, i.e., the number of edges incident to each node, and then randomly rewiring the edges while preserving the degree sequence. The model assumes that the edges are unweighted and that the network is simple, i.e., it has no self-loops or multiple edges between the same pair of nodes. 
 
-```@docs
-UBCM
-```
 
 ## Creation
-```@docs
-UBCM(::T) where {T}
-```
+
 ## Obtaining the parameters
 
 ## Sampling the ensemble
-```@docs
-rand(::UBCM)
-rand(::UBCM, ::Int)
-```
+
 
 
 _References_

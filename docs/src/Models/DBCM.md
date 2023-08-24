@@ -3,6 +3,3 @@
 
 
 
-```@docs
-MaxEntropyGraphs.DBCM
-```

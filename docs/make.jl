@@ -1,9 +1,9 @@
 using Documenter
 #push!(LOAD_PATH, joinpath(pwd(),".."))
 using MaxEntropyGraphs
-Graphs = MaxEntropyGraphs.Graphs
+#Graphs = MaxEntropyGraphs.Graphs
 
-DocMeta.setdocmeta!(MaxEntropyGraphs, :DocTestSetup, :(using MaxEntropyGraphs); recursive=true)
+#DocMeta.setdocmeta!(MaxEntropyGraphs, :DocTestSetup, :(using MaxEntropyGraphs); recursive=true)
 #include("../src/MaxEntropyGraphs.jl")
 #using Graphs
 
