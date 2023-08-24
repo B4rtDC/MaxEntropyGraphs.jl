@@ -148,7 +148,7 @@ The function returns the log-likelihood of the reduced model. For the optimisati
 generate an anonymous function associated with a specific model.
 
 # Examples
-```jldoctest
+```julia-repl
 # Generic use:
 julia> θ = [1.0, 2.0, 3.0, 4.0, 5.0];
 julia> K = [1, 2, 3, 4, 5];
@@ -205,7 +205,7 @@ The arguments of the function are:
     - `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-θᵢ) )
 
 # Examples
-```jldoctest
+```julia-repl
 # Explicit use with UBCM model:
 julia> G = Graphs.SimpleGraphs.smallgraph(:karate);
 julia> model = UBCM(G);
@@ -289,7 +289,7 @@ The arguments of the function are:
 
 
 # Examples
-```jldoctest
+```julia-repl
 # Use with UBCM model:
 julia> G = Graphs.SimpleGraphs.smallgraph(:karate);
 julia> model = UBCM(G);
@@ -485,7 +485,7 @@ Keyword arguments:
   recommended to not precompute the expected adjacency matrix to limit memory pressure.
 
 # Examples
-```jldoctest
+```julia-repl
 julia> using MaxEntropyGraphs
 # generate a UBCM model from the karate club network
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
@@ -539,7 +539,7 @@ Keyword arguments:
   recommended to not precompute the expected adjacency matrix to limit memory pressure.
 
 # Examples
-```jldoctest
+```julia-repl
 julia> using MaxEntropyGraphs
 ## generate a UBCM model from the karate club network
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
