@@ -54,23 +54,22 @@ If you want to work from an adjacency matrix, or edge list, you can use the grap
 
 # Examples     
 ```jldoctest
-# generating a model from a graph
+## generating a model from a graph
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
 {34, 78} undirected simple Int64 graph
-
 julia> model = UBCM(G)
 UBCM{SimpleGraph{Int64}, Float64} (34 vertices, 11 unique degrees, 0.32 compression ratio)
 ```
-
-# generating a model directly from a degree sequence
+```jldoctest
+## generating a model directly from a degree sequence
 julia> model = UBCM(d=[4;3;3;3;2])
 UBCM{Nothing, Float64} (5 vertices, 3 unique degrees, 0.60 compression ratio)
-
-# generating a model directly from a degree sequence with a different precision
+```
+## generating a model directly from a degree sequence with a different precision
 julia> model = UBCM(d=[4;3;3;3;2], precision=Float16)
 UBCM{Nothing, Float16} (5 vertices, 3 unique degrees, 0.60 compression ratio)
 
-# generating a model from an adjacency matrix
+## generating a model from an adjacency matrix
 julia> A = [0 1 1;1 0 0;1 0 0];
 
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(A)
@@ -542,10 +541,10 @@ Keyword arguments:
 # Examples
 ```jldoctest
 julia> using MaxEntropyGraphs
-# generate a UBCM model from the karate club network
+## generate a UBCM model from the karate club network
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
 julia> model = MaxEntropyGraphs.UBCM(G);
-# compute the maximum likelihood parameters
+## compute the maximum likelihood parameters
 using NLsolve
 x_buffer = zeros(length(model.dᵣ));G_buffer = zeros(length(model.dᵣ));
 FP_model! = (θ::Vector) -> MaxEntropyGraphs.UBCM_reduced_iter!(θ, model.dᵣ, model.f, x_buffer, G_buffer);

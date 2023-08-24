@@ -28,7 +28,7 @@ julia> np_unique_clone(x)
 julia> x = [10;9;9;8];
 
 julia> np_unique_clone(x, sorted=true)
-([8, 9, 10], [4, 2, 1], [3, 2, 2, 1], [1, 2, 1]
+([8, 9, 10], [4, 2, 1], [3, 2, 2, 1], [1, 2, 1])
 ```
 """
 function np_unique_clone(x::Vector; sorted::Bool=true)
