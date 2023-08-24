@@ -1,6 +1,10 @@
 using Documenter
 #push!(LOAD_PATH, joinpath(pwd(),".."))
 using MaxEntropyGraphs
+Graphs = MaxEntropyGraphs.Graphs
+
+DocMeta.setdocmeta!(MaxEntropyGraphs, :DocTestSetup, :(using MaxEntropyGraphs); recursive=true)
+#include("../src/MaxEntropyGraphs.jl")
 #using Graphs
 
 ci = get(ENV, "CI", "") == "true"
@@ -13,12 +17,14 @@ makedocs(sitename="MaxEntropyGraphs.jl",
             "Home" => "index.md",
             "Models" => Any["models.md",
                             "UBCM" => "models/UBCM.md",
-                            "DBCM" => "models/DBCM.md"],
+                            #"DBCM" => "models/DBCM.md"
+                            ],
             "Metrics" => Any["exact.md", "simulated.md"],
             "Helper functions" => "utils.md",
             "GPU acceleration" => "GPU.md",
             "API" => "API.md"
-         ]
+         ],
+         doctest=false
 )
 
 # Documenter can also automatically deploy documentation to gh-pages.

@@ -6,12 +6,15 @@ UBCM
 ```
 
 ## Creation
-
+```@docs
+UBCM(::T) where {T}
+```
 ## Obtaining the parameters
 
 ## Sampling the ensemble
 ```@docs
 rand(::UBCM)
+rand(::UBCM, ::Int)
 ```
 
 

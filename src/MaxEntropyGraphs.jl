@@ -28,22 +28,22 @@ module MaxEntropyGraphs
     include("utils.jl")
     include("Models/models.jl")
     include("Models/UBCM.jl")
-    include("Models/DBCM.jl")
-    include("Models/BiCM.jl")
-    include("Models/UECM.jl")
-    include("Models/CReM.jl")
+    #include("Models/DBCM.jl")
+    #include("Models/BiCM.jl")
+    #include("Models/UECM.jl")
+    #include("Models/CReM.jl")
 
     ## exports
     # common types
     export AbstractMaxEntropyModel
     # common functions
-    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, set_yᵣ!
+    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!#, set_yᵣ!
     # utils 
     export np_unique_clone
     # model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
-    export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
-    export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
+    #export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
+    #export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
 
 
     #import Distributions
