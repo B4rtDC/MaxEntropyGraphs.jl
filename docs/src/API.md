@@ -2,6 +2,7 @@
 ## Global
 ```@docs
 MaxEntropyGraphs
+AbstractMaxEntropyModel
 MaxEntropyGraphs.ConvergenceError
 MaxEntropyGraphs.strength
 ```

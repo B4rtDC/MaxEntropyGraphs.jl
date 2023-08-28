@@ -1,14 +1,15 @@
 using Documenter
 #push!(LOAD_PATH, joinpath(pwd(),".."))
 using MaxEntropyGraphs
-#Graphs = MaxEntropyGraphs.Graphs
 
-#DocMeta.setdocmeta!(MaxEntropyGraphs, :DocTestSetup, :(using MaxEntropyGraphs); recursive=true)
-#include("../src/MaxEntropyGraphs.jl")
-#using Graphs
+# to give all docstrings access to the package, we need to import it
+DocMeta.setdocmeta!(MaxEntropyGraphs, :DocTestSetup, :(using MaxEntropyGraphs); recursive=true)
 
+
+# check if we are running on CI
 ci = get(ENV, "CI", "") == "true"
 
+# makedocs will run all docstrings in the package
 makedocs(sitename="MaxEntropyGraphs.jl",
          authors="Bart De Clerck",
          format = Documenter.HTML(prettyurls = ci),

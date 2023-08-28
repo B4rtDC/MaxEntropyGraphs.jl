@@ -2,34 +2,55 @@
 [![codecov.io](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl/coverage.svg?branch=main)](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl?branch=2023rework)
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://B4rtDC.github.io/MaxEntropyGraphs.jl/dev/)
 
-# MaxEntropyGraphs.jl
-A package to work with maximum entropy networks in the Julia ecosystem. The functionality of this package is heavily inspired by the [NEMtropy](https://github.com/nicoloval/NEMtropy) package for Python, but has been adapted to the Julia ecosystem.
+
+# MaxEntropyGraphs
+The goal of the *MaxEntropyGraphs.jl* package is to group the various maximum-entropy null models for network randomization and make them available to the Julia community in a single package. This work was in part inspired by the [Maximum Entropy Hub](https://meh.imtlucca.it), but unlike the latter, this package works in an integrated way with the exisiting Julia ecosystem for handling graphs, optimization tools and numerical solvers and groups all models in a single framework.
+
+The package provides the following functionalities:
+* Computing the likelihood maximizing parameters for a broad set of network models (cf. `Models` section of the documentation).
+* Sampling of networks from a network ensemble once the parameters have been computed.
+* Analytically computing ensemble averages and their standard deviations (for a subset of models).
+* Running motif based analysis (for a subset of models).
+* Bipartite network projections with statistical significance analysis (for a subset of models).
+
+Each network models can be solved in different ways, with a fixed-point method typically being the fastest and a Newton-based method being the slowest. Depending on the complexity of the network model, some solvers might not always converge.
+
 
 ### Table of contents
 * [Installation](#installation)
-* [Differences with the NEMtropy package](#differences-with-the-nemtropy-package)
-* [Available models](#available-models)
 * [Example usage](#example-usage)
-
+* [Available models](#available-models)
+* 
 
 ## Installation
-Assuming that you already have Julia correctly installed, it suffices to import MaxEntropyGraphs.jl in the standard way:
+Assuming that you already have Julia correctly installed, installation is straightforward. 
+It suffices to import MaxEntropyGraphs.jl in the standard way:
 ```julia
 using Pkg
 Pkg.add("MaxEntropyGraphs")
 ```
+or enter the Pkg mode by hitting ```]```, and then run the following command:
+```Julia
+pkg> add MaxEntropyGraphs
+```
 
-## Differences and similarities with the NEMtropy package
-* We use the [JuliaGraphs](https://juliagraphs.org/) ecosystem for everything network related, whereas NEMtropy requires you to work with degree sequences, adjacency matrices or edge lists. These option are also available, either directly (in the case of degree sequences) or indirectly (by passing through the JuliaGraphs ecosystem).
-* To obtain the maximum likelihood parameters of a model we use either:
-    - the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package (this maximises the loglikelihood of the networks ensemble). Working this way uses automated differentiation, but explicit non-allocating gradient functions are also provided for the different models.
-    - [NLsolve.jl](https://github.com/JuliaNLSolvers/NLsolve.jl#anderson-acceleration)'s Anderson acceleration for the fixed point methods proposed in [[4]](#4) (cf. documentation/examples). The iterative methods are non-allocating, so they are orders of magnitude faster than the Python implementation.
-* We have also maintained the different options for the initial values for each method (cf. `initial_guess(::AbstractMaxEntropyModel)`).
-* By making use of the automatic differentiation capabilities of Julia, we can:
-    - approximation the gradient of the likelihood function of the graphs
-    - compute the gradient of any metric with respect to its adjacency matrix without having to compute these by hand and implement the partial derivative for each possible metric (cf. examples for more details on this).
-* For both the models and the computing functions we make a clear distinction between the likelihood maximising paramers and the variable substitution (e.g. $\theta_i \leftrightarrow x_i = e^{-\theta_i}$ for the UBCM). Doing so makes the code more readable because it is closer to the mathematical formulation.
-* Sampling from an `<:AbstractMaxEntropyModel` will generate a corresponding subtype of  `<:AbstractGraph` from the [JuliaGraphs](https://juliagraphs.org/) ecosystem. The methods that are available in `Graphs.jl`, `SimpleWeightedGraphs` etc. have been extended for the different maximum entropy models wherever applicable. 
+## Example usage
+More detailed information is available in the documentation and some demos are available in the examples subfolder.
+```julia
+using Graphs
+using MaxEntropyGraphs
+# generate a simple graph
+G = smallgraph(:karate)
+# generate a model
+model = UBCM(G)
+# solve the model
+solve_model!(model)
+# generate 100 random instances from the ensemble
+G_sample = rand(model, 100)
+```
+
+## Citing
+
 
 ## Available models
 `MaxEntropyGraphs.jl` is intended to do *network randomization*. The specific kind of network to randomize and the properties to preserve defines the model you need. 
@@ -84,19 +105,7 @@ The checklists below indicate the status of each model that is currently availab
 
 
 
-## Example usage
-More detailed information is available in the documentation and some demos are available in the examples subfolder.
-```julia
-using MaxEntropyGraphs
-# generate a simple graph
-G = NEMTROPY.Graphs.smallgraph(:karate)
-# generate a model
-model = UBCM(G)
-# solve the model
-solve_model!(model)
-# generate 100 random instances from the ensemble
-G_sample = rand(model, 100)
-```
+
 
 
 
