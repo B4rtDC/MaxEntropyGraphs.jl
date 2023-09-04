@@ -15,8 +15,8 @@ The Undirected Binary Configuration Model is a maximum-entropy null model for un
 
 ```math
 \begin{aligned}
-Constraints  &= 4 \pi \rho \\
-Factorized graph probability  &= 0 \\
+\text{Constraints}  &= 4 \pi \rho \\
+\text{Factorized graph probability}  &= 0 \\
 \nabla\times\mathbf{E} &= - \frac{1}{c} \frac{\partial\mathbf{B}}{\partial t} \\
 \nabla\times\mathbf{B} &= - \frac{1}{c} \left(4 \pi \mathbf{J} + \frac{\partial\mathbf{E}}{\partial t} \right)
 \end{aligned}
