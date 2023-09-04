@@ -195,8 +195,7 @@ julia> model = UBCM(G);
 julia> model_fun = θ -> L_UBCM_reduced(θ, model.dᵣ, model.f)
 
 julia> model_fun(initial_guess(model));
-
-
+#1 (generic function with 1 method)
 ```
 
 
@@ -241,7 +240,7 @@ julia> ∇model_fun! = θ -> ∇L_UBCM_reduced!(∇L, θ, model.dᵣ, model.f, x
 julia> ∇model_fun!(model.Θᵣ);
 
 ```
-```julia-repl
+```jldoctest
 # Use within optimisation.jl framework:
 julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 
