@@ -55,6 +55,11 @@ solve_model!(model)
 rand(model, 10)
 ```
 
+## Model comparison
+```julia
+# compute the AIC  
+AIC(model)
+```
 
 _References_
 

@@ -6,8 +6,10 @@ All models share a common interface:
 * The parameters of a model can be computed with ```solve_model!```.
 * The expected adjacency matrix can be obtained with ```Ĝ```, where applicable the weights can be obtained with ```Ŵ```.
 * A random network can be sampled from the ensemble with ```rand```
-Please refer to the page of each specific model for more details.
+* Information criteria are available to allow for model compairison through the Akaike Information Criterium (```AIC```) and the Bayesian Information Criterion (```BIC```).
 
+
+Please refer to the page of each specific model for more details.
 
 ## Solution methods
 Computing the parameters of a model can be done with different approaches. Either by running an optimisation algorithm on the Loglikelihood of the model (and thus implicitely solving a system of equations for the gradient of the loglikelihood of the model) [[1]](#1) or by using a fixed point approach [[2]](#2). In both cases, we have also included the acceleration method that was proposed in [[2]](#2) for nodes sharing the same (pair of) constraints.

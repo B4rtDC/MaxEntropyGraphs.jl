@@ -151,18 +151,27 @@ The function returns the log-likelihood of the reduced model. For the optimisati
 generate an anonymous function associated with a specific model.
 
 # Examples
-```julia-repl
+```jldoctest
 # Generic use:
 julia> θ = [1.0, 2.0, 3.0, 4.0, 5.0];
-julia> K = [1, 2, 3, 4, 5];
-julia> F = [1, 2, 3, 4, 5];
-julia> L_UBCM_reduced(θ, K, F)
 
+julia> K = [1, 2, 3, 4, 5];
+
+julia> F = [1, 2, 3, 4, 5];
+
+julia> L_UBCM_reduced(θ, K, F)
+-225.3065566905141
+```
+```jldoctest
 # Use with UBCM model:
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
+
 julia> model = UBCM(G);
+
 julia> model_fun = θ -> L_UBCM_reduced(θ, model.dᵣ, model.f)
+
 julia> model_fun(model.Θᵣ)
+-388.8555682941297
 ```
 """
 function L_UBCM_reduced(θ::Vector, K::Vector, F::Vector)
@@ -188,9 +197,16 @@ end
 
 Return the log-likelihood of the UBCM model `m` based on the computed maximum likelihood parameters.
 
-TO DO: include check for parameters computed
+See also [`L_UBCM_reduced(::Vector, ::Vector, ::Vector)`](@ref)
 """
-L_UBCM_reduced(m::UBCM) = L_UBCM_reduced(m.θᵣ, m.dᵣ, m.f)
+function L_UBCM_reduced(m::UBCM) 
+    if m.status[:params_computed]
+        return L_UBCM_reduced(m.Θᵣ, m.dᵣ, m.f)
+    else
+        throw(ArgumentError("The parameters have not been computed yet"))
+    end
+    return L_UBCM_reduced(m.θᵣ, m.dᵣ, m.f)
+end
 
 """
     ∇L_UBCM_reduced!( ∇L::Vector, θ::Vector, K::Vector, F::Vector, x::Vector)
