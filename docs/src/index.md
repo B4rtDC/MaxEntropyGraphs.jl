@@ -34,38 +34,49 @@ When applied to networks, we can use this principle for the construction of an e
 
 The idea is to specify a set of constraints that capture some of the structural features of the network, such as the degree sequence, the clustering coefficient, or the degree-degree correlations, and then to generate random networks that satisfy those constraints while being as unbiased or as uncertain as possible with respect to other structural features. The resulting null models can be used to test whether the observed structural features of a real-world network are statistically significant or whether they can be explained by chance alone. 
 The principle and its applications are explained in detail in [[1]](#1). Mathematically speaking, we want to maximize the Shannon entropy $S$ for the canonical ensemble $\mathcal{G}$ of graphs $G$:
+
 $$
 \mathcal{S} = - \sum_{G \in \mathcal{G}} P(G) \ln P(G) \text{ with } \sum_{G \in \mathcal{G}} P(G) = 1
 $$
+
 under a given set of constraints 
+
 $$
 C(G)
 $$
 
 We thus consider an ensemble of graphs $\mathcal{G}$ constrained by $C(G)$, where $C(G)$ is based on an observed network $G^{*}$ with its adjacency matrix $A^{*}$. 
 The constrainst are imposed on average (canonical ensemble), i.e. $\langle C \rangle = C^{*}$, which in terms of the probability of the ensemble leads to the following:
+
 $$
 \langle C \rangle = \sum_{G \in \mathcal{G}} C(G) P(G) = C^{*}
 $$
 
 This optimisation problem can solved by introducing a set of Langrange multipliers $\Theta$ with the same size as the number of constraints, leading to:
+
 $$
 P(G | \Theta) = \frac{e^{-H(G,\Theta)}}{Z(\Theta)}
 $$
+
 where 
+
 $$
 H(G,\Theta) = \Theta    \cdot C(G)
 $$
+
 is the graph Hamiltonian and
 $$
+
 Z(\Theta) = \sum_{G \in \mathcal{G}} e^{-H(G,\Theta)}
 $$
+
 is the partition function. 
 
 
 
 For a given choice of the constraints $C^{*}$, the maximum-entropy graph ensemble representing the observed network $G^{*}$ is obtained by 
 maximising the log-likelihood $\mathcal{L}$ defined as
+
 $$
 \mathcal{L}(\Theta) \equiv \ln P(G | \Theta) = -H(G^{*},\Theta) - \ln Z(\Theta)
 $$
