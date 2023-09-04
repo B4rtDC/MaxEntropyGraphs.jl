@@ -13,7 +13,9 @@ The package provides the following functionalities:
 
 Each network models can be solved in different ways, with a fixed-point method typically being the fastest and a Newton-based method being the slowest. Depending on the complexity of the network model, some solvers might not always converge.
 
-*Note:* in allignment with the underlying theoretical framework, the graphs in the ensemble all have exactly the same number of nodes as the original network.*
+Common usage for each model is given in the [Models](./models.html) section. For additional use cases, check the specific model page or the API reference.
+
+*Note:* in allignment with the underlying theoretical framework, the graphs in the ensemble all have exactly the same number of nodes as the original network.
 
 # Installation
 Assuming that you already have Julia correctly installed, installation is straightforward. 
@@ -84,8 +86,7 @@ maximising the log-likelihood $\mathcal{L}$ defined as
 
 *Note:* An adequate choice of the set of constraints can allow the probability coefficient $P(G)$ te be written in function of the adjacency matrix, so that a probability coefficient $P(A)$ can be assigned to every adjacency matrix in the ensemble. In that case, $\vec{C}(G)$ can also be written in function of the adjacency matrix $\vec{C}(A)$. 
 
-# Simple 
-Dhis work was 
+
 
 # Citing MaxEntropyGraphs
 When using this package for your scientific research please consider citing:
