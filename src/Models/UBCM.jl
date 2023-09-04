@@ -245,7 +245,7 @@ julia> ∇model_fun!(model.Θᵣ);
 # Use within optimisation.jl framework:
 julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 
-julia> fun =   (θ, p) ->  - L_UBCM_reduced(θ, model.dᵣ, model.f);
+julia> fun =  (θ, p) ->  - L_UBCM_reduced(θ, model.dᵣ, model.f);
 
 julia> x  = zeros(Real, length(model.Θᵣ)); # initialise gradient buffer
 
@@ -253,9 +253,9 @@ julia> ∇fun! = (∇L, θ, p) -> ∇L_UBCM_reduced!(∇L, θ, model.dᵣ, model
 
 julia> θ₀ = initial_guess(model); # initial condition
 
-julia> foo = MaxEntropyGraphs.Optimization.OptimizationProblem(fun, grad=∇fun!); # define target function 
+julia> foo = MaxEntropyGraphs.Optimization.OptimizationFunction(fun, grad=∇fun!); # define target function 
 
-julia> prob  = MaxEntropyGraphs.Optimization.OptimizationFunction(prob, θ₀); # define the optimisation problem
+julia> prob  = MaxEntropyGraphs.Optimization.OptimizationProblem(foo, θ₀); # define the optimisation problem
 
 julia> method = MaxEntropyGraphs.OptimizationOptimJL.LBFGS(); # set the optimisation method
 
