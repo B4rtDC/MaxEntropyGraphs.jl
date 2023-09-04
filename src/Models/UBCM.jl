@@ -196,6 +196,7 @@ julia> model_fun = θ -> L_UBCM_reduced(θ, model.dᵣ, model.f)
 
 julia> model_fun(model.Θᵣ);
 
+
 ```
 
 
