@@ -162,17 +162,6 @@ julia> F = [1, 2, 3, 4, 5];
 julia> L_UBCM_reduced(θ, K, F)
 -225.3065566905141
 ```
-```jldoctest
-# Use with UBCM model:
-julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
-
-julia> model = UBCM(G);
-
-julia> model_fun = θ -> L_UBCM_reduced(θ, model.dᵣ, model.f)
-
-julia> model_fun(model.Θᵣ)
--388.8555682941297
-```
 """
 function L_UBCM_reduced(θ::Vector, K::Vector, F::Vector)
     res = - sum(θ .* K .* F)
@@ -197,6 +186,20 @@ end
 
 Return the log-likelihood of the UBCM model `m` based on the computed maximum likelihood parameters.
 
+# Examples
+```jldoctest
+# Use with UBCM model:
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
+
+julia> model = UBCM(G);
+
+julia> model_fun = θ -> L_UBCM_reduced(θ, model.dᵣ, model.f)
+
+julia> model_fun(model.Θᵣ)
+-388.8555682941297
+```
+
+
 See also [`L_UBCM_reduced(::Vector, ::Vector, ::Vector)`](@ref)
 """
 function L_UBCM_reduced(m::UBCM) 
@@ -205,7 +208,6 @@ function L_UBCM_reduced(m::UBCM)
     else
         throw(ArgumentError("The parameters have not been computed yet"))
     end
-    return L_UBCM_reduced(m.θᵣ, m.dᵣ, m.f)
 end
 
 """
