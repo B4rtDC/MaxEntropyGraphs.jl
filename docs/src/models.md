@@ -5,7 +5,7 @@ All models share a common interface:
 * The parameters of a model can be computed with ```solve_model!```.
 * The expected adjacency matrix can be obtained with ```Ĝ```, where applicable the weights can be obtained with ```Ŵ```.
 * A random network can be sampled from the ensemble with ```rand```
-Please refer to the page of each specific model for more details. Each of these models is a subtype of an `AbstractMaxEntropyModel`
+Please refer to the page of each specific model for more details.
 
 
 ## Solution methods

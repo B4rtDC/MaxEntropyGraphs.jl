@@ -21,7 +21,6 @@ makedocs(sitename="MaxEntropyGraphs.jl",
                             #"DBCM" => "models/DBCM.md"
                             ],
             "Metrics" => Any["exact.md", "simulated.md"],
-            "Helper functions" => "utils.md",
             "GPU acceleration" => "GPU.md",
             "API" => "API.md"
          ]#,
