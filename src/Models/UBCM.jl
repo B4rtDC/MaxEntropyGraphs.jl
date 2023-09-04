@@ -194,7 +194,7 @@ julia> model = UBCM(G);
 
 julia> model_fun = θ -> L_UBCM_reduced(θ, model.dᵣ, model.f)
 
-julia> model_fun(model.Θᵣ);
+julia> model_fun(initial_guess(model));
 
 
 ```
@@ -326,12 +326,12 @@ end
 Computer the next fixed-point iteration for the UBCM model using the exponential formulation in order to maintain convexity.
 The function will update pre-allocated vectors (`G` and `x`) for speed.
 
-The arguments of the function are:
-    - `θ`: the maximum likelihood parameters of the model
-    - `K`: the reduced degree sequence
-    - `F`: the frequency of each degree in the degree sequence
-    - `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-θᵢ) )
-    - `G`: the next fixed-point iteration for the UBCM model
+# Arguments
+- `θ`: the maximum likelihood parameters of the model
+- `K`: the reduced degree sequence
+- `F`: the frequency of each degree in the degree sequence
+- `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-θᵢ) )
+- `G`: the next fixed-point iteration for the UBCM model
 
 
 # Examples
