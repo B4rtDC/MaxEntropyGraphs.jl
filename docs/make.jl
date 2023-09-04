@@ -1,6 +1,16 @@
 using Documenter
+
+
 #push!(LOAD_PATH, joinpath(pwd(),".."))
-using MaxEntropyGraphs
+LOCAL = true
+if LOCAL
+    using Pkg
+    # Pkg.add(url="/Users/bart/Documents/Stack/PhD/Coding (experiments)/MaxEntropyGraphs.jl/", rev="2023rework")
+    Pkg.update("MaxEntropyGraphs")
+    using MaxEntropyGraphs
+else
+    using MaxEntropyGraphs
+end
 
 # to give all docstrings access to the package, we need to import it
 DocMeta.setdocmeta!(MaxEntropyGraphs, :DocTestSetup, :(using MaxEntropyGraphs); recursive=true)

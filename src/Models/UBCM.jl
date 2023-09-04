@@ -4,8 +4,8 @@
 
 Maximum entropy model for the Undirected Binary Configuration Model (UBCM). 
     
-The object holds the maximum likelihood parameters of the model (θ), the expected adjacency matrix (G), 
-and the variance for the elements of the adjacency matrix (σ).
+The object holds the maximum likelihood parameters of the model (θ) and optionally the expected adjacency matrix (G), 
+and the variance for the elements of the adjacency matrix (σ). All settings and other metadata are stored in the `status` field.
 """
 mutable struct UBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleGraph for the computation" # can also be empty
@@ -38,7 +38,6 @@ Base.show(io::IO, m::UBCM{T,N}) where {T,N} = print(io, """UBCM{$(T), $(N)} ($(m
 
 """Return the reduced number of nodes in the UBCM network"""
 Base.length(m::UBCM) = length(m.dᵣ)
-
 
 
 
@@ -142,7 +141,7 @@ UBCM(;d::Vector{T}, precision::Type{<:AbstractFloat}=Float64, kwargs...) where {
 
 Compute the log-likelihood of the reduced UBCM model using the exponential formulation in order to maintain convexity.
 
-The arguments of the function are:
+# Arguments
 - `θ`: the maximum likelihood parameters of the model
 - `K`: the reduced degree sequence
 - `F`: the frequency of each degree in the degree sequence
@@ -211,29 +210,37 @@ function L_UBCM_reduced(m::UBCM)
 end
 
 """
-    ∇L_UBCM_reduced!( ∇L::Vector, θ::Vector, K::Vector, F::Vector, x::Vector)
+    ∇L_UBCM_reduced!(∇L::Vector, θ::Vector, K::Vector, F::Vector, x::Vector)
 
-Compute the gradient of the log-likelihood of the reduced UBCM model using the exponential formulation in order to maintain convexity.
+Compute the gradient of the log-likelihood of the reduced UBCM model using the exponential formulation (to maintain convexity).
 
-For the optimisation, this function will be used togenerate an anonymous function associated with a specific model. The function 
-will update pre-allocated vectors (`∇L` and `x`) for speed. The gradient is non-allocating.
+For the optimisation, this function will be used togenerate an anonymous function associated with a specific model. 
+The gradient is non-allocating and will update pre-allocated vectors (`∇L` and `x`) for speed. 
 
-The arguments of the function are:
-    - `∇L`: the gradient of the log-likelihood of the reduced model
-    - `θ`: the maximum likelihood parameters of the model
-    - `K`: the reduced degree sequence
-    - `F`: the frequency of each degree in the degree sequence
-    - `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-θᵢ) )
+# Arguments
+- `∇L`: the gradient of the log-likelihood of the reduced model
+- `θ`: the maximum likelihood parameters of the model
+- `K`: the reduced degree sequence
+- `F`: the frequency of each degree in the degree sequence
+- `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-θᵢ) )
 
 # Examples
-```julia-repl
+```jldoctest
 # Explicit use with UBCM model:
-julia> G = Graphs.SimpleGraphs.smallgraph(:karate);
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
+
 julia> model = UBCM(G);
+
 julia> ∇L = zeros(Real, length(model.Θᵣ);
+
 julia> x  = zeros(Real, length(model.Θᵣ);
+
 julia> ∇model_fun! = θ -> ∇L_UBCM_reduced!(θ::AbstractVector, K, F, ∇L, x);
-julia> ∇model_fun!(model.Θᵣ)
+
+julia> ∇model_fun!(model.Θᵣ);
+
+```
+```julia-repl
 # Use within optimisation.jl framework:
 julia> fun =   (θ, p) ->  - MaxEntropyGraphs.L_UBCM_reduced(θ, model.dᵣ, model.f)
 julia> ∇fun! = (∇L, θ, p) -> MaxEntropyGraphs.∇L_UBCM_reduced!(∇L, θ, K, F, x);
