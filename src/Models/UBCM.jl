@@ -231,11 +231,11 @@ julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
 
 julia> model = UBCM(G);
 
-julia> ∇L = zeros(Real, length(model.Θᵣ);
+julia> ∇L = zeros(Real, length(model.Θᵣ));
 
-julia> x  = zeros(Real, length(model.Θᵣ);
+julia> x  = zeros(Real, length(model.Θᵣ));
 
-julia> ∇model_fun! = θ -> ∇L_UBCM_reduced!(θ::AbstractVector, K, F, ∇L, x);
+julia> ∇model_fun! = θ -> ∇L_UBCM_reduced!(∇L, θ, model.dᵣ, model.f, x);
 
 julia> ∇model_fun!(model.Θᵣ);
 
@@ -247,18 +247,24 @@ julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 julia> fun =   (θ, p) ->  - L_UBCM_reduced(θ, model.dᵣ, model.f);
 
 # initialise gradient buffer
-julia> x_buffer = zeros(N,length(m.dᵣ));
+julia> x  = zeros(Real, length(model.Θᵣ));
 
-julia> ∇fun! = (∇L, θ, p) -> ∇L_UBCM_reduced!(∇L, θ, model.dᵣ, model.f, x_buffer);
+# define gradient
+julia> ∇fun! = (∇L, θ, p) -> ∇L_UBCM_reduced!(∇L, θ, model.dᵣ, model.f, x);
 
-julia> θ₀ = -log.( model.dᵣ ./ maximum(model.dᵣ)); # initial condition
+# initial condition
+julia> θ₀ = -log.( model.dᵣ ./ maximum(model.dᵣ)); 
 
+# define target function 
 julia> foo = MaxEntropyGraphs.Optimization.OptimizationProblem(fun, grad=∇fun!);
 
+# define the optimisation problem
 julia> prob  = MaxEntropyGraphs.Optimization.OptimizationFunction(prob, θ₀);
 
+# set the optimisation method
 julia> method = MaxEntropyGraphs.OptimizationOptimJL.NLopt.LD_LBFGS();
 
+# solve it
 julia> MaxEntropyGraphs.Optimization.solve(prob, method);
 
 ```
