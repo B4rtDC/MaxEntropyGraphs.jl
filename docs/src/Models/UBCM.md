@@ -5,7 +5,7 @@ The Undirected Binary Configuration Model is a maximum-entropy null model for un
 | --------------------------    | --------------------------------------------------------------------------------- |
 | Constraints                   | $(LaTeXEquation(raw""" k_i(A^{*}) = \sum_{j=1}^{N} a^{*}_{ij}  \text{  } (\forall i)""")) |
 | Hamiltonian                   | ```math H(A, \Theta) = \sum_{i=1}^{N} \Theta_i k_{i}(A) ``` |
-| Factorized graph probability  | ```math P(A \| \Theta) = \prod_{i=1}^{N}\prod_{j=1, j<i}^{N} p_{ij}^{a_{ij}} (1 - p_{ij})^{1-a_{ij}}  \text{ where } p_{ij} = \frac{e^{-\theta_i - \theta_j}}{1+e^{-\theta_i - \theta_j}}``` |
+| Factorized graph probability  | ``math P(A \| \Theta) = \prod_{i=1}^{N}\prod_{j=1, j<i}^{N} p_{ij}^{a_{ij}} (1 - p_{ij})^{1-a_{ij}}  \text{ where } p_{ij} = \frac{e^{-\theta_i - \theta_j}}{1+e^{-\theta_i - \theta_j}}`` |
 | Log-likelihood                | ```math \mathcal{L}(\Theta) = -\sum_{i=1}^{N}\theta_i k_i(A^{*}) - \sum_{i=1}^{N} \sum_{j=1, j<i}^{N} \ln \left( 1+e^{-\theta_i - \theta_j} \right) ```|
 | $\langle a_{ij} \rangle$      | ```math p_{ij} = \frac{e^{-\theta_i - \theta_j}}{1+e^{-\theta_i - \theta_j}}``` |
 | $\langle a_{ij}^{2} \rangle$  | ```math \langle a_{ij} \rangle``` |
