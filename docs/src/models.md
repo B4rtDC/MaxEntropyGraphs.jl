@@ -1,4 +1,5 @@
 # Overview
+
 ## Common interface
 All models share a common interface:
 * A model (```<:AbstractMaxEntropyModel```) can be instantiated either from a graph (```<:AbstractGraph```) or by the model's constraint vector(s). 
