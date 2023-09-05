@@ -555,29 +555,21 @@ end
 
 Generate a random graph from the UBCM model `m`.
 
-Keyword arguments:
+# Arguments
 - `precomputed::Bool`: if `true`, the precomputed expected adjacency matrix (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
   recommended to not precompute the expected adjacency matrix to limit memory pressure.
 
 # Examples
-```julia-repl
-julia> using MaxEntropyGraphs
+```jldoctest
 # generate a UBCM model from the karate club network
-julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
-julia> model = MaxEntropyGraphs.UBCM(G);
+julia> model = MaxEntropyGraphs.UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
 # compute the maximum likelihood parameters
-using NLsolve
-x_buffer = zeros(length(model.dᵣ));G_buffer = zeros(length(model.dᵣ));
-FP_model! = (θ::Vector) -> MaxEntropyGraphs.UBCM_reduced_iter!(θ, model.dᵣ, model.f, x_buffer, G_buffer);
-sol = fixedpoint(FP_model!, θ₀, method=:anderson, ftol=1e-12, iterations=1000);
-model.Θᵣ .= sol.zero;
-model.status[:params_computed] = true;
-set_xᵣ!(model);
-# set the expected adjacency matrix
-MaxEntropyGraphs.set_Ĝ!(model);
+julia> solve_model!(model);
+
 # sample a random graph
-julia> rand(model)
-{34, 78} undirected simple Int64 graph
+julia> rand(model);
+
 ```
 """
 function rand(m::UBCM; precomputed::Bool=false)
@@ -609,26 +601,18 @@ end
 
 Generate `n` random graphs from the UBCM model `m`. If multithreading is available, the graphs are generated in parallel.
 
-Keyword arguments:
+# Arguments
 - `precomputed::Bool`: if `true`, the precomputed expected adjacency matrix (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
   recommended to not precompute the expected adjacency matrix to limit memory pressure.
 
 # Examples
-```julia-repl
-julia> using MaxEntropyGraphs
-## generate a UBCM model from the karate club network
-julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
-julia> model = MaxEntropyGraphs.UBCM(G);
-## compute the maximum likelihood parameters
-using NLsolve
-x_buffer = zeros(length(model.dᵣ));G_buffer = zeros(length(model.dᵣ));
-FP_model! = (θ::Vector) -> MaxEntropyGraphs.UBCM_reduced_iter!(θ, model.dᵣ, model.f, x_buffer, G_buffer);
-sol = fixedpoint(FP_model!, θ₀, method=:anderson, ftol=1e-12, iterations=1000);
-model.Θᵣ .= sol.zero;
-model.status[:params_computed] = true;
-set_xᵣ!(model);
-# set the expected adjacency matrix
-MaxEntropyGraphs.set_Ĝ!(model);
+```jldoctest
+# generate a UBCM model from the karate club network
+julia> model = MaxEntropyGraphs.UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
+# compute the maximum likelihood parameters
+julia> solve_model!(model);
+
 # sample a random graph
 julia> rand(model, 10)
 10-element Vector{Graphs.SimpleGraphs.SimpleGraph{Int64}}
