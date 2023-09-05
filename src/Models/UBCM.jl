@@ -423,7 +423,7 @@ julia> initial_guess(model)
  -2.4849066497880004
  -2.772588722239781
  -2.833213344056216
-````
+```
 """
 function initial_guess(m::UBCM{T,N}; method::Symbol=:degrees) where {T,N}
     #N = typeof(m).parameters[2]
