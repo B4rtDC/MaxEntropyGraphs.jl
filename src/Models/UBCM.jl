@@ -405,6 +405,25 @@ end
 Compute an initial guess for the maximum likelihood parameters of the UBCM model `m` using the method `method`.
 
 The methods available are: `:degrees` (default), `:degrees_minor`, `:random`, `:uniform`, `:chung_lu`.
+
+# Examples
+```jldoctest
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
+julia> initial_guess(model)
+11-element Vector{Float64}:
+ -0.0
+ -0.6931471805599453
+ -1.0986122886681098
+ -1.3862943611198906
+ -1.6094379124341003
+ -1.791759469228055
+ -2.1972245773362196
+ -2.302585092994046
+ -2.4849066497880004
+ -2.772588722239781
+ -2.833213344056216
+````
 """
 function initial_guess(m::UBCM{T,N}; method::Symbol=:degrees) where {T,N}
     #N = typeof(m).parameters[2]
