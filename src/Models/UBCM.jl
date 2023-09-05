@@ -561,13 +561,14 @@ Generate a random graph from the UBCM model `m`.
 
 # Examples
 ```jldoctest
-# generate a UBCM model from the karate club network
-julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
-# compute the maximum likelihood parameters
-julia> solve_model!(model);
-# sample a random graph
-julia> rand(model);
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)); # generate a UBCM model from the karate club network
 
+julia> solve_model!(model); # compute the maximum likelihood parameters
+
+julia> sample = rand(model); # sample a random graph
+
+julia> typeof(sample)
+Graphs.SimpleGraphs.SimpleGraph{Int64}
 ```
 """
 function rand(m::UBCM; precomputed::Bool=false)
@@ -605,15 +606,14 @@ Generate `n` random graphs from the UBCM model `m`. If multithreading is availab
 
 # Examples
 ```jldoctest
-# generate a UBCM model from the karate club network
-julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
-# compute the maximum likelihood parameters
-julia> solve_model!(model);
-# sample a random graph
-julia> sample = rand(model, 10);
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)); # generate a UBCM model from the karate club network
+
+julia> solve_model!(model); # compute the maximum likelihood parameters
+
+julia> sample = rand(model, 10); # sample a random graph
 
 julia> typeof(sample)
-Vector{SimpleGraph{Int64}}
+Vector{SimpleGraph{Int64}} (alias for Array{Graphs.SimpleGraphs.SimpleGraph{Int64}, 1})
 ```
 """
 function rand(m::UBCM, n::Int; precomputed::Bool=false)
