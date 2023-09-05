@@ -610,7 +610,7 @@ julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)); #
 
 julia> solve_model!(model); # compute the maximum likelihood parameters
 
-julia> sample = rand(model, 10); # sample a random graph
+julia> sample = rand(model, 10); # sample a set of random graphs
 
 julia> typeof(sample)
 Vector{SimpleGraph{Int64}} (alias for Array{Graphs.SimpleGraphs.SimpleGraph{Int64}, 1})
@@ -629,11 +629,30 @@ end
 
 
 """
-    solve_model!(m::UBCM)
+    solve_model!(m::UBCM; kwargs...)
 
 Compute the likelihood maximising parameters of the UBCM model `m`. 
 
-By default the parameters are computed using the fixed point iteration method with the degree sequence as initial guess.
+# Arguments
+- `method::Symbol`: solution method to use, can be `:fixedpoint` (default), or :$(join(keys(MaxEntropyGraphs.optimization_methods), ", :", " and :")).
+- `initial::Symbol`: initial guess for the parameters ``\\Theta``, can be :degrees, :degrees_minor, :random, :uniform, or :chung_lu.
+- `maxiters::Int`: maximum number of iterations for the solver (defaults to 1000). 
+- `verbose::Bool`: set to show log messages (defaults to false).
+- `ftol::Real`: function tolerance for convergence with the fixedpoint method (defaults to 1e-8).
+- `abstol::Union{Number, Nothing}`: absolute function tolerance for convergence with the other methods (defaults to `nothing`).
+- `reltol::Union{Number, Nothing}`: relative function tolerance for convergence with the other methods (defaults to `nothing`).
+- `AD_method::Symbol`: autodiff method to use, can be any of :$(join(keys(MaxEntropyGraphs.AD_methods), ", :", " and :")). Performance depends on the size of the problem (defaults to `:AutoZygote`),
+- `analytical_gradient::Bool`: set the use the analytical gradient instead of the one generated with autodiff (defaults to `false`)
+
+# Examples
+```jldoctest
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
+julia> solve_model!(model);
+
+```
+
+See also: [initial_guess(:UBCM)](@ref), [∇L_UBCM_reduced!(:UBCM)](@ref)
 """
 function solve_model!(m::UBCM{T,N};  # common settings
                                 method::Symbol=:fixedpoint, 
