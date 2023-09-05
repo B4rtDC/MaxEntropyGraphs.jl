@@ -328,13 +328,19 @@ The function will update pre-allocated vectors (`G` and `x`) for speed.
 
 
 # Examples
-```julia-repl
-# Use with UBCM model:
+```jldoctest
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
 julia> G = Graphs.SimpleGraphs.smallgraph(:karate);
+
 julia> model = UBCM(G);
+
 julia> G = zeros(eltype(model.Θᵣ), length(model.Θᵣ);
+
 julia> x = zeros(eltype(model.Θᵣ), length(model.Θᵣ);
-julia> UBCM_FP! = θ -> UBCM_reduced_iter!(θ::AbstractVector, K, F, x, G);
+
+julia> UBCM_FP! = θ -> UBCM_reduced_iter!(θ, model.dᵣ, model.f, x, G);
+
 julia> UBCM_FP!(initial_guess(model));
 
 ```

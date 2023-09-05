@@ -1,5 +1,5 @@
 ## Model description
-The Undirected Binary Configuration Model is a maximum-entropy null model for undirected networks. It is based on the idea of fixing the degree sequence of the network, i.e., the number of edges incident to each node, and then randomly rewiring the edges while preserving the degree sequence. The model assumes that the edges are unweighted and that the network is simple, i.e., it has no self-loops or multiple edges between the same pair of nodes. 
+The Undirected Binary Configuration Model is a maximum-entropy null model for undirected networks. It is based on the idea of fixing the degree sequence of the network, i.e., the number of edges incident to each node, and then randomly rewiring the edges while preserving the degree sequence. The model assumes that the edges are unweighted and that the network is simple, i.e., it has no self-loops or multiple edges between the same pair of nodes [[1](#1),[2](#2)]. 
 
 | Description                   | Formula |
 | --------------------------    | :-------------------------------------------------------------------------------- |
@@ -71,6 +71,13 @@ Squartini, Tiziano and Garlaschelli, Diego. <!--  author(s) -->
 <em>"Maximum-Entropy Networks: Pattern Detection, Network Reconstruction and Graph Combinatorics"</em> <!--  title --> 
 Springer-Verlag GmbH; 1st ed. 2017 edition (25 Dec. 2017). <!--  publisher(s) --> 
 <a href="https://link.springer.com/book/10.1007/978-3-319-69438-2">https://link.springer.com/book/10.1007/978-3-319-69438-2</a>
+</li>
+<li>
+<a id="2">[2]</a> 
+Squartini, Tiziano and Garlaschelli, Diego. <!--  author(s) --> 
+<em>"Analytical maximum-likelihood method to detect patterns in real networks"</em> <!--  title --> 
+2011 New J. Phys. 13 083001. <!--  publisher(s) --> 
+<a href="https://iopscience.iop.org/article/10.1088/1367-2630/13/8/083001">https://iopscience.iop.org/article/10.1088/1367-2630/13/8/083001</a>
 </li>
 </ul>
 ```
