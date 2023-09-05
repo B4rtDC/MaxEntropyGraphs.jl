@@ -652,7 +652,8 @@ julia> solve_model!(model);
 
 ```
 
-See also: [`initial_guess`](@ref MaxEntropyGraphs.initial_guess), [`∇L_UBCM_reduced!`](@ref MaxEntropyGraphs.∇L_UBCM_reduced!)
+
+See also: [`initial_guess`](@ref MaxEntropyGraphs.initial_guess(::UBCM)), [`∇L_UBCM_reduced!`](@ref MaxEntropyGraphs.∇L_UBCM_reduced!)
 """
 function solve_model!(m::UBCM{T,N};  # common settings
                                 method::Symbol=:fixedpoint, 
