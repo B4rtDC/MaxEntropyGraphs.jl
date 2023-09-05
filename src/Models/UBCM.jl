@@ -335,9 +335,9 @@ julia> G = Graphs.SimpleGraphs.smallgraph(:karate);
 
 julia> model = UBCM(G);
 
-julia> G = zeros(eltype(model.Θᵣ), length(model.Θᵣ);
+julia> G = zeros(eltype(model.Θᵣ), length(model.Θᵣ));
 
-julia> x = zeros(eltype(model.Θᵣ), length(model.Θᵣ);
+julia> x = zeros(eltype(model.Θᵣ), length(model.Θᵣ));
 
 julia> UBCM_FP! = θ -> UBCM_reduced_iter!(θ, model.dᵣ, model.f, x, G);
 
