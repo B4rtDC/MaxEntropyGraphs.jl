@@ -652,7 +652,7 @@ julia> solve_model!(model);
 
 ```
 
-See also: [initial_guess(:UBCM)](@ref), [∇L_UBCM_reduced!(:UBCM)](@ref)
+See also: [initial_guess(::UBCM)](@ref), [∇L_UBCM_reduced!(::UBCM)](@ref)
 """
 function solve_model!(m::UBCM{T,N};  # common settings
                                 method::Symbol=:fixedpoint, 
