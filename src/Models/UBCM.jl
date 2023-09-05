@@ -404,7 +404,12 @@ end
 
 Compute an initial guess for the maximum likelihood parameters of the UBCM model `m` using the method `method`.
 
-The methods available are: `:degrees` (default), `:degrees_minor`, `:random`, `:uniform`, `:chung_lu`.
+The methods available are: 
+- `:degrees` (default): the initial guess is computed using the degrees of the graph: `\\theta_{i} = -\\log(d_{i})`` 
+- `:degrees_minor`: the initial guess is computed using the degrees of the graph and the number of edges: `\\theta_{i} = -\\log(d_{i}/(\\sqrt{E} + 1))` 
+- `:random`, 
+- `:uniform`, 
+- `:chung_lu`.
 
 # Examples
 ```jldoctest
@@ -423,6 +428,10 @@ julia> initial_guess(model)
  -2.4849066497880004
  -2.772588722239781
  -2.833213344056216
+
+ julia> initial_guess(model, method=:random);
+
+ julia> initial_guess(model, method=:uniform);
 ```
 """
 function initial_guess(m::UBCM{T,N}; method::Symbol=:degrees) where {T,N}
