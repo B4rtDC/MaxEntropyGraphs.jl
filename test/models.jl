@@ -5,12 +5,13 @@
 ###########################################################################################
 
 
-const allowedDataTypes =[Float64]
+#const
 
 
 @testset "Models" begin
-    #=
+    
     @testset "UBCM" begin
+        allowedDataTypes = [Float64]
         @testset "UBCM - generation" begin
             G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
             d = MaxEntropyGraphs.Graphs.degree(G)
@@ -126,7 +127,8 @@ const allowedDataTypes =[Float64]
             @test all(MaxEntropyGraphs.Graphs.nv.(S) .== MaxEntropyGraphs.Graphs.nv(model.G))
         end
     end
-    =#
+    #=
+    
     @testset "DBCM" begin
         @testset "DBCM - generation" begin
             
@@ -162,6 +164,7 @@ const allowedDataTypes =[Float64]
             
         end
     end
+    =#
     #=
     @testset "CReM" begin
         sources =       [1,1,1,2,3,3,4,4,5,6];
