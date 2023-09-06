@@ -9,7 +9,6 @@
 
 
 @testset "Models" begin
-    
     @testset "UBCM" begin
         allowedDataTypes = [Float64]
         @testset "UBCM - generation" begin
@@ -20,16 +19,18 @@
                 model = UBCM(G, precision=precision)
                 @test isa(model, UBCM)
                 @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
                 @test typeof(model).parameters[1] == typeof(G)
-                @test all([eltype(model.Θᵣ) == precision, eltype(model.xᵣ) == precision])
+                @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision])
             end
             # simple model, directly from degree sequence, different precisions
             for precision in allowedDataTypes
                 model = UBCM(d=d, precision=precision)
                 @test isa(model, UBCM)
                 @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
                 @test typeof(model).parameters[1] == Nothing
-                @test all([eltype(model.Θᵣ) == precision, eltype(model.xᵣ) == precision])
+                @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision])
             end
             # testing breaking conditions
             @test_throws MethodError UBCM(1) # wrong input type
@@ -99,7 +100,7 @@
                             end
                         end
                     end
-                    @test all([eltype(model.Θᵣ) == precision, eltype(model.xᵣ) == precision])
+                    @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision])
                 end
             end
         end
@@ -125,6 +126,26 @@
             S = rand(model, 100)
             @test length(S) == 100
             @test all(MaxEntropyGraphs.Graphs.nv.(S) .== MaxEntropyGraphs.Graphs.nv(model.G))
+        end
+
+        @testset "UBCM - degree metrics" begin
+            model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate))
+            # adjacency matric
+            @test iszero(MaxEntropyGraphs.A(model,1,1))
+            @test isa(MaxEntropyGraphs.A(model,1,2), precision(model))
+            # parameters not computed yet
+            @test_throws ArgumentError degree(model, 1)
+            solve_model!(model)
+            # check out of bounds
+            @test_throws ArgumentError degree(model, length(model.d) + 1)
+            # check that the degree is correct
+            for method in [:reduced, :full]
+                @test isapprox(degree(model, method=method), model.d)
+            end
+            # check precompute
+            @test_throws ArgumentError degree(model, method=:adjacency)
+            set_Ĝ!(model)
+            @test isapprox(degree(model, method=:adjacency), model)
         end
     end
     #=
