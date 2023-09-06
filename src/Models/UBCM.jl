@@ -795,12 +795,9 @@ julia> solve_model!(model);
 
 julia> set_Ĝ!(model);
 
-julia> [degree(model, 1), degree(model, 1, method=:full), degree(model, 1, method=:adjacency)]
-3-element Vector{Float64}:
-    16.00000009022002
-    16.00000009022001
-    16.00000009022002
-  
+julia> typeof([degree(model, 1), degree(model, 1, method=:full), degree(model, 1, method=:adjacency)])
+Vector{Float64} (alias for Array{Float64, 1})
+
 ``` 
 """
 function degree(m::UBCM, i::Int; method::Symbol=:reduced)
@@ -857,42 +854,8 @@ julia> solve_model!(model);
 
 julia> set_Ĝ!(model);
 
-julia> degree(model, method=:adjacency)
-34-element Vector{Float64}:
- 16.00000009022002
-  9.000000019686698
- 10.00000005914993
-  6.000000001844015
-  3.0000000089639394
-  3.9999999971832687
-  3.999999997183269
-  3.9999999971832687
-  4.999999992058939
-  2.00000000115145
-  3.0000000089639394
-  1.000000001397471
-  2.0000000011514505
-  4.99999999205894
-  2.00000000115145
-  2.00000000115145
-  2.0000000011514505
-  2.00000000115145
-  2.00000000115145
-  3.0000000089639394
-  2.0000000011514505
-  2.00000000115145
-  2.00000000115145
-  4.99999999205894
-  3.0000000089639394
-  3.0000000089639394
-  2.0000000011514505
-  3.9999999971832687
-  3.0000000089639394
-  3.9999999971832687
-  3.999999997183269
-  6.000000001844015
- 12.00000006298324
- 16.999999896358183
+julia> typeof(degree(model, method=:adjacency)); 
+Vector{Float64} (alias for Array{Float64, 1})
 
 ``` 
 """
@@ -917,7 +880,7 @@ julia> AIC(model);
 
 ```
 
-See also [AICc](@ref), [L_UBCM_reduced](@ref).
+See also [AICc](@ref), [`L_UBCM_reduced`](@ref MaxEntropyGraphs.L_UBCM_reduced).
 """
 function AIC(m::UBCM)
     # check if possible
@@ -955,7 +918,7 @@ julia> AICc(model);
 
 ```
 
-See also [AIC](@ref), [L_UBCM_reduced](@ref).
+See also [AIC](@ref), [`L_UBCM_reduced`](@ref MaxEntropyGraphs.L_UBCM_reduced).
 """
 function AICc(m::UBCM)
     # check if possible
