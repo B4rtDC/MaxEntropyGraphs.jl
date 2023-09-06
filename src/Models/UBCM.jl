@@ -854,7 +854,7 @@ julia> solve_model!(model);
 
 julia> set_Ĝ!(model);
 
-julia> typeof(degree(model, method=:adjacency)); 
+julia> typeof(degree(model, method=:adjacency)) 
 Vector{Float64} (alias for Array{Float64, 1})
 
 ``` 
@@ -880,7 +880,7 @@ julia> AIC(model);
 
 ```
 
-See also [AICc](@ref), [`L_UBCM_reduced`](@ref MaxEntropyGraphs.L_UBCM_reduced).
+See also [`AICc`](@ref MaxEntropyGraphs.AICc), [`L_UBCM_reduced`](@ref MaxEntropyGraphs.L_UBCM_reduced).
 """
 function AIC(m::UBCM)
     # check if possible
@@ -918,7 +918,7 @@ julia> AICc(model);
 
 ```
 
-See also [AIC](@ref), [`L_UBCM_reduced`](@ref MaxEntropyGraphs.L_UBCM_reduced).
+See also [`AIC`](@ref MaxEntropyGraphs.AIC), [`L_UBCM_reduced`](@ref MaxEntropyGraphs.L_UBCM_reduced).
 """
 function AICc(m::UBCM)
     # check if possible
