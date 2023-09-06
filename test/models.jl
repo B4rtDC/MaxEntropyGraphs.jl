@@ -148,17 +148,19 @@
             @test isapprox(degree(model, method=:adjacency), model.d)
         end
 
-        @testset "UBCM - AIC(c)" begin
+        @testset "UBCM - (B/A)IC(c)" begin
             model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate))
             # parameters not computed yet
             @test_throws ArgumentError MaxEntropyGraphs.AIC(model)
             @test_throws ArgumentError MaxEntropyGraphs.AICc(model)
+            @test_throws ArgumentError MaxEntropyGraphs.BIC(model)
             solve_model!(model)
             # check warning
             @test_logs (:warn, "The number of observations is small with respect to the number of parameters (n/k < 40). Consider using the corrected AIC (AICc) instead.") MaxEntropyGraphs.AIC(model)
             # test types
             @test isa(MaxEntropyGraphs.AIC(model), precision(model))
             @test isa(MaxEntropyGraphs.AICc(model), precision(model))
+            @test isa(MaxEntropyGraphs.BIC(model), precision(model))
         end
     end
     #=
