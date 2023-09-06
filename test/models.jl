@@ -145,7 +145,7 @@
             # check precompute
             @test_throws ArgumentError degree(model, method=:adjacency)
             set_Ĝ!(model)
-            @test isapprox(degree(model, method=:adjacency), model)
+            @test isapprox(degree(model, method=:adjacency), model.d)
         end
     end
     #=
