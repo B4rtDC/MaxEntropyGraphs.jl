@@ -28,6 +28,7 @@ Base.rand(::UBCM)
 Base.rand(::UBCM,::Int)
 MaxEntropyGraphs.AIC(::UBCM)
 MaxEntropyGraphs.AICc(::UBCM)
+MaxEntropyGraphs.BIC(::UBCM)
 Base.length(::UBCM)
 MaxEntropyGraphs.L_UBCM_reduced
 MaxEntropyGraphs.∇L_UBCM_reduced!
@@ -40,9 +41,9 @@ MaxEntropyGraphs.σˣ(::UBCM)
 MaxEntropyGraphs.set_σ!(::UBCM)
 MaxEntropyGraphs.precision(::UBCM)
 MaxEntropyGraphs.degree(::UBCM,::Int)
-MaxEntropyGraphs.degree(::UBCM,::Vector)
-MaxEntropyGraphs.degree(::UBCM,::Vector)
-MaxEntropyGraphs.A(::UBCM)
+MaxEntropyGraphs.degree(::UBCM)
+MaxEntropyGraphs.degree(::UBCM, ::Vector{Int64})
+MaxEntropyGraphs.A(::UBCM,::Int64,::Int64)
 MaxEntropyGraphs.f_UBCM(::UBCM)
 ```
 
