@@ -897,3 +897,73 @@ julia> degree(model, method=:adjacency)
 ``` 
 """
 degree(m::UBCM, v::Vector{Int}=collect(1:m.status[:d]); method::Symbol=:reduced) = [degree(m, i, method=method) for i in v]
+
+"""
+    AIC(m::UBCM)
+
+Compute the Akaike Information Criterion (AIC) for the UBCM model `m`. 
+
+The parameters of the models most be computed beforehand. 
+If the number of empirical observations becomes too small with respect to the number of parameters, you will get a warning. In 
+that case, the corrected AIC (AICc) should be used instead.
+
+# Examples
+```jldoctest
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
+julia> solve_model!(model);
+
+julia> AIC(model);
+
+```
+
+See also [AICc](@ref), [L_UBCM_reduced](@ref).
+"""
+function AIC(m::UBCM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = m.status[:d] # number of parameters
+    n = (m.status[:d] - 1) * m.status[:d] / 2 # number of observations
+    L = L_UBCM_reduced(m) # log-likelihood
+
+    if n/k < 40
+        @warn """The number of observations is small with respect to the number of parameters (n/k < 40). Consider using the corrected AIC (AICc) instead."""
+    end
+
+    return 2*k - 2*L
+end
+
+
+"""
+    AICc(m::UBCM)
+
+Compute the corrected Akaike Information Criterion (AICc) for the UBCM model `m`. 
+
+The parameters of the models most be computed beforehand. 
+If the number of empirical observations becomes too small with respect to the number of parameters, you will get a warning. In 
+that case, the corrected AIC (AICc) should be used instead.
+
+# Examples
+```jldoctest
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
+julia> solve_model!(model);
+
+julia> AICc(model);
+409.891217554954
+
+```
+
+See also [AIC](@ref), [L_UBCM_reduced](@ref).
+"""
+function AICc(m::UBCM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = m.status[:d] # number of parameters
+    n = (m.status[:d] - 1) * m.status[:d] / 2 # number of observations
+    L = L_UBCM_reduced(m) # log-likelihood
+
+    return 2*k - 2*L + (2*k*(k+1)) / (n - k - 1)
+end

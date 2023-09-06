@@ -39,7 +39,7 @@ module MaxEntropyGraphs
     # utils 
     export np_unique_clone
     # common model functions
-    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, precision, degree #, set_yᵣ!
+    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, precision, degree, AIC, AICc #, set_yᵣ!
     # model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
     #export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
