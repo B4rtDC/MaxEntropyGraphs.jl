@@ -908,7 +908,7 @@ julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 
 julia> solve_model!(model);
 
-julia> AICc(model);
+julia> AICc(model)
 409.891217554954
 
 ```

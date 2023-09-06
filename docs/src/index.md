@@ -82,6 +82,7 @@ maximising the log-likelihood $\mathcal{L}$ defined as
 \mathcal{L}(\Theta) \equiv \ln P(G | \Theta) = -H(G^{*},\Theta) - \ln Z(\Theta)
 ```
 
+The canonical approach is unbiased and mathematically tractable and addintionally, it is also the most appropriate choice if one wants to account for possible errors in the data, since canonical ensembles appropriately describe systems in contact with an external reservoir (source of errors) affecting the value of the constraints
 
 
 *Note:* An adequate choice of the set of constraints can allow the probability coefficient $P(G)$ te be written in function of the adjacency matrix, so that a probability coefficient $P(A)$ can be assigned to every adjacency matrix in the ensemble. In that case, $\vec{C}(G)$ can also be written in function of the adjacency matrix $\vec{C}(A)$. 

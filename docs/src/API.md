@@ -42,7 +42,6 @@ MaxEntropyGraphs.set_σ!(::UBCM)
 MaxEntropyGraphs.precision(::UBCM)
 MaxEntropyGraphs.degree(::UBCM,::Int)
 MaxEntropyGraphs.degree(::UBCM)
-MaxEntropyGraphs.degree(::UBCM, ::Vector{Int64})
 MaxEntropyGraphs.A(::UBCM,::Int64,::Int64)
 MaxEntropyGraphs.f_UBCM(::UBCM)
 ```
