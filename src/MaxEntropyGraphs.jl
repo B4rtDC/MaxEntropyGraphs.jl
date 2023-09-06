@@ -4,7 +4,7 @@
 Julia module for working with maximum entropy graphs
 """
 module MaxEntropyGraphs
-    import Base: show, rand, showerror
+    import Base: show, rand, showerror, precision
     # for logmessages
     import Printf: @sprintf
     #import Dates: now, Day, Minute 
@@ -36,10 +36,10 @@ module MaxEntropyGraphs
     ## exports
     # common types
     export AbstractMaxEntropyModel
-    # common functions
-    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!#, set_yᵣ!
     # utils 
     export np_unique_clone
+    # common model functions
+    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, precision #, set_yᵣ!
     # model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
     #export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!

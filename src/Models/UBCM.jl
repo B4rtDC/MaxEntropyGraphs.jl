@@ -11,7 +11,7 @@ mutable struct UBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.Abstr
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleGraph for the computation" # can also be empty
     const G::T 
     "Maximum likelihood parameters for reduced model"
-    const Θᵣ::Vector{N}
+    const θᵣ::Vector{N} 
     "Exponentiated maximum likelihood parameters for reduced model ( xᵢ = exp(-θᵢ) )"
     const xᵣ::Vector{N}
     "Degree sequence of the graph" # evaluate usefulness of this field later on
@@ -120,7 +120,7 @@ function UBCM(G::T; d::Vector=Graphs.degree(G), precision::Type{<:AbstractFloat}
 
     # field generation
     dᵣ, d_ind , dᵣ_ind, f = np_unique_clone(d, sorted=true)
-    Θᵣ = Vector{precision}(undef, length(dᵣ))
+    θᵣ = Vector{precision}(undef, length(dᵣ))
     xᵣ = Vector{precision}(undef, length(dᵣ))
     status = Dict(  :params_computed=>false,        # are the parameters computed?
                     :G_computed=>false,             # is the expected adjacency matrix computed and stored?
@@ -130,7 +130,7 @@ function UBCM(G::T; d::Vector=Graphs.degree(G), precision::Type{<:AbstractFloat}
                     :d => length(d)                 # number of vertices in the original graph 
                 )
     
-    return UBCM{T,precision}(G, Θᵣ, xᵣ, d, dᵣ, f, d_ind, dᵣ_ind, nothing, nothing, status, nothing)
+    return UBCM{T,precision}(G, θᵣ, xᵣ, d, dᵣ, f, d_ind, dᵣ_ind, nothing, nothing, status, nothing)
 end
 
 UBCM(;d::Vector{T}, precision::Type{<:AbstractFloat}=Float64, kwargs...) where {T<:Signed} = UBCM(nothing, d=d, precision=precision, kwargs...)
@@ -204,7 +204,7 @@ See also [`L_UBCM_reduced(::Vector, ::Vector, ::Vector)`](@ref)
 """
 function L_UBCM_reduced(m::UBCM) 
     if m.status[:params_computed]
-        return L_UBCM_reduced(m.Θᵣ, m.dᵣ, m.f)
+        return L_UBCM_reduced(m.θᵣ, m.dᵣ, m.f)
     else
         throw(ArgumentError("The parameters have not been computed yet"))
     end
@@ -232,13 +232,13 @@ julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
 
 julia> model = UBCM(G);
 
-julia> ∇L = zeros(Real, length(model.Θᵣ));
+julia> ∇L = zeros(Real, length(model.θᵣ));
 
-julia> x  = zeros(Real, length(model.Θᵣ));
+julia> x  = zeros(Real, length(model.θᵣ));
 
 julia> ∇model_fun! = θ -> ∇L_UBCM_reduced!(∇L, θ, model.dᵣ, model.f, x);
 
-julia> ∇model_fun!(model.Θᵣ);
+julia> ∇model_fun!(model.θᵣ);
 
 ```
 ```jldoctest
@@ -247,7 +247,7 @@ julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 
 julia> fun =  (θ, p) ->  - L_UBCM_reduced(θ, model.dᵣ, model.f);
 
-julia> x  = zeros(Real, length(model.Θᵣ)); # initialise gradient buffer
+julia> x  = zeros(Real, length(model.θᵣ)); # initialise gradient buffer
 
 julia> ∇fun! = (∇L, θ, p) -> ∇L_UBCM_reduced!(∇L, θ, model.dᵣ, model.f, x); # define gradient
 
@@ -331,9 +331,9 @@ The function will update pre-allocated vectors (`G` and `x`) for speed.
 ```jldoctest
 julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 
-julia> G = zeros(eltype(model.Θᵣ), length(model.Θᵣ));
+julia> G = zeros(eltype(model.θᵣ), length(model.θᵣ));
 
-julia> x = zeros(eltype(model.Θᵣ), length(model.Θᵣ));
+julia> x = zeros(eltype(model.θᵣ), length(model.θᵣ));
 
 julia> UBCM_FP! = θ -> UBCM_reduced_iter!(θ, model.dᵣ, model.f, x, G);
 
@@ -466,7 +466,7 @@ Set the value of xᵣ to exp(-θᵣ) for the UBCM model `m`
 """
 function set_xᵣ!(m::UBCM)
     if m.status[:params_computed]
-        m.xᵣ .= exp.(-m.Θᵣ)
+        m.xᵣ .= exp.(-m.θᵣ)
     else
         throw(ArgumentError("The parameters have not been computed yet"))
     end
@@ -693,7 +693,7 @@ function solve_model!(m::UBCM{T,N};  # common settings
             if verbose 
                 @info "Fixed point iteration converged after $(sol.iterations) iterations"
             end
-            m.Θᵣ .= sol.zero;
+            m.θᵣ .= sol.zero;
             m.status[:params_computed] = true;
             set_xᵣ!(m);
         else
@@ -717,7 +717,7 @@ function solve_model!(m::UBCM{T,N};  # common settings
             if verbose 
                 @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
             end
-            m.Θᵣ .= sol.u;
+            m.θᵣ .= sol.u;
             m.status[:params_computed] = true;
             set_xᵣ!(m);
         else
@@ -750,3 +750,151 @@ Float32
 ```
 """
 precision(m::UBCM) = typeof(m).parameters[2]
+
+
+"""
+    f_UBCM(x::T)
+
+Helper function for the UBCM model to compute the expected value of the adjacency matrix. The function compute the expression `x / (1 + x)`.
+As an argument you need to pass the product of the maximum likelihood parameters `xᵣ[i] * xᵣ[j]` from a UBCM model.
+"""
+f_UBCM(xixj::T) where {T} = xixj / (one(T) + xixj)
+
+
+"""
+    A(m::UBCM,i::Int,j::Int)
+
+Return the expected value of the adjacency matrix for the UBCM model `m` at the node pair `(i,j)`.
+
+❗ For perfomance reasons, the function does not check:
+- if the node pair is valid.
+- if the parameters of the model have been computed.
+"""
+function A(m::UBCM,i::Int,j::Int)
+    return i == j ? zero(precision(m)) : @inbounds f_UBCM(m.xᵣ[m.dᵣ_ind[i]] * m.xᵣ[m.dᵣ_ind[j]])
+end
+
+"""
+    degree(m::UBCM, i::Int; method=:reduced)
+
+Return the expected degree vector for node `i` of the UBCM model `m`.
+Uses the reduced model parameters `xᵣ` for perfomance reasons.
+
+# Arguments
+- `m::UBCM`: the UBCM model
+- `i::Int`: the node for which to compute the degree.
+- `method::Symbol`: the method to use for computing the degree. Can be any of the following:
+    - `:reduced` (default) uses the reduced model parameters `xᵣ` for perfomance reasons.
+    - `:full` uses all elements of the expected adjacency matrix.
+    - `:adjacency` uses the precomputed adjacency matrix `m.Ĝ` of the model.
+
+# Examples
+```jldoctest
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> [degree(model, 1), degree(model, 1, method=:full), degree(model, 1, method=:adjacency)]
+3-element Vector{Float64}:
+    16.00000009022002
+    16.00000009022001
+    16.00000009022002
+  
+``` 
+"""
+function degree(m::UBCM, i::Int; method::Symbol=:reduced)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    i > m.status[:d] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:d]) node graph")) : nothing
+    
+    if method == :reduced
+        res = zero(precision(m))
+        i_red = m.dᵣ_ind[i] # find matching index in reduced model
+        for j in eachindex(m.xᵣ)
+            if i_red ≠ j 
+                res += f_UBCM(m.xᵣ[i_red] * m.xᵣ[j]) * m.f[j]
+            else
+                res += f_UBCM(m.xᵣ[i_red] * m.xᵣ[i_red]) * (m.f[j] - 1) # subtract 1 because the diagonal is not counted
+            end
+        end
+    elseif method == :full
+        # using all elements of the adjacency matrix
+        res = zero(precision(m))
+        for j in eachindex(m.d)
+            res += A(m, i, j)
+        end
+    elseif method == :adjacency
+        #  using the precomputed adjacency matrix 
+        model.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
+        res = sum(m.Ĝ[i,:])  
+    else
+        throw(ArgumentError("Unknown method $method"))
+    end
+
+    return res
+end
+
+
+"""
+    degree(m::UBCM[, v]; method=:reduced)
+
+Return a vector corresponding to the expected degree of the UBCM model `m` each node. If v is specified, only return degrees for nodes in v.
+
+# Arguments
+- `m::UBCM`: the UBCM model
+- `v::Vector{Int}`: the nodes for which to compute the degree. Default is all nodes.
+- `method::Symbol`: the method to use for computing the degree. Can be any of the following:
+    - `:reduced` (default) uses the reduced model parameters `xᵣ` for perfomance reasons.
+    - `:full` uses all elements of the expected adjacency matrix.
+    - `:adjacency` uses the precomputed adjacency matrix `m.Ĝ` of the model.
+
+# Examples
+```jldoctest
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> degree(model, method=:adjacency)
+34-element Vector{Float64}:
+ 16.00000009022002
+  9.000000019686698
+ 10.00000005914993
+  6.000000001844015
+  3.0000000089639394
+  3.9999999971832687
+  3.999999997183269
+  3.9999999971832687
+  4.999999992058939
+  2.00000000115145
+  3.0000000089639394
+  1.000000001397471
+  2.0000000011514505
+  4.99999999205894
+  2.00000000115145
+  2.00000000115145
+  2.0000000011514505
+  2.00000000115145
+  2.00000000115145
+  3.0000000089639394
+  2.0000000011514505
+  2.00000000115145
+  2.00000000115145
+  4.99999999205894
+  3.0000000089639394
+  3.0000000089639394
+  2.0000000011514505
+  3.9999999971832687
+  3.0000000089639394
+  3.9999999971832687
+  3.999999997183269
+  6.000000001844015
+ 12.00000006298324
+ 16.999999896358183
+
+``` 
+"""
+degree(m::UBCM, v::Vector{Int}=collect(1:m.status[:d]); method::Symbol=:reduced) = [degree(m, i, method=method) for i in v]
