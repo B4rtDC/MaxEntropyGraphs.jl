@@ -656,7 +656,7 @@ julia> solve_model!(model);
 # default use
 julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 
-julia> solve_model!(model, method=:BFGS, analytical_gradient=true, initial=:degrees_minor);
+julia> solve_model!(model, method=:BFGS, analytical_gradient=true, initial=:degrees_minor)
 (UBCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (34 vertices, 11 unique degrees, 0.32 compression ratio), retcode: Success
 u: [2.851659905903854, 2.053008374573552, 1.5432639513870743, 1.152360118212239, 0.8271267490690292, 0.5445045274064909, -0.1398726818076551, -0.3293252270659469, -0.6706207459338859, -1.2685575582149227, -1.410096540372487]
 Final objective value:     168.68325136302835
@@ -864,14 +864,12 @@ degree(m::UBCM, v::Vector{Int}=collect(1:m.status[:d]); method::Symbol=:reduced)
 """
     AIC(m::UBCM)
 
-Compute the Akaike Information Criterion (AIC) for the UBCM model `m`. 
-
-The parameters of the models most be computed beforehand. 
+Compute the Akaike Information Criterion (AIC) for the UBCM model `m`. The parameters of the models most be computed beforehand. 
 If the number of empirical observations becomes too small with respect to the number of parameters, you will get a warning. In 
 that case, the corrected AIC (AICc) should be used instead.
 
 # Examples
-```jldoctest
+```julia-repl
 julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 
 julia> solve_model!(model);
@@ -901,11 +899,8 @@ end
 """
     AICc(m::UBCM)
 
-Compute the corrected Akaike Information Criterion (AICc) for the UBCM model `m`. 
+Compute the corrected Akaike Information Criterion (AICc) for the UBCM model `m`. The parameters of the models most be computed beforehand. 
 
-The parameters of the models most be computed beforehand. 
-If the number of empirical observations becomes too small with respect to the number of parameters, you will get a warning. In 
-that case, the corrected AIC (AICc) should be used instead.
 
 # Examples
 ```jldoctest
@@ -929,4 +924,35 @@ function AICc(m::UBCM)
     L = L_UBCM_reduced(m) # log-likelihood
 
     return 2*k - 2*L + (2*k*(k+1)) / (n - k - 1)
+end
+
+
+"""
+    BIC(m::UBCM)
+
+Compute the Bayesian Information Criterion (BIC) for the UBCM model `m`. The parameters of the models most be computed beforehand. 
+BIC is believed to be more restrictive than AIC, as the former favors models with a lower number of parameters than those favored by the latter.
+
+# Examples
+```julia-repl
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
+julia> solve_model!(model);
+
+julia> BIC(model)
+552.5770135138283
+
+```
+
+See also [`AIC`](@ref MaxEntropyGraphs.AIC), [`L_UBCM_reduced`](@ref MaxEntropyGraphs.L_UBCM_reduced).
+"""
+function BIC(m::UBCM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = m.status[:d] # number of parameters
+    n = (m.status[:d] - 1) * m.status[:d] / 2 # number of observations
+    L = L_UBCM_reduced(m) # log-likelihood
+
+    return k * log(n) - 2*L
 end
