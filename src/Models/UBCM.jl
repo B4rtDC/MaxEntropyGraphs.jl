@@ -827,7 +827,7 @@ function degree(m::UBCM, i::Int; method::Symbol=:reduced)
         end
     elseif method == :adjacency
         #  using the precomputed adjacency matrix 
-        model.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
         res = sum(@view m.Ĝ[i,:])  
     else
         throw(ArgumentError("Unknown method $method"))
