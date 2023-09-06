@@ -34,7 +34,10 @@ MaxEntropyGraphs.Ĝ(::UBCM)
 MaxEntropyGraphs.set_Ĝ!(::UBCM)
 MaxEntropyGraphs.σˣ(::UBCM)
 MaxEntropyGraphs.set_σ!(::UBCM)
-
+MaxEntropyGraphs.precision(::UBCM)
+MaxEntropyGraphs.degree(::UBCM)
+MaxEntropyGraphs.A(::UBCM)
+MaxEntropyGraphs.f_UBCM(::UBCM)
 Base.rand(::UBCM)
 Base.rand(::UBCM,::Int)
 ```
