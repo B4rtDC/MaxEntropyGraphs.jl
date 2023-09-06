@@ -814,9 +814,9 @@ function degree(m::UBCM, i::Int; method::Symbol=:reduced)
         i_red = m.dᵣ_ind[i] # find matching index in reduced model
         for j in eachindex(m.xᵣ)
             if i_red ≠ j 
-                res += f_UBCM(m.xᵣ[i_red] * m.xᵣ[j]) * m.f[j]
+                res += @inbounds f_UBCM(m.xᵣ[i_red] * m.xᵣ[j]) * m.f[j]
             else
-                res += f_UBCM(m.xᵣ[i_red] * m.xᵣ[i_red]) * (m.f[j] - 1) # subtract 1 because the diagonal is not counted
+                res += @inbounds f_UBCM(m.xᵣ[i_red] * m.xᵣ[i_red]) * (m.f[j] - 1) # subtract 1 because the diagonal is not counted
             end
         end
     elseif method == :full
@@ -828,7 +828,7 @@ function degree(m::UBCM, i::Int; method::Symbol=:reduced)
     elseif method == :adjacency
         #  using the precomputed adjacency matrix 
         model.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
-        res = sum(m.Ĝ[i,:])  
+        res = sum(@view m.Ĝ[i,:])  
     else
         throw(ArgumentError("Unknown method $method"))
     end
