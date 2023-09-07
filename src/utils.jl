@@ -250,8 +250,62 @@ See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graph
 ANND(G::T, v::Vector{Int}=collect(1:Graphs.nv(G))) where {T<:Graphs.AbstractGraph} = [ANND(G,i) for i in v]
 
 
+"""
+    ANND(A::T, i::Int; check_symmetry::Bool=false) where {T<:AbstractMatrix}
 
+Compute the average nearest neighbor degree (ANND) for node `i` using adjacency matrix `A`. The ANND for a node `i` is defined as
+``
+ANND_i(A^{*}) = \\frac{\\sum_{j=1}^{N} a_{ij}k_j }{k_i}
+``
+where ``a_{ij}`` denotes the element of the adjacency matrix ``A`` at row ``i`` and column ``j``, and ``k_i`` denotes the degree of node ``i``.
 
+**Notes:** 
+- this function is intented for use with the expected adjacency matrix of a `::AbstractMaxEntropyModel` model. A separate method exists for `::AbstractGraph` objects.
+- if `A` is not symmetrical, you have a directed graph, this can show a warning. For perfomance reasons, this can be turned off.
+
+# Examples
+```jldoctest ANND_mat_docs
+julia> using Graphs
+
+julia> G = smallgraph(:karate);
+
+julia> A = adjacency_matrix(G);
+
+julia> ANND(A, 1)
+4.3125
+
+```
+```jldoctest ANND_mat_docs
+julia> Gd = SimpleDiGraph(G);
+
+julia> add_vertex!(Gd);
+
+julia> add_edge!(Gd, 1, nv(Gd));
+
+julia> ANND(adjacency_matrix(Gd), 1)
+0.0
+```
+```jldoctest ANND_mat_docs
+julia> Gd = SimpleDiGraph(G);
+
+julia> ANND(adjacency_matrix(Gd),1)
+Warning: The matrix is not symmetrical. Consider using ANND_in or ANND_out instead.
+[...]
+```
+
+See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
+"""
+function ANND(A::T, i::Int; check_symmetry::Bool=true) where {T<:AbstractMatrix}
+    isequal(size(A)...) || throw(DimensionMismatch("A must be a square matrix"))
+    if check_symmetry
+        !issymmetric(A) || @warn "The matrix is not symmetrical. Consider using ANND_in or ANND_out instead."
+    end
+    if iszero(sum(@view A[:,i]))
+        return zero(Float64)
+    else
+        return mapreduce(x -> A[i,x] * sum(@view A[:,x]), +, 1:size(A,1), init=zero(Float64)) / sum(@view A[:,i])
+    end
+end
 
 
 

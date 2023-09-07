@@ -19,6 +19,7 @@ module MaxEntropyGraphs
     import OptimizationOptimJL
     import Zygote
     import NLsolve
+    import LinearAlgebra: issymmetric
     #import NaNMath # returns a NaN instead of a DomainError for some functions. The solver(s) will use the NaN within the error control routines to reject the out of bounds step.
 
     import Distributions
