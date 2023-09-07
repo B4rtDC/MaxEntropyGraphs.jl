@@ -247,7 +247,7 @@ Warning: The graph is directed. The degree function returns the incoming plus ou
 
 See also: `ANND_in`, `ANND_out`, `Graphs.degree`
 """
-ANND(G::T, v::Vector{Int}=collect(1:nv(G))) where {T<:Graphs.AbstractGraph} = [ANND(G,i) for i in v]
+ANND(G::T, v::Vector{Int}=collect(1:Graphs.nv(G))) where {T<:Graphs.AbstractGraph} = [ANND(G,i) for i in v]
 
 
 
