@@ -956,3 +956,5 @@ function BIC(m::UBCM)
 
     return k * log(n) - 2*L
 end
+
+

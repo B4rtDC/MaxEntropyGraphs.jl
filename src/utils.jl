@@ -120,6 +120,8 @@ function strength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataTy
     return T.(d)
 end
 
+# TO DO: extend to other graph type (Graphs.jl)
+
 instrength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(g); dir::Symbol=:in)   = strength(g, T, dir=dir)
 outstrength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(g); dir::Symbol=:out) = strength(g, T, dir=dir)
 
@@ -146,6 +148,114 @@ function strength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, i::N, T::
     
     return T.(d)
 end
+
+
+"""
+    ANND(G::T, i::Int) where {T<:Graphs.AbstractGraph}
+
+Compute the average nearest neighbor degree (ANND) for node `i` in graph `G`. The ANND for a node `i` is defined as
+``
+ANND_i(A^{*}) = \\frac{\\sum_{j=1}^{N} a_{ij}k_j }{k_i}
+``
+where ``a_{ij}`` denotes the element of the adjacency matrix ``A`` at row ``i`` and column ``j``, and ``k_i`` denotes the degree of node ``i``.
+
+**Notes:** 
+- the ANND is only defined for nodes with nonzero degree. If `degree(G,i) = 0`, then `ANND(G,i) = 0`.
+- if `G` is a directed graph, then the `degree` function returns the incoming plus outgoing edges for node `i`.
+
+
+# Examples
+```jldoctest ANND_docs
+julia> using Graphs
+
+julia> G = smallgraph(:karate);
+
+julia> ANND(G,1)
+4.3125
+
+```
+```jldoctest ANND_docs
+julia> add_vertex!(G);
+
+julia> ANND(G, nv(G))
+0.0
+```
+```jldoctest ANND_docs
+julia> Gd = SimpleDiGraph(G);
+
+julia> ANND(Gd,1)
+Warning: The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.
+[...]
+```
+
+See also: `ANND_in`, `ANND_out`, `Graphs.degree`
+"""
+function ANND(G::T, i::Int) where {T<:Graphs.AbstractGraph}
+    if Graphs.is_directed(G)
+        @warn "The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."
+    end
+    if iszero(Graphs.degree(G,i))
+        return zero(Float64)
+    else
+        return mapreduce(x -> Graphs.degree(G, x), +, Graphs.neighbors(G, i), init=zero(Float64)) / Graphs.degree(G, i)
+    end
+end
+
+
+"""
+    ANND(G::T[, v]) where {T<:Graphs.AbstractGraph}
+
+Return a vector correcponding to the average nearest neighbor degree (ANND) all nodes in the graph `G`. 
+If v is specified, only return degrees for nodes in v. The ANND for a node `i` is defined as 
+``
+ANND_i(A^{*}) = \\frac{\\sum_{j=1}^{N} a_{ij}k_j }{k_i}
+``
+where ``a_{ij}`` denotes the element of the adjacency matrix ``A`` at row ``i`` and column ``j``, and ``k_i`` denotes the degree of node ``i``.
+
+**Notes:** 
+- the ANND is only defined for nodes with nonzero degree. If `degree(G,i) = 0`, then `ANND(G,i) = 0`.
+- if `G` is a directed graph, then the `degree` function returns the incoming plus outgoing edges for node `i`.
+
+
+# Examples
+```jldoctest ANND_graph_docs
+julia> using Graphs
+
+julia> G = smallgraph(:karate);
+
+julia> ANND(G,[10; 20; 30])
+3-element Vector{Float64}:
+ 13.5
+ 14.0
+  9.0
+
+```
+```jldoctest ANND_graph_docs
+julia> ANND(G)
+ANND(d)
+36-element Vector{Float64}:
+  4.3125
+[...]
+```
+```jldoctest ANND_graph_docs
+julia> Gd = SimpleDiGraph(G);
+
+julia> ANND(Gd)
+Warning: The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.
+[...]
+```
+
+See also: `ANND_in`, `ANND_out`, `Graphs.degree`
+"""
+ANND(G::T, v::Vector{Int}=collect(1:nv(G))) where {T<:Graphs.AbstractGraph} = [ANND(G,i) for i in v]
+
+
+
+
+
+
+
+
 
 
 # """

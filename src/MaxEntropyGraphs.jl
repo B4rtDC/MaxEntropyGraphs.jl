@@ -37,7 +37,7 @@ module MaxEntropyGraphs
     # common types
     export AbstractMaxEntropyModel
     # utils 
-    export np_unique_clone
+    export np_unique_clone, ANND
     # common model functions
     export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, precision, degree, AIC, AICc #, set_yᵣ!
     # model specific types and functions

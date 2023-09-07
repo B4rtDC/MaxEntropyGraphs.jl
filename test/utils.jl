@@ -36,4 +36,22 @@
     end
 
     # to be extended for lists of tuples
+
+    @testset "Graph metrics" begin
+        @testset "ANND" begin
+            # empty graph
+            G = MaxEntropyGraphs.Graphs.SimpleGraph()
+            @test ANND(G) == Float64[]
+            # single node, no edges
+            MaxEntropyGraphs.Graphs.add_vertex!(G)
+            @test ANND(G,1) == zero(Float64)
+            # standard graph
+            G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+            Gd = MaxEntropyGraphs.Graphs.SimpleDiGraph(G)
+            @test length(ANND(G)) == MaxEntropyGraphs.Graphs.nv(G)
+            @test_logs (:warn,"The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.") ANND(Gd,1)
+            # should give the same 
+            @test ANND(G) == ANND(Gd)
+        end
+    end
 end

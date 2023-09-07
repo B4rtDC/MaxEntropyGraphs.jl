@@ -18,6 +18,11 @@ MaxEntropyGraphs.log_nan
 MaxEntropyGraphs.np_unique_clone
 ```
 
+## Graph metrics
+```@docs
+MaxEntropyGraphs.ANND
+```
+
 ## UBCM
 ```@docs 
 MaxEntropyGraphs.UBCM
