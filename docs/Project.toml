@@ -1,3 +1,4 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 MaxEntropyGraphs = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"

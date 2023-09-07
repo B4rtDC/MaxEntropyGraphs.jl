@@ -188,7 +188,7 @@ Warning: The graph is directed. The degree function returns the incoming plus ou
 [...]
 ```
 
-See also: `ANND_in`, `ANND_out`, `Graphs.degree`
+See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
 """
 function ANND(G::T, i::Int) where {T<:Graphs.AbstractGraph}
     if Graphs.is_directed(G)
@@ -245,7 +245,7 @@ Warning: The graph is directed. The degree function returns the incoming plus ou
 [...]
 ```
 
-See also: `ANND_in`, `ANND_out`, `Graphs.degree`
+See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
 """
 ANND(G::T, v::Vector{Int}=collect(1:Graphs.nv(G))) where {T<:Graphs.AbstractGraph} = [ANND(G,i) for i in v]
 
