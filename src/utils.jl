@@ -257,7 +257,7 @@ function ANND(G::T, v::Vector{Int}=collect(1:Graphs.nv(G)); check_directed::Bool
     end
 
     return [ANND(G,i, check_directed=false) for i in v]
-
+end
 
 
 
