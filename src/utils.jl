@@ -161,7 +161,7 @@ where ``a_{ij}`` denotes the element of the adjacency matrix ``A`` at row ``i`` 
 
 **Notes:** 
 - the ANND is only defined for nodes with nonzero degree. If `degree(G,i) = 0`, then `ANND(G,i) = 0`.
-- if `G` is a directed graph, by default a warning is shown because the `degree` function returns the incoming plus outgoing edges for node `i` in this case.
+- if `G` is a directed graph, by default an error is thrown because the `degree` function returns the incoming plus outgoing edges for node `i` in this case.
     This can be turned of by setting `check_directed=false`.
 
 
@@ -216,7 +216,7 @@ where ``a_{ij}`` denotes the element of the adjacency matrix ``A`` at row ``i`` 
 
 **Notes:** 
 - the ANND is only defined for nodes with nonzero degree. If `degree(G,i) = 0`, then `ANND(G,i) = 0`.
-- if `G` is a directed graph, by default a warning is shown because the `degree` function returns the incoming plus outgoing edges for node `i` in this case.
+- if `G` is a directed graph, by default an error is thrown because the `degree` function returns the incoming plus outgoing edges for node `i` in this case.
 This can be turned of by setting `check_directed=false`. This check is only performed once the actual computing.
 
 
@@ -235,19 +235,16 @@ julia> ANND(G,[10; 20; 30])
 ```
 ```jldoctest ANND_graph_docs
 julia> ANND(G)
-ANND(d)
 34-element Vector{Float64}:
-  4.3125
+ 4.3125
 [...]
-
 ```
 ```jldoctest ANND_graph_docs
 julia> Gd = SimpleDiGraph(G);
 
 julia> ANND(Gd);
-┌ Warning: The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.
+throw(ArgumentError("The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."))
 [...]
-
 ```
 
 See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
@@ -255,7 +252,7 @@ See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graph
 function ANND(G::T, v::Vector{Int}=collect(1:Graphs.nv(G)); check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
     # check only once before computing the rest
     if check_directed && Graphs.is_directed(G)
-        @warn "The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."
+        throw(ArgumentError("The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."))
     end
 
     return [ANND(G,i, check_directed=false) for i in v]
