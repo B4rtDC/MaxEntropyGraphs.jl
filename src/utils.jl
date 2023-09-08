@@ -185,7 +185,7 @@ julia> ANND(G, nv(G))
 julia> Gd = SimpleDiGraph(G);
 
 julia> ANND(Gd,1)
-Warning: The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.
+┌ Warning: The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.
 [...]
 ```
 
@@ -236,16 +236,18 @@ julia> ANND(G,[10; 20; 30])
 ```jldoctest ANND_graph_docs
 julia> ANND(G)
 ANND(d)
-36-element Vector{Float64}:
+34-element Vector{Float64}:
   4.3125
 [...]
+
 ```
 ```jldoctest ANND_graph_docs
 julia> Gd = SimpleDiGraph(G);
 
-julia> ANND(Gd)
-Warning: The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.
+julia> ANND(Gd);
+┌ Warning: The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.
 [...]
+
 ```
 
 See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
