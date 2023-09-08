@@ -29,3 +29,25 @@ Using the appropriate expressions for
 (depending on the model considered, cf. examples), a highly reliable estimate for the variance of the metric can be obtained.
 
 ## Examples
+### Assortativity in the UBCM
+Let us consider the UBCM applied to the Zachary Karate Club network. We want to analyse if the assortativity of each node (measured by its ANND) is statistically significant from what one would expect under the null model.
+
+```jldoctest UBCM_z_demo; output = false
+using Graphs
+using MaxEntropyGraphs
+
+# define the network
+G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+# generate a UBCM model from the karate club network
+model = UBCM(G); 
+# compute the maximum likelihood parameters
+solve_model!(model); 
+# compute and set the expected adjacency matrix
+set_Ĝ!(model); 
+# compute and set the standard deviation of the adjacency matrix
+set_σ!(model); 
+
+# output
+
+
+```

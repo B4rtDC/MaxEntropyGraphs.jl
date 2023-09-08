@@ -195,7 +195,7 @@ julia> ANND(Gd,1, check_directed=false)
 
 See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
 """
-function ANND(G::T, i::Int; check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
+function ANND(G::T, i::Int; check_directed::Bool=true, kwargs...) where {T<:Graphs.AbstractGraph}
     if check_directed && Graphs.is_directed(G)
         throw(ArgumentError("The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."))
     end
@@ -255,7 +255,7 @@ julia> ANND(Gd,[10; 20; 30], check_directed=false)
 
 See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
 """
-function ANND(G::T, vs=vertices(G); check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
+function ANND(G::T, vs=vertices(G); check_directed::Bool=true, kwargs...) where {T<:Graphs.AbstractGraph}
     # check only once before computing the rest
     if check_directed && Graphs.is_directed(G)
         throw(ArgumentError("The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."))
@@ -405,11 +405,28 @@ end
 Compute the standard deviation of metric `X` for the UBCM model `m`. 
     
 This requires that both the expected values (m.Ĝ) and standard deviations (m.σ) are computed for `m`.
-
 """
-function σₓ(m::UBCM, X::Function)
-    return nothing
+function σₓ(m::UBCM, X::Function; gradient_method::Symbol=:ReverseDiff)
+    # checks
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
+    m.status[:σ_computed] ? nothing : throw(ArgumentError("The standard deviations (m.σ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_σ!`"))
+
+    # gradient
+    if gradient_method == :ForwardDiff
+        ∇X = ForwardDiff.gradient(X, m.Ĝ)
+    elseif gradient_method == :ReverseDiff
+        ∇X = ReverseDiff.gradient(X, m.Ĝ)
+    elseif gradient_method == :Zygote
+        ∇X = Zygote.gradient(X, m.Ĝ)[1]
+    else
+        throw(ArgumentError("Invalid gradient method, only :ForwardDiff, :ReverseDiff and :Zygote are accepted"))
+    end
+
+    # return value
+    return sqrt( sum((m.σ .* ∇X) .^ 2) )
 end
+
+
 
 
 #     DBCM_analysis
