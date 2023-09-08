@@ -4,7 +4,7 @@
 MaxEntropyGraphs
 AbstractMaxEntropyModel
 MaxEntropyGraphs.ConvergenceError
-MaxEntropyGraphs.strength
+
 ```
 
 ## Utility fuctions
@@ -20,6 +20,8 @@ MaxEntropyGraphs.np_unique_clone
 
 ## Graph metrics
 ```@docs
+MaxEntropyGraphs.degree
+MaxEntropyGraphs.strength
 MaxEntropyGraphs.ANND
 ```
 
@@ -45,8 +47,6 @@ MaxEntropyGraphs.set_Ĝ!(::UBCM)
 MaxEntropyGraphs.σˣ(::UBCM)
 MaxEntropyGraphs.set_σ!(::UBCM)
 MaxEntropyGraphs.precision(::UBCM)
-MaxEntropyGraphs.degree(::UBCM,::Int)
-MaxEntropyGraphs.degree(::UBCM)
 MaxEntropyGraphs.A(::UBCM,::Int64,::Int64)
 MaxEntropyGraphs.f_UBCM(::UBCM)
 ```

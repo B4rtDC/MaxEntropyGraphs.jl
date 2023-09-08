@@ -1,2 +1,4 @@
 # Simulation
-The analytical method can quickly become expensive to compute since each element in the adjacency matrix has a non-zero value. It is also possible to obtain an estimate of both the metric and its variance using Monte Carlo simulation.  
+The analytical method can quickly become expensive to compute since each element in the adjacency matrix has a non-zero value. It is also possible to obtain an estimate of both the metric and its standard deviation by generating a large number of random graphs from the ensemble and by computing the value of the metric(s) for each graph. This can also allow you to compute the z-scores of the metric, but some caution is advised. Using the analytical method, we do consider the actual underlying distribution of the metric to combine the expected value and standard deviation. This contrasts with the sample, where we simply apply the mean and standard deviation to the vector of computed metrics. Also, considering the z-score and interpreting statistical significance if ``|z| \ge 3`` implies that the underlying distribution of the metric follows a standard normal distribution, which is not always the case.
+
+## Examples

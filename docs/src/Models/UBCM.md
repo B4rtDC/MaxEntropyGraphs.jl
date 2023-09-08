@@ -10,6 +10,7 @@ The Undirected Binary Configuration Model is a maximum-entropy null model for un
 | Log-likelihood                | `` \mathcal{L}(\Theta) = -\sum_{i=1}^{N}\theta_i k_i(A^{*}) - \sum_{i=1}^{N} \sum_{j=1, j<i}^{N} \ln \left( 1+e^{-\theta_i - \theta_j} \right) ``|
 | $\langle a_{ij}^{2} \rangle$  | `` \langle a_{ij} \rangle`` |
 | $\langle a_{ij}a_{ts} \rangle$| `` \langle a_{ij} \rangle \langle a_{ts} \rangle`` |
+| $\sigma^{*}(X)$               | $\sqrt{\sum_{i,j} \left( \sigma^{*}[a_{ij}] \frac{\partial X}{\partial a_{ij}}  \right)^{2}_{A = \langle A^{*} \rangle} + \dots }$                                                    |
 
 
 ```@raw latex
