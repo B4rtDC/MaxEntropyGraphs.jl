@@ -398,6 +398,20 @@ function ANND(A::T, vs=1:size(A,1); check_dimensions::Bool=true, check_directed:
 end
 
 
+
+"""
+    σₓ(m::UBCM, X::function)
+
+Compute the standard deviation of metric `X` for the UBCM model `m`. 
+    
+This requires that both the expected values (m.Ĝ) and standard deviations (m.σ) are computed for `m`.
+
+"""
+function σₓ(m::UBCM, X::Function)
+    return nothing
+end
+
+
 #     DBCM_analysis
 
 # Compute the z-scores etc. for all motifs and the degrees for a `SimpleDiGraph`. Returns a Dict for storage of the computed results
