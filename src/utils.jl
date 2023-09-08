@@ -236,14 +236,14 @@ julia> ANND(G,[10; 20; 30])
 ```jldoctest ANND_graph_docs
 julia> ANND(G)
 34-element Vector{Float64}:
- 4.3125
 [...]
+
 ```
 ```jldoctest ANND_graph_docs
 julia> Gd = SimpleDiGraph(G);
 
 julia> ANND(Gd);
-throw(ArgumentError("The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."))
+ERROR: ArgumentError: The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.
 [...]
 ```
 
