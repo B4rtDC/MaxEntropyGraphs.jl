@@ -209,10 +209,10 @@ end
 
 
 """
-    ANND(G::T, v::Vector{Int}=collect(1:Graphs.nv(G)); check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
+    ANND(G::T, vs=vertices(G); check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
 
 Return a vector correcponding to the average nearest neighbor degree (ANND) all nodes in the graph `G`. 
-If v is specified, only return degrees for nodes in v. The ANND for a node `i` is defined as 
+If v is specified, only return the ANND for nodes in v. The ANND for a node `i` is defined as 
 ``
 ANND_i(A^{*}) = \\frac{\\sum_{j=1}^{N} a_{ij}k_j }{k_i}
 ``
@@ -255,13 +255,13 @@ julia> ANND(Gd,[10; 20; 30], check_directed=false)
 
 See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
 """
-function ANND(G::T, v::Vector{Int}=collect(1:Graphs.nv(G)); check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
+function ANND(G::T, vs=vertices(G); check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
     # check only once before computing the rest
     if check_directed && Graphs.is_directed(G)
         throw(ArgumentError("The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."))
     end
 
-    return [ANND(G,i, check_directed=false) for i in v]
+    return [ANND(G,i, check_directed=false) for i in vs]
 end
 
 
@@ -306,7 +306,7 @@ ERROR: ArgumentError: The matrix is not symmetrical. Consider using ANND_in or A
 ```
 ```jldoctest ANND_mat_node_docs
 julia> ANND(Ad, 1, check_directed=false)
-4.3125
+4.375
 
 ```
 ```jldoctest ANND_mat_node_docs
@@ -334,12 +334,70 @@ function ANND(A::T, i::Int; check_dimensions::Bool=true, check_directed::Bool=tr
     end
 end
 
+"""
+    ANND(A::T, vs=1:size(A,1); check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
+
+Return a vector correcponding to the average nearest neighbor degree (ANND) all nodes in the graph with adjacency matrix `A`. 
+If v is specified, only return the ANND for nodes in v. The ANND for a node `i` is defined as 
+``
+ANND_i(A^{*}) = \\frac{\\sum_{j=1}^{N} a_{ij}k_j }{k_i}
+``
+where ``a_{ij}`` denotes the element of the adjacency matrix ``A`` at row ``i`` and column ``j``, and ``k_i`` denotes the degree of node ``i``.
+
+**Notes:** 
+- this function is intented for use with the expected adjacency matrix of a `::AbstractMaxEntropyModel` model. A separate method exists for `::AbstractGraph` objects.
+- if `A` is not symmetrical, you have a directed graph, and this will throw an error by default. This can be turned off by setting `check_directed=false`.
+- the adjacency matrix should be square, if not, this will throw an error by default. This can be turned off by setting `check_dimensions=false`.
+
+# Examples
+```jldoctest ANND_mat_docs
+julia> using Graphs
+
+julia> G = smallgraph(:karate);
+
+julia> A = adjacency_matrix(G);
+
+julia> ANND(A);
+
+```
+```jldoctest ANND_mat_docs
+julia> Gd = SimpleDiGraph(G);
+
+julia> add_vertex!(Gd); add_edge!(Gd, 1, nv(Gd));
+
+julia> Ad = adjacency_matrix(Gd);
+
+julia> ANND(Ad)
+ERROR: ArgumentError: The matrix is not symmetrical. Consider using ANND_in or ANND_out instead.
+[...]
+```
+```jldoctest ANND_mat_docs
+julia> ANND(Ad, check_directed=false)[1]
+4.375
+
+```
+```jldoctest ANND_mat_docs
+julia> ANND(rand(2,3))
+ERROR: DimensionMismatch: `A` must be a square matrix.
+[...]
+```
+
+See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
+"""
+function ANND(A::T, vs=1:size(A,1); check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
+    # checks
+    if check_dimensions && !isequal(size(A)...) 
+        throw(DimensionMismatch("`A` must be a square matrix."))
+    end
+    if check_directed && !issymmetric(A) 
+        throw(ArgumentError( "The matrix is not symmetrical. Consider using ANND_in or ANND_out instead."))
+    end
+
+    # compute
+    return [ANND(A,i, check_dimensions=false, check_directed=false) for i in vs]
+end
 
 
-
-
-
-# """
 #     DBCM_analysis
 
 # Compute the z-scores etc. for all motifs and the degrees for a `SimpleDiGraph`. Returns a Dict for storage of the computed results
