@@ -17,7 +17,7 @@ module MaxEntropyGraphs
     # to solve the optimization problem
     import Optimization
     import OptimizationOptimJL
-    import Zygote
+    import ForwardDiff, ReverseDiff, Zygote
     import NLsolve
     import LinearAlgebra: issymmetric
     #import NaNMath # returns a NaN instead of a DomainError for some functions. The solver(s) will use the NaN within the error control routines to reject the out of bounds step.
@@ -26,21 +26,20 @@ module MaxEntropyGraphs
     #import LoopVectorization: @tturbo, @turbo  # not for now
 
     # actual source code
-    include("utils.jl")
     include("Models/models.jl")
     include("Models/UBCM.jl")
     #include("Models/DBCM.jl")
     #include("Models/BiCM.jl")
     #include("Models/UECM.jl")
     #include("Models/CReM.jl")
-
+    include("utils.jl")
     ## exports
     # common types
     export AbstractMaxEntropyModel
     # utils 
     export np_unique_clone, ANND
     # common model functions
-    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, precision, degree, AIC, AICc #, set_yᵣ!
+    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, precision, degree, AIC, AICc, σₓ #, set_yᵣ!
     # model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
     #export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
