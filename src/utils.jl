@@ -185,7 +185,7 @@ julia> ANND(G, nv(G))
 julia> Gd = SimpleDiGraph(G);
 
 julia> ANND(Gd,1)
-┌ Warning: The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.
+ERROR: ArgumentError: The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.
 [...]
 ```
 
@@ -193,7 +193,7 @@ See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graph
 """
 function ANND(G::T, i::Int; check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
     if check_directed && Graphs.is_directed(G)
-        @warn "The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."
+        throw(ArgumentError("The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."))
     end
 
     if iszero(Graphs.degree(G,i))
