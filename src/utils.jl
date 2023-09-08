@@ -237,7 +237,6 @@ julia> ANND(G,[10; 20; 30])
 julia> ANND(G)
 34-element Vector{Float64}:
 [...]
-
 ```
 ```jldoctest ANND_graph_docs
 julia> Gd = SimpleDiGraph(G);
