@@ -151,7 +151,7 @@ end
 
 
 """
-    ANND(G::T, i::Int) where {T<:Graphs.AbstractGraph}
+    ANND(G::T, i::Int; check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
 
 Compute the average nearest neighbor degree (ANND) for node `i` in graph `G`. The ANND for a node `i` is defined as
 ``
@@ -161,11 +161,12 @@ where ``a_{ij}`` denotes the element of the adjacency matrix ``A`` at row ``i`` 
 
 **Notes:** 
 - the ANND is only defined for nodes with nonzero degree. If `degree(G,i) = 0`, then `ANND(G,i) = 0`.
-- if `G` is a directed graph, then the `degree` function returns the incoming plus outgoing edges for node `i`.
+- if `G` is a directed graph, by default a warning is shown because the `degree` function returns the incoming plus outgoing edges for node `i` in this case.
+    This can be turned of by setting `check_directed=false`.
 
 
 # Examples
-```jldoctest ANND_docs
+```jldoctest ANND_graph_node_docs
 julia> using Graphs
 
 julia> G = smallgraph(:karate);
@@ -174,13 +175,13 @@ julia> ANND(G,1)
 4.3125
 
 ```
-```jldoctest ANND_docs
+```jldoctest ANND_graph_node_docs
 julia> add_vertex!(G);
 
 julia> ANND(G, nv(G))
 0.0
 ```
-```jldoctest ANND_docs
+```jldoctest ANND_graph_node_docs
 julia> Gd = SimpleDiGraph(G);
 
 julia> ANND(Gd,1)
@@ -190,10 +191,11 @@ Warning: The graph is directed. The degree function returns the incoming plus ou
 
 See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
 """
-function ANND(G::T, i::Int) where {T<:Graphs.AbstractGraph}
-    if Graphs.is_directed(G)
+function ANND(G::T, i::Int; check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
+    if check_directed && Graphs.is_directed(G)
         @warn "The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."
     end
+
     if iszero(Graphs.degree(G,i))
         return zero(Float64)
     else
@@ -203,7 +205,7 @@ end
 
 
 """
-    ANND(G::T[, v]) where {T<:Graphs.AbstractGraph}
+    ANND(G::T, v::Vector{Int}=collect(1:Graphs.nv(G)); check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
 
 Return a vector correcponding to the average nearest neighbor degree (ANND) all nodes in the graph `G`. 
 If v is specified, only return degrees for nodes in v. The ANND for a node `i` is defined as 
@@ -214,7 +216,8 @@ where ``a_{ij}`` denotes the element of the adjacency matrix ``A`` at row ``i`` 
 
 **Notes:** 
 - the ANND is only defined for nodes with nonzero degree. If `degree(G,i) = 0`, then `ANND(G,i) = 0`.
-- if `G` is a directed graph, then the `degree` function returns the incoming plus outgoing edges for node `i`.
+- if `G` is a directed graph, by default a warning is shown because the `degree` function returns the incoming plus outgoing edges for node `i` in this case.
+This can be turned of by setting `check_directed=false`. This check is only performed once the actual computing.
 
 
 # Examples
@@ -247,9 +250,18 @@ Warning: The graph is directed. The degree function returns the incoming plus ou
 
 See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
 """
-ANND(G::T, v::Vector{Int}=collect(1:Graphs.nv(G))) where {T<:Graphs.AbstractGraph} = [ANND(G,i) for i in v]
+function ANND(G::T, v::Vector{Int}=collect(1:Graphs.nv(G)); check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
+    # check only once before computing the rest
+    if check_directed && Graphs.is_directed(G)
+        @warn "The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."
+    end
+
+    return [ANND(G,i, check_directed=false) for i in v]
 
 
+
+
+#=
 """
     ANND(A::T, i::Int; check_symmetry::Bool=false) where {T<:AbstractMatrix}
 
@@ -295,9 +307,9 @@ Warning: The matrix is not symmetrical. Consider using ANND_in or ANND_out inste
 
 See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
 """
-function ANND(A::T, i::Int; check_symmetry::Bool=true) where {T<:AbstractMatrix}
+function ANND(A::T, i::Int; check_directed::Bool=true) where {T<:AbstractMatrix}
     isequal(size(A)...) || throw(DimensionMismatch("A must be a square matrix"))
-    if check_symmetry
+    if check_directed
         !issymmetric(A) || @warn "The matrix is not symmetrical. Consider using ANND_in or ANND_out instead."
     end
     if iszero(sum(@view A[:,i]))
@@ -309,7 +321,7 @@ end
 
 
 
-
+=#
 
 
 # """
