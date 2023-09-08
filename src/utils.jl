@@ -162,7 +162,7 @@ where ``a_{ij}`` denotes the element of the adjacency matrix ``A`` at row ``i`` 
 **Notes:** 
 - the ANND is only defined for nodes with nonzero degree. If `degree(G,i) = 0`, then `ANND(G,i) = 0`.
 - if `G` is a directed graph, by default an error is thrown because the `degree` function returns the incoming plus outgoing edges for node `i` in this case.
-    This can be turned of by setting `check_directed=false`.
+    This can be turned off by setting `check_directed=false`.
 
 
 # Examples
@@ -217,7 +217,7 @@ where ``a_{ij}`` denotes the element of the adjacency matrix ``A`` at row ``i`` 
 **Notes:** 
 - the ANND is only defined for nodes with nonzero degree. If `degree(G,i) = 0`, then `ANND(G,i) = 0`.
 - if `G` is a directed graph, by default an error is thrown because the `degree` function returns the incoming plus outgoing edges for node `i` in this case.
-This can be turned of by setting `check_directed=false`. This check is only performed once the actual computing.
+This can be turned off by setting `check_directed=false`. This check is only performed once the actual computing.
 
 
 # Examples
@@ -236,7 +236,7 @@ julia> ANND(G,[10; 20; 30])
 ```jldoctest ANND_graph_docs
 julia> ANND(G)
 34-element Vector{Float64}:
-[...]
+ [...]
 ```
 ```jldoctest ANND_graph_docs
 julia> Gd = SimpleDiGraph(G);
