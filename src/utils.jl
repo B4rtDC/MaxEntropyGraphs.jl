@@ -234,9 +234,9 @@ julia> ANND(G,[10; 20; 30])
 
 ```
 ```jldoctest ANND_graph_docs
-julia> ANND(G)
-34-element Vector{Float64}:
- [...]
+julia> typeof(ANND(G))
+Vector{Float64}
+
 ```
 ```jldoctest ANND_graph_docs
 julia> Gd = SimpleDiGraph(G);
