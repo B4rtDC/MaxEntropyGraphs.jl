@@ -1,8 +1,11 @@
 
 """
-    DBCM{T,N} <: AbstractMaxEntropyModel
+    DBCM
 
-Type definition for the Directed Binary Configuration Model (DBCM) model.
+Maximum entropy model for the Directed Binary Configuration Model (UBCM).
+
+The object holds the maximum likelihood parameters of the model (θ) and optionally the expected adjacency matrix (G), 
+and the variance for the elements of the adjacency matrix (σ). All settings and other metadata are stored in the `status` field.
 """
 mutable struct DBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleDiGraph for the computation" # can also be empty
@@ -42,7 +45,7 @@ mutable struct DBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.Abstr
 end
 
 
-Base.show(io::IO, m::DBCM{T,N}) where {T,N} = print(io, """UBCM{$(T), $(N)} ($(m.status[:d]) vertices, $(m.status[:d_unique]) unique degree pairs, $(@sprintf("%.2f", m.status[:cᵣ])) compression ratio)""")
+Base.show(io::IO, m::DBCM{T,N}) where {T,N} = print(io, """DBCM{$(T), $(N)} ($(m.status[:d]) vertices, $(m.status[:d_unique]) unique degree pairs, $(@sprintf("%.2f", m.status[:cᵣ])) compression ratio)""")
 
 """Return the reduced number of nodes in the UBCM network"""
 Base.length(m::DBCM) = length(m.dᵣ)
@@ -56,26 +59,47 @@ Constructor function for the `DBCM` type.
     
 By default and dependng on the graph type `T`, the definition of in- and outdegree from ``Graphs.jl`` is applied. 
 If you want to use a different definition of degrees, you can pass vectors of degrees sequences as keyword arguments (`d_out`, `d_in`).
-If you want to generate a model directly from degree sequences without an underlying graph , you can simply pass the degree sequences as arguments (`d_out`, `d_in`).
+If you want to generate a model directly from degree sequences without an underlying graph, you can simply pass the degree sequences as arguments (`d_out`, `d_in`).
 If you want to work from an adjacency matrix, or edge list, you can use the graph constructors from the ``JuliaGraphs`` ecosystem.
 
 # Examples     
-```jldoctest
+```jldoctest DBCM_creation
+julia> using Graphs
 # generating a model from a graph
-
-
+julia> G = SimpleDiGraph(rhesus_macaques())
+{16, 111} directed simple Int64 graph
+julia> model = DBCM(G)
+DBCM{SimpleDiGraph{Int64}, Float64} (16 vertices, 15 unique degree pairs, 0.94 compression ratio)
+```
+```jldoctest DBCM_creation
 # generating a model directly from a degree sequence
-
-
+model = DBCM(d_out=outdegree(G), d_in=indegree(G))
+DBCM{Nothing, Float64} (16 vertices, 15 unique degree pairs, 0.94 compression ratio)
+```
+```jldoctest DBCM_creation
 # generating a model directly from a degree sequence with a different precision
-
-
+model = DBCM(d_out=outdegree(G), d_in=indegree(G), precision=Float32)
+DBCM{Nothing, Float32} (16 vertices, 15 unique degree pairs, 0.94 compression ratio)
+```
+```jldoctest DBCM_creation
 # generating a model from an adjacency matrix
+julia> A = [0 1 1;1 0 0;1 1 0];
 
-
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(A)
+{3, 5} directed simple Int64 graph
+julia> model = DBCM(G)
+DBCM{SimpleDiGraph{Int64}, Float64} (3 vertices, 3 unique degree pairs, 1.00 compression ratio)
+```
+```jldoctest DBCM_creation
 # generating a model from an edge list
+julia> E = [(1,2),(1,3),(2,3)];
 
+julia> edgelist = [MaxEntropyGraphs.Graphs.Edge(x,y) for (x,y) in E];
 
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraphFromIterator(edgelist)
+{3, 3} directed simple Int64 graph
+julia> model = DBCM(G)
+DBCM{SimpleDiGraph{Int64}, Float64} (3 vertices, 3 unique degree pairs, 1.00 compression ratio)
 ```
 
 See also [`Graphs.outdegree`](@ref), [`Graphs.indegree`](@ref), [`SimpleWeightedGraphs.outdegree`](@ref), [`SimpleWeightedGraphs.indegree`](@ref).
@@ -134,7 +158,7 @@ DBCM(; d_out::Vector{T}, d_in::Vector{T}, precision::Type{N}=Float64, kwargs...)
 
 Compute the log-likelihood of the reduced DBCM model using the exponential formulation in order to maintain convexity.
 
-The arguments of the function are:
+# Arguments
     - `θ`: the maximum likelihood parameters of the model ([α; β])
     - `k_out`: the reduced outdegree sequence
     - `k_in`: the reduced indegree sequence
@@ -150,19 +174,33 @@ generate an anonymous function associated with a specific model.
 ```jldoctest
 # Generic use:
 julia> k_out  = [1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5];
-julia> k_in   = [2, 3, 4, 1, 3, 5, 2, 4, 1, 2, 4, 0, 4];
-julia> F      = [2, 2, 1, 1, 1, 2, 3, 1, 1, 2, 2, 1, 1];
-julia> θ      = rand(length(k_out));
-julia> nz_out = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
-julia> nz_in  = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13];
-julia> n      = length(k_out);
-julia> L_DBCM_reduced(θ, k_out, k_in, F, nz_out, nz_in, n)
 
-# Use with UBCM model:
-julia> G = 
+julia> k_in   = [2, 3, 4, 1, 3, 5, 2, 4, 1, 2, 4, 0, 4];
+
+julia> F      = [2, 2, 1, 1, 1, 2, 3, 1, 1, 2, 2, 1, 1];
+
+julia> θ      = collect(range(0.1, step=0.1, length=length(k_out)));
+
+julia> nz_out = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+
+julia> nz_in  = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13];
+
+julia> n      = length(k_out);
+
+julia> L_DBCM_reduced(θ, k_out, k_in, F, nz_out, nz_in, n)
+-200.48153981203262
+```
+```jldoctest
+julia> using Graphs
+# Use with DBCM model:
+julia> G = SimpleDiGraph(rhesus_macaques());
+
 julia> model = DBCM(G);
-julia> model_fun = θ -> L_DBCM_reduced(θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, model.status[:d_unique])
-julia> model_fun(model.Θᵣ)
+
+julia> model_fun = θ -> L_DBCM_reduced(θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, model.status[:d_unique]);
+
+julia> model_fun(ones(size(model.θᵣ)))
+-252.4627226503138
 ```
 """
 function L_DBCM_reduced(θ::Vector, k_out::Vector, k_in::Vector, F::Vector, nz_out::Vector, nz_in::Vector, n::Int=length(k_out))
@@ -193,9 +231,29 @@ end
 
 Return the log-likelihood of the DBCM model `m` based on the computed maximum likelihood parameters.
 
-TO DO: include check for parameters computed
+# Examples
+```jldoctest
+julia> using Graphs
+# Use with DBCM model:
+julia> G =SimpleDiGraph(rhesus_macaques());
+
+julia> model = DBCM(G);
+
+julia> solve_model!(model);
+
+julia> L_DBCM_reduced(model)
+-120.15942408828172
+```
+
+See also [`L_DBCM_reduced(::Vector, ::Vector, ::Vector, ::Vector, ::Vector, ::Vector)`](@ref)
 """
-L_DBCM_reduced(m::DBCM) = L_DBCM_reduced(m.θᵣ, m.dᵣ_out, m.dᵣ_in, m.f, m.dᵣ_out_nz, m.dᵣ_in_nz, m.status[:d_unique])
+function L_DBCM_reduced(m::DBCM)
+    if m.status[:params_computed]
+        return L_DBCM_reduced(m.θᵣ, m.dᵣ_out, m.dᵣ_in, m.f, m.dᵣ_out_nz, m.dᵣ_in_nz, m.status[:d_unique])
+    else
+        throw(ArgumentError("The maximum likelihood parameters have not been computed yet"))
+    end
+end
 
 
 """
@@ -206,31 +264,58 @@ Compute the gradient of the log-likelihood of the reduced DBCM model using the e
 For the optimisation, this function will be used togenerate an anonymous function associated with a specific model. The function 
 will update pre-allocated vectors (`∇L`,`x` and `y`) for speed. The gradient is non-allocating.
 
-The arguments of the function are:
-    - `∇L`: the gradient of the log-likelihood of the reduced model
-    - `θ`: the maximum likelihood parameters of the model ([α; β])
-    - `k_out`: the reduced outdegree sequence
-    - `k_in`: the reduced indegree sequence
-    - `F`: the frequency of each pair in the degree sequence
-    - `nz_out`: the indices of non-zero elements in the reduced outdegree sequence
-    - `nz_in`: the indices of non-zero elements in the reduced indegree sequence
-    - `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-αᵢ) )
-    - `y`: the exponentiated maximum likelihood parameters of the model ( yᵢ = exp(-βᵢ) )
-    - `n`: the number of nodes in the reduced model
+# Arguments
+- `∇L`: the gradient of the log-likelihood of the reduced model
+- `θ`: the maximum likelihood parameters of the model ([α; β])
+- `k_out`: the reduced outdegree sequence
+- `k_in`: the reduced indegree sequence
+- `F`: the frequency of each pair in the degree sequence
+- `nz_out`: the indices of non-zero elements in the reduced outdegree sequence
+- `nz_in`: the indices of non-zero elements in the reduced indegree sequence
+- `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-αᵢ) )
+- `y`: the exponentiated maximum likelihood parameters of the model ( yᵢ = exp(-βᵢ) )
+- `n`: the number of nodes in the reduced model
 
 # Examples
-```jldoctest
+```jldoctest ∇L_DBCM_reduced
 # Explicit use with DBCM model:
+julia> using Graphs
 
+julia> G = SimpleDiGraph(rhesus_macaques());
+
+julia> model = DBCM(G);
+
+julia> ∇L = zeros(Real, length(model.θᵣ));
+
+julia> x  = zeros(Real, length(model.xᵣ));
+
+julia> y  = zeros(Real, length(model.yᵣ));
+
+julia> ∇model_fun! = θ -> ∇L_DBCM_reduced!(∇L, θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, x, y, model.status[:d_unique]);
+
+julia> ∇model_fun!(model.θᵣ);
+
+```
+```jldoctest ∇L_DBCM_reduced
 # Use within optimisation.jl framework:
-julia> fun =   (θ, p)
-julia> ∇fun! = (∇L, θ, p)
-julia> θ₀ =  # initial condition
-julia> foo = MaxEntropyGraphs.Optimization.OptimizationProblem(fun, grad=∇fun!)
-julia> prob  = MaxEntropyGraphs.Optimization.OptimizationFunction(prob, θ₀)
-julia> method = MaxEntropyGraphs.OptimizationOptimJL.NLopt.LD_LBFGS()
-julia> solve(prob, method)
-...
+julia> fun = (θ,p) -> -L_DBCM_reduced(θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, model.status[:d_unique]);
+
+julia> x  = zeros(Real, length(model.xᵣ)); # initialise  buffer
+
+julia> y  = zeros(Real, length(model.yᵣ));#  initialise  buffer
+
+julia> ∇fun! = (∇L, θ, p) -> ∇L_DBCM_reduced!(∇L, θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, x, y, model.status[:d_unique]);
+
+julia> θ₀ = initial_guess(model) # initial condition
+
+julia> foo = MaxEntropyGraphs.Optimization.OptimizationFunction(fun, grad=∇fun!); # define target function 
+
+julia> prob  = MaxEntropyGraphs.Optimization.OptimizationProblem(foo, θ₀); # define the optimisation problem
+
+julia> method = MaxEntropyGraphs.OptimizationOptimJL.LBFGS(); # set the optimisation method
+
+julia> MaxEntropyGraphs.Optimization.solve(prob, method); # solve it
+
 ```
 """
 function ∇L_DBCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector, 
@@ -338,33 +423,42 @@ end
     DBCM_reduced_iter!(θ::AbstractVector, k_out::AbstractVector, k_in::AbstractVector, F::AbstractVector, nz_out::Vector, nz_in::Vector,x::AbstractVector, y::AbstractVector, G::AbstractVector, H::AbstractVector, n::Int)
 
 Computer the next fixed-point iteration for the DBCM model using the exponential formulation in order to maintain convexity.
-The function is non-allocating and will update pre-allocated vectors (`θ`, `x`, `y`, `G` and `H`) for speed.
+The function is non-allocating and will update pre-allocated vectors (`θ`, `x`, `y` and `G`) for speed.
 
-The arguments of the function are:
-    - `θ`: the maximum likelihood parameters of the model ([α; β])
-    - `k_out`: the reduced outdegree sequence
-    - `k_in`: the reduced indegree sequence
-    - `F`: the frequency of each pair in the degree sequence
-    - `nz_out`: the indices of non-zero elements in the reduced outdegree sequence
-    - `nz_in`: the indices of non-zero elements in the reduced indegree sequence
-    - `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-αᵢ) )
-    - `y`: the exponentiated maximum likelihood parameters of the model ( yᵢ = exp(-βᵢ) )
-    - `G`: buffer for out-degree related computations
-    - `H`: buffer for in-degree related computations
-    - `n`: the number of nodes in the reduced model
+# Arguments
+- `θ`: the maximum likelihood parameters of the model ([α; β])
+- `k_out`: the reduced outdegree sequence
+- `k_in`: the reduced indegree sequence
+- `F`: the frequency of each pair in the degree sequence
+- `nz_out`: the indices of non-zero elements in the reduced outdegree sequence
+- `nz_in`: the indices of non-zero elements in the reduced indegree sequence
+- `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-αᵢ) )
+- `y`: the exponentiated maximum likelihood parameters of the model ( yᵢ = exp(-βᵢ) )
+- `G`: buffer for computations
+- `n`: the number of nodes in the reduced model
 
 
 # Examples
-```jldoctest
+```julia
 # Use with DBCM model:
-julia> G = 
+julia> using Graphs 
+
+julia> G = SimpleDiGraph(rhesus_macaques());
+
 julia> model = DBCM(G);
-julia> G = zeros(eltype(model.Θᵣ), length(model.xᵣ);
-julia> H = zeros(eltype(model.Θᵣ), length(model.yᵣ);
-julia> x = zeros(eltype(model.Θᵣ), length(model.xᵣ);
-julia> y = zeros(eltype(model.Θᵣ), length(model.yᵣ);
-julia> DBCM_FP! = θ -> DBCM_reduced_iter!(θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, x, y, G, H, model.status[:d_unique])
-julia> UBCM_FP!(model.Θᵣ)
+
+julia> G = zeros(eltype(model.θᵣ), length(model.θᵣ));
+
+julia> H = zeros(eltype(model.θᵣ), length(model.yᵣ));
+
+julia> x = zeros(eltype(model.θᵣ), length(model.xᵣ));
+
+julia> y = zeros(eltype(model.θᵣ), length(model.yᵣ));
+
+julia> DBCM_FP! = θ -> DBCM_reduced_iter!(θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, x, y, G, model.status[:d_unique]);
+
+julia> DBCM_FP!(model.θᵣ);
+
 ```
 """
 function DBCM_reduced_iter!(θ::AbstractVector, 
@@ -418,7 +512,33 @@ end
 
 Compute an initial guess for the maximum likelihood parameters of the DBCM model `m` using the method `method`.
 
-The methods available are: `:degrees` (default), `:degrees_minor`, `:random`, `:uniform`, `:chung_lu`.
+The methods available are: 
+- `:degrees` (default): the initial guess is computed using the degrees of the graph, i.e. ``\\theta = [-\\log(d_{out}); -\\log(d_{in})]`` 
+- `:degrees_minor`: the initial guess is computed using the degrees of the graph and the number of edges, i.e. ``\\theta = [-\\log(d_{out}/(\\sqrt{E} + 1)); -\\log(d_{in}//(\\sqrt{E} + 1) )]``
+- `:random`: the initial guess is computed using random values between 0 and 1, i.e. ``\\theta_{i} = -\\log(r_{i})`` where ``r_{i} \\sim U(0,1)``
+- `:uniform`: the initial guess is uniformily set to 0.5, i.e. ``\\theta_{i} = -\\log(0.5)``
+- `:chung_lu`: the initial guess is computed using the degrees of the graph and the number of edges, i.e. ``\\theta = [-\\log(d_{out}/(2E)); -\\log(d_{in}/(2E))]``
+
+# Examples
+```jldoctest
+julia> using Graphs
+
+julia> model = DBCM(SimpleDiGraph(rhesus_macaques()));
+
+julia> initial_guess(model, method=:random);
+
+julia> initial_guess(model, method=:uniform);
+
+julia> initial_guess(model, method=:degrees_minor);
+
+julia> initial_guess(model, method=:chung_lu);
+
+julia> initial_guess(model)
+30-element Vector{Float64}:
+ -0.0
+[...]
+
+```
 """
 function initial_guess(m::DBCM{T,N}; method::Symbol=:degrees) where {T,N}
     #N = typeof(m).parameters[2]
@@ -558,12 +678,12 @@ end
 
 Generate a random graph from the DBCM model `m`.
 
-Keyword arguments:
+# Arguments:
 - `precomputed::Bool`: if `true`, the precomputed expected adjacency matrix (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
   recommended to not precompute the expected adjacency matrix to limit memory pressure.
 
 # Examples
-```jldoctest
+```julia
 # generate a DBCM model from the karate club network
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
 julia> model = MaxEntropyGraphs.DBCM(G);
@@ -619,7 +739,7 @@ Keyword arguments:
   recommended to not precompute the expected adjacency matrix to limit memory pressure.
 
 # Examples
-```jldoctest
+```julia
 # generate a DBCM model from the karate club network
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
 julia> model = MaxEntropyGraphs.DBCM(G);
