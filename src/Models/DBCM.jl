@@ -65,8 +65,6 @@ If you want to work from an adjacency matrix, or edge list, you can use the grap
 # Examples     
 ```jldoctest DBCM_creation
 # generating a model from a graph
-julia> using Graphs
-
 julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques())
 {16, 111} directed simple Int64 graph
 julia> model = DBCM(G)
@@ -193,9 +191,7 @@ julia> L_DBCM_reduced(θ, k_out, k_in, F, nz_out, nz_in, n)
 ```
 ```jldoctest
 # Use with DBCM model:
-julia> using Graphs
-
-julia> G = SimpleDiGraph(rhesus_macaques());
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques());
 
 julia> model = DBCM(G);
 
@@ -235,9 +231,8 @@ Return the log-likelihood of the DBCM model `m` based on the computed maximum li
 
 # Examples
 ```jldoctest
-julia> using Graphs
 # Use with DBCM model:
-julia> G =SimpleDiGraph(rhesus_macaques());
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques());
 
 julia> model = DBCM(G);
 
@@ -281,9 +276,7 @@ will update pre-allocated vectors (`∇L`,`x` and `y`) for speed. The gradient i
 # Examples
 ```jldoctest ∇L_DBCM_reduced
 # Explicit use with DBCM model:
-julia> using Graphs
-
-julia> G = SimpleDiGraph(rhesus_macaques());
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques());
 
 julia> model = DBCM(G);
 
@@ -443,9 +436,7 @@ The function is non-allocating and will update pre-allocated vectors (`θ`, `x`,
 # Examples
 ```jldoctest
 # Use with DBCM model:
-julia> using Graphs 
-
-julia> G = SimpleDiGraph(rhesus_macaques());
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques());
 
 julia> model = DBCM(G);
 
@@ -523,9 +514,7 @@ The methods available are:
 
 # Examples
 ```jldoctest
-julia> using Graphs
-
-julia> model = DBCM(SimpleDiGraph(rhesus_macaques()));
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
 
 julia> initial_guess(model, method=:random);
 
@@ -684,23 +673,17 @@ Generate a random graph from the DBCM model `m`.
   recommended to not precompute the expected adjacency matrix to limit memory pressure.
 
 # Examples
-```julia
-# generate a DBCM model from the karate club network
-julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
-julia> model = MaxEntropyGraphs.DBCM(G);
-# compute the maximum likelihood parameters
-using NLsolve
-x_buffer = zeros(length(model.dᵣ));G_buffer = zeros(length(model.dᵣ));
-FP_model! = (θ::Vector) -> MaxEntropyGraphs.DBCM_reduced_iter!(θ, model.dᵣ, model.f, x_buffer, G_buffer);
-sol = fixedpoint(FP_model!, θ₀, method=:anderson, ftol=1e-12, iterations=1000);
-model.Θᵣ .= sol.zero;
-model.status[:params_computed] = true;
-set_xᵣ!(model);
-# set the expected adjacency matrix
-MaxEntropyGraphs.set_Ĝ!(model);
-# sample a random graph
-julia> rand(model)
-{34, 78} undirected simple Int64 graph
+```jldoctest
+# generate a DBCM model macaques network
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques());
+
+julia> model = DBCM(G); 
+
+julia> solve_model!(model); # compute the maximum likelihood parameters
+
+julia> typeof(rand(model))
+SimpleDiGraph{Int64}
+
 ```
 """
 function rand(m::DBCM; precomputed::Bool=false)
@@ -735,28 +718,23 @@ end
 
 Generate `n` random graphs from the DBCM model `m`. If multithreading is available, the graphs are generated in parallel.
 
-Keyword arguments:
+# Arguments
 - `precomputed::Bool`: if `true`, the precomputed expected adjacency matrix (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
   recommended to not precompute the expected adjacency matrix to limit memory pressure.
 
 # Examples
-```julia
-# generate a DBCM model from the karate club network
-julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
-julia> model = MaxEntropyGraphs.DBCM(G);
-# compute the maximum likelihood parameters
-using NLsolve
-x_buffer = zeros(length(model.dᵣ));G_buffer = zeros(length(model.dᵣ));
-FP_model! = (θ::Vector) -> MaxEntropyGraphs.DBCM_reduced_iter!(θ, model.dᵣ, model.f, x_buffer, G_buffer);
-sol = fixedpoint(FP_model!, θ₀, method=:anderson, ftol=1e-12, iterations=1000);
-model.Θᵣ .= sol.zero;
-model.status[:params_computed] = true;
-set_xᵣ!(model);
-# set the expected adjacency matrix
-MaxEntropyGraphs.set_Ĝ!(model);
-# sample a random graph
-julia> rand(model, 10)
-10-element Vector{Graphs.SimpleGraphs.SimpleDiGraph{Int64}}
+# Examples
+```jldoctest
+# generate a DBCM model macaques network
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques());
+
+julia> model = DBCM(G); 
+
+julia> solve_model!(model); # compute the maximum likelihood parameters
+
+julia> typeof(rand(model, 10))
+Vector{SimpleDiGraph{Int64}} (alias for Array{SimpleDiGraph{Int64}, 1})
+
 ```
 """
 function rand(m::DBCM, n::Int; precomputed::Bool=false)
