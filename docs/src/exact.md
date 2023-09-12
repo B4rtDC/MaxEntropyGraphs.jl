@@ -29,9 +29,14 @@ Using the appropriate expressions for
 (depending on the model considered, cf. examples), a highly reliable estimate for the variance of the metric can be obtained.
 
 ## Examples
-### Assortativity in the UBCM
+Some examples using built-in function of package are listed below:
+* [Assortativity in the UBCM](@ref Assortativity_analytical)
+* [Motif significance in the UBCM](@ref Motif_analytical)
+
+### [Assortativity in the UBCM](@id Assortativity_analytical)
 Let us consider the UBCM applied to the Zachary Karate Club network. We want to analyse if the assortativity of each node (measured by its ANND) is statistically significant from what one would expect under the null model.
 
+First, we define the network and the associated UBCM model.
 ```jldoctest UBCM_z_demo; output = false
 using Graphs
 using MaxEntropyGraphs
@@ -46,8 +51,68 @@ solve_model!(model);
 set_Ĝ!(model); 
 # compute and set the standard deviation of the adjacency matrix
 set_σ!(model); 
+nothing
 
 # output
 
 
 ```
+
+Now we can define our specific metric. Before computing the z-score for all nodes, we illustrate the process for a single node. We use `X` as variable name for our metric. Defining methods for `X` in such a way that it can  
+with both an `AbstractArray` and an `AbstractGraph` is recommended, but not necessary.
+```jldoctest UBCM_z_demo; output = false
+# We consider the ANND of node 1 as our metric
+node_id = 1
+X = A -> ANND(A, node_id, check_dimensions=false, check_directed=false);    
+# Expected value under the null model
+X_expected = X(model.Ĝ)
+# Expected standard deviation under the null model
+X_std = σₓ(model, X)
+# Observed value (using the underlying network)
+X_observed = X(model.G)
+# compute z-score
+z_X = (X_observed - X_expected) / X_std
+
+# output
+
+-0.8694874720776825
+```
+
+In the same way, we can compute the z-score for every node:
+```jldoctest UBCM_z_demo; output = false
+# Observed value
+ANND_obs = [ANND(G, i) for i in vertices(G)]
+# Expected values
+ANND_exp = [ANND(model.Ĝ, i) for i in vertices(G)]
+# Standard deviation
+ANND_std = [σₓ(model, A -> ANND(A, i, check_dimensions=false, check_directed=false)) for i in vertices(G)]
+# Z-score
+Z_ANND = (ANND_obs - ANND_exp) ./ ANND_std;
+
+# output
+
+34-element Vector{Float64}:
+ -0.8694874720776825
+ -0.5292199109039629
+ -0.08739363417954547
+ -0.12970352719726422
+ -0.2319316593015868
+ -0.4799299169446237
+ -0.4799299169446234
+  0.24501059537335462
+  0.718367288006965
+  0.41374043075904055
+  ⋮
+ -0.6647918097128745
+  0.09021959133602485
+ -0.026842096745887254
+  0.24902406337762192
+  0.018466685273986393
+  0.33562815941310226
+  0.2173026706708909
+ -0.640873675884825
+ -1.2188220468342164
+```
+
+### [Motif significance in the UBCM](@id Motif_analytical)
+TO DO

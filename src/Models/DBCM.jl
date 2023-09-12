@@ -64,21 +64,22 @@ If you want to work from an adjacency matrix, or edge list, you can use the grap
 
 # Examples     
 ```jldoctest DBCM_creation
-julia> using Graphs
 # generating a model from a graph
-julia> G = SimpleDiGraph(rhesus_macaques())
+julia> using Graphs
+
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques())
 {16, 111} directed simple Int64 graph
 julia> model = DBCM(G)
 DBCM{SimpleDiGraph{Int64}, Float64} (16 vertices, 15 unique degree pairs, 0.94 compression ratio)
 ```
 ```jldoctest DBCM_creation
 # generating a model directly from a degree sequence
-model = DBCM(d_out=outdegree(G), d_in=indegree(G))
+julia> model = DBCM(d_out=outdegree(G), d_in=indegree(G))
 DBCM{Nothing, Float64} (16 vertices, 15 unique degree pairs, 0.94 compression ratio)
 ```
 ```jldoctest DBCM_creation
 # generating a model directly from a degree sequence with a different precision
-model = DBCM(d_out=outdegree(G), d_in=indegree(G), precision=Float32)
+julia>  model = DBCM(d_out=outdegree(G), d_in=indegree(G), precision=Float32)
 DBCM{Nothing, Float32} (16 vertices, 15 unique degree pairs, 0.94 compression ratio)
 ```
 ```jldoctest DBCM_creation
@@ -191,8 +192,9 @@ julia> L_DBCM_reduced(θ, k_out, k_in, F, nz_out, nz_in, n)
 -200.48153981203262
 ```
 ```jldoctest
-julia> using Graphs
 # Use with DBCM model:
+julia> using Graphs
+
 julia> G = SimpleDiGraph(rhesus_macaques());
 
 julia> model = DBCM(G);
@@ -306,7 +308,7 @@ julia> y  = zeros(Real, length(model.yᵣ));#  initialise  buffer
 
 julia> ∇fun! = (∇L, θ, p) -> ∇L_DBCM_reduced!(∇L, θ, model.dᵣ_out, model.dᵣ_in, model.f, model.dᵣ_out_nz, model.dᵣ_in_nz, x, y, model.status[:d_unique]);
 
-julia> θ₀ = initial_guess(model) # initial condition
+julia> θ₀ = initial_guess(model); # initial condition
 
 julia> foo = MaxEntropyGraphs.Optimization.OptimizationFunction(fun, grad=∇fun!); # define target function 
 
@@ -439,7 +441,7 @@ The function is non-allocating and will update pre-allocated vectors (`θ`, `x`,
 
 
 # Examples
-```julia
+```jldoctest
 # Use with DBCM model:
 julia> using Graphs 
 
@@ -535,7 +537,6 @@ julia> initial_guess(model, method=:chung_lu);
 
 julia> initial_guess(model)
 30-element Vector{Float64}:
- -0.0
 [...]
 
 ```
@@ -850,3 +851,25 @@ function solve_model!(m::DBCM{T,N};  # common settings
     return m
 end
 
+
+"""
+    precision(m::DBCM)
+
+Determine the compute precision of the UBCM model `m`.
+
+# Examples
+```jldoctest
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
+
+julia> MaxEntropyGraphs.precision(model)
+Float64
+```
+
+```jldoctest
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()), precision=Float32))
+
+julia> MaxEntropyGraphs.precision(model)
+Float32
+```
+"""
+precision(m::DBCM) = typeof(m).parameters[2]

@@ -1,4 +1,10 @@
 # API
+## Index
+
+```@index
+Pages = ["API.md"]
+```
+
 ## Global
 ```@docs
 MaxEntropyGraphs
@@ -17,6 +23,14 @@ MaxEntropyGraphs.log_nan
 ```@docs
 MaxEntropyGraphs.np_unique_clone
 ```
+
+## Graph constructors
+```@docs
+MaxEntropyGraphs.taro_exchange
+MaxEntropyGraphs.rhesus_macaques
+```
+
+
 
 ## Graph metrics
 ```@docs
@@ -49,5 +63,32 @@ MaxEntropyGraphs.set_σ!(::UBCM)
 MaxEntropyGraphs.precision(::UBCM)
 MaxEntropyGraphs.A(::UBCM,::Int64,::Int64)
 MaxEntropyGraphs.f_UBCM(::UBCM)
+```
+
+## DBCM
+```@docs 
+MaxEntropyGraphs.DBCM
+DBCM(::T) where {T}
+MaxEntropyGraphs.solve_model!(::DBCM)
+MaxEntropyGraphs.initial_guess(::DBCM)
+Base.rand(::DBCM)
+Base.rand(::DBCM,::Int)
+
+
+
+Base.length(::DBCM)
+MaxEntropyGraphs.L_DBCM_reduced
+MaxEntropyGraphs.∇L_DBCM_reduced!
+MaxEntropyGraphs.∇L_DBCM_reduced_minus!
+MaxEntropyGraphs.DBCM_reduced_iter!
+MaxEntropyGraphs.set_xᵣ!(::DBCM)
+MaxEntropyGraphs.set_yᵣ!(::DBCM)
+MaxEntropyGraphs.Ĝ(::DBCM)
+MaxEntropyGraphs.set_Ĝ!(::DBCM)
+MaxEntropyGraphs.σˣ(::DBCM)
+MaxEntropyGraphs.set_σ!(::DBCM)
+MaxEntropyGraphs.precision(::DBCM)
+
+
 ```
 
