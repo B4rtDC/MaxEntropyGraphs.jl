@@ -43,12 +43,13 @@ Base.length(m::UBCM) = length(m.dᵣ)
 
 """
     UBCM(G::T; d::Vector=Graphs.degree(G), precision::N=Float64, kwargs...) where {T<:Graphs.AbstractGraph, N<:Real}
+    UBCM(d::Vector{T}, precision::Type{<:AbstractFloat}=Float64, kwargs...) 
 
 Constructor function for the `UBCM` type. 
     
 By default and dependng on the graph type `T`, the definition of degree from `Graphs.jl` is applied. 
 If you want to use a different definition of degree, you can pass a vector of degrees as the second argument.
-If you want to generate a model directly from a degree sequence without an underlying graph , you can simply pass the degree sequence as an argument.
+If you want to generate a model directly from a degree sequence without an underlying graph, you can simply pass the degree sequence as an argument.
 If you want to work from an adjacency matrix, or edge list, you can use the graph constructors from the `JuliaGraphs` ecosystem.
 
 # Examples     
@@ -192,13 +193,11 @@ julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
 
 julia> model = UBCM(G);
 
-julia> model_fun = θ -> L_UBCM_reduced(θ, model.dᵣ, model.f)
-#1 (generic function with 1 method)
+julia> solve_model!(model);
 
-julia> model_fun(initial_guess(model));
-
+julia> L_UBCM_reduced(model)
+-168.68325136302832
 ```
-
 
 See also [`L_UBCM_reduced(::Vector, ::Vector, ::Vector)`](@ref)
 """
@@ -512,17 +511,6 @@ end
 
 
 """
-    set_σ!(m::UBCM)
-
-Set the standard deviation for the elements of the adjacency matrix for the UBCM model `m`
-"""
-function set_σ!(m::UBCM)
-    m.σ = σˣ(m)
-    m.status[:σ_computed] = true
-    return m.σ
-end
-
-"""
     σˣ(m::UBCM{T,N}) where {T,N}
 
 Compute the standard deviation for the elements of the adjacency matrix for the UBCM model `m`.
@@ -548,6 +536,17 @@ function σˣ(m::UBCM{T,N}) where {T,N}
     end
 
     return σ
+end
+
+"""
+    set_σ!(m::UBCM)
+
+Set the standard deviation for the elements of the adjacency matrix for the UBCM model `m`
+"""
+function set_σ!(m::UBCM)
+    m.σ = σˣ(m)
+    m.status[:σ_computed] = true
+    return m.σ
 end
 
 """
