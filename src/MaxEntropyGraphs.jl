@@ -28,7 +28,7 @@ module MaxEntropyGraphs
     # actual source code
     include("Models/models.jl")
     include("Models/UBCM.jl")
-    #include("Models/DBCM.jl")
+    include("Models/DBCM.jl")
     #include("Models/BiCM.jl")
     #include("Models/UECM.jl")
     #include("Models/CReM.jl")
@@ -38,11 +38,12 @@ module MaxEntropyGraphs
     export AbstractMaxEntropyModel
     # utils 
     export np_unique_clone, ANND
+    export rhesus_macaques, taro_exchange # demo networks
     # common model functions
     export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, precision, degree, AIC, AICc, σₓ #, set_yᵣ!
     # model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
-    #export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
+    export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
     #export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
 
 
