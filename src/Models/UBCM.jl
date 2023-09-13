@@ -471,16 +471,6 @@ function set_xᵣ!(m::UBCM)
     end
 end
 
-"""
-    set_Ĝ!(m::UBCM)
-
-Set the expected adjacency matrix for the UBCM model `m`
-"""
-function set_Ĝ!(m::UBCM)
-    m.Ĝ = Ĝ(m)
-    m.status[:G_computed] = true
-    return m.Ĝ
-end
 
 """
     Ĝ(m::UBCM)
@@ -507,6 +497,17 @@ function Ĝ(m::UBCM{T,N}) where {T,N}
     end
 
     return G    
+end
+
+"""
+    set_Ĝ!(m::UBCM)
+
+Set the expected adjacency matrix for the UBCM model `m`
+"""
+function set_Ĝ!(m::UBCM)
+    m.Ĝ = Ĝ(m)
+    m.status[:G_computed] = true
+    return m.Ĝ
 end
 
 
