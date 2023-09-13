@@ -537,9 +537,9 @@ function initial_guess(m::DBCM; method::Symbol=:degrees)
         isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
         return Vector{precision(m)}(vcat(-log.(m.dᵣ_out ./ (sqrt(Graphs.ne(m.G)) + 1)), -log.(m.dᵣ_in ./ (sqrt(Graphs.ne(m.G)) + 1)) ))
     elseif isequal(method, :random)
-        return Vector{precision(m)}(-log.(rand(N, 2*length(m.dᵣ_out))))
+        return Vector{precision(m)}(-log.(rand(precision(m), 2*length(m.dᵣ_out))))
     elseif isequal(method, :uniform)
-        return Vector{precision(m)}(-log.(0.5 .* ones(N, 2*length(m.dᵣ_out))))
+        return Vector{precision(m)}(-log.(0.5 .* ones(precision(m), 2*length(m.dᵣ_out))))
     elseif isequal(method, :chung_lu)
         isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
         return Vector{precision(m)}(vcat(-log.(m.dᵣ_out ./ (2 * Graphs.ne(m.G))), -log.(m.dᵣ_in ./ (2 * Graphs.ne(m.G)))))
