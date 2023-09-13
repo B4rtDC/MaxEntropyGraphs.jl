@@ -1156,7 +1156,7 @@ BIC is believed to be more restrictive than AIC, as the former favors models wit
 
 # Examples
 ```jldoctest
-julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
 
 julia> solve_model!(model);
 
