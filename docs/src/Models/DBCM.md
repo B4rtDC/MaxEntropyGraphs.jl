@@ -1,22 +1,25 @@
 # DCBM
-
-
 ## Model description
 The Directed Binary Configuration Model (DBCM) is a maximum-entropy null model for undirected networks. It is based on the idea of fixing the in- and outdegree sequence of the network, i.e., the number of incoming and outgoing edges incident to each node, and then randomly rewiring the edges while preserving the degree sequence. The model assumes that the edges are unweighted and that the network is simple, i.e., it has no self-loops or multiple edges between the same pair of nodes [[1](#1),[2](#2)]. 
 
-TABLE TO DO:
+We define the parameter vector as ``\theta = [\alpha ; \beta]``, where ``\alpha`` and ``\beta`` denote the parameters associated with the out- and indegree respectively.
+
 | Description                   | Formula |
 | --------------------------    | :-------------------------------------------------------------------------------- |
-| Constraints                   | `` k_{i, out}(A^{*}) = \sum_{j=1}^{N} a^{*}_{ij}, k_{i, in}(A^{*}) = \sum_{j=1}^{N} a^{*}_{ji}  \text{  } (\forall i)`` |
-| Hamiltonian                   | `` H(A, \Theta) = \sum_{i=1}^{N} \Theta_i k_{i}(A) `` |
-| Factorized graph probability  | `` P(A \| \Theta) = \prod_{i=1}^{N}\prod_{j=1, j<i}^{N} p_{ij}^{a_{ij}} (1 - p_{ij})^{1-a_{ij}}``  |
-| $\langle a_{ij} \rangle$      | `` p_{ij} = \frac{e^{-\theta_i - \theta_j}}{1+e^{-\theta_i - \theta_j}}`` |
-| Log-likelihood                | `` \mathcal{L}(\Theta) = -\sum_{i=1}^{N}\theta_i k_i(A^{*}) - \sum_{i=1}^{N} \sum_{j=1, j<i}^{N} \ln \left( 1+e^{-\theta_i - \theta_j} \right) ``|
+| Constraints                   | `` \forall i: \begin{cases} k_{i, out}(A^{*}) = \sum_{j=1}^{N} a^{*}_{ij} \\ k_{i, in}(A^{*}) = \sum_{j=1}^{N} a^{*}_{ji} \end{cases} ``|
+| Hamiltonian                   | `` H(A, \Theta) = H(A, \alpha, \beta) = \sum_{i=1}^{N} \alpha_i k_{i,out}(A) +  \beta_i k_{i,in}(A)`` |
+| Factorized graph probability  | `` P(A \| \Theta) = \prod_{i=1}^{N}\prod_{j=1, j \ne i}^{N} p_{ij}^{a_{ij}} (1 - p_{ij})^{1-a_{ij}}``  |
+| $\langle a_{ij} \rangle$      | `` p_{ij} = \frac{e^{-\alpha_i - \beta_j}}{1+e^{-\alpha_i - \beta_j}}`` |
+| Log-likelihood                | `` \mathcal{L}(\Theta) = -\sum_{i=1}^{N} \left[ \alpha_i k_{i,out}(A^{*}) +  \beta_i k_{i,in}(A^{*}) \right] - \sum_{i=1}^{N} \sum_{j=1, j\ne i}^{N} \ln \left( 1+e^{-\alpha_i - \beta_j} \right) ``|
 | $\langle a_{ij}^{2} \rangle$  | `` \langle a_{ij} \rangle`` |
 | $\langle a_{ij}a_{ts} \rangle$| `` \langle a_{ij} \rangle \langle a_{ts} \rangle`` |
-| $\sigma^{*}(X)$               | $\sqrt{\sum_{i,j} \left( \sigma^{*}[a_{ij}] \frac{\partial X}{\partial a_{ij}}  \right)^{2}_{A = \langle A^{*} \rangle} + \dots }$                                                    |
+| $\sigma^{*}(X)$               | ``\sqrt{\sum_{i,j} \left( \sigma^{*}[a_{ij}] \frac{\partial X}{\partial a_{ij}}  \right)^{2}_{A = \langle A^{*} \rangle} + \dots }`` |
+| $\sigma^{*}[a_{ij}]$          | ``\frac{\sqrt{e^{-\alpha_i - \beta_j}}}{1+e^{-\alpha_i - \beta_j}} ``   |
 
-```
+
+
+
+
 ## Creation
 ```julia
 using Graphs

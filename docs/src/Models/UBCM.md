@@ -1,3 +1,4 @@
+# UBCM
 ## Model description
 The Undirected Binary Configuration Model is a maximum-entropy null model for undirected networks. It is based on the idea of fixing the degree sequence of the network, i.e., the number of edges incident to each node, and then randomly rewiring the edges while preserving the degree sequence. The model assumes that the edges are unweighted and that the network is simple, i.e., it has no self-loops or multiple edges between the same pair of nodes [[1](#1),[2](#2)]. 
 
@@ -10,28 +11,11 @@ The Undirected Binary Configuration Model is a maximum-entropy null model for un
 | Log-likelihood                | `` \mathcal{L}(\Theta) = -\sum_{i=1}^{N}\theta_i k_i(A^{*}) - \sum_{i=1}^{N} \sum_{j=1, j<i}^{N} \ln \left( 1+e^{-\theta_i - \theta_j} \right) ``|
 | $\langle a_{ij}^{2} \rangle$  | `` \langle a_{ij} \rangle`` |
 | $\langle a_{ij}a_{ts} \rangle$| `` \langle a_{ij} \rangle \langle a_{ts} \rangle`` |
-| $\sigma^{*}(X)$               | $\sqrt{\sum_{i,j} \left( \sigma^{*}[a_{ij}] \frac{\partial X}{\partial a_{ij}}  \right)^{2}_{A = \langle A^{*} \rangle} + \dots }$                                                    |
+| $\sigma^{*}(X)$               | `` \sqrt{\sum_{i,j} \left( \sigma^{*}[a_{ij}] \frac{\partial X}{\partial a_{ij}}  \right)^{2}_{A = \langle A^{*} \rangle} + \dots } ``  |
+| $\sigma^{*}[a_{ij}]$          | ``\frac{\sqrt{e^{-\theta_i - \theta_j}}}{1+e^{-\theta_i - \theta_j}} ``   |
 
 
-```@raw latex
-\begin{table}[h]
-\centering
-\begin{tabular}{|l|l|}
-\hline
-\textbf{Description} & \textbf{Formula} \\ \hline
-Constraints & $k_i(A^{*}) = \sum_{j=1}^{N} a^{*}_{ij}  \text{  } (\forall i)$ \\ \hline
-Hamiltonian & $H(A, \Theta) = \sum_{i=1}^{N} \Theta_i k_{i}(A)$ \\ \hline
-Factorized graph probability & $P(A \| \Theta) = \prod_{i=1}^{N}\prod_{j=1, j<i}^{N} p_{ij}^{a_{ij}} (1 - p_{ij})^{1-a_{ij}}  \text{ where } p_{ij} = \frac{e^{-\theta_i - \theta_j}}{1+e^{-\theta_i - \theta_j}}$ \\ \hline
-Log-likelihood & $\mathcal{L}(\Theta) = -\sum_{i=1}^{N}\theta_i k_i(A^{*}) - \sum_{i=1}^{N} \sum_{j=1, j<i}^{N} \ln \left( 1+e^{-\theta_i - \theta_j} \right)$ \\ \hline
-$\langle a_{ij} \rangle$ & $p_{ij} = \frac{e^{-\theta_i - \theta_j}}{1+e^{-\theta_i - \theta_j}}$ \\ \hline
-$\langle a_{ij}^{2} \rangle$ & $\langle a_{ij} \rangle$ \\ \hline
-$\langle a_{ij}a_{ts} \rangle$ & $\langle a_{ij} \rangle \langle a_{ts} \rangle$ \\ \hline
-\end{tabular}
-\caption{My table caption}
-\label{my-label}
-\end{table}
 
-```
 ## Creation
 ```julia
 using Graphs

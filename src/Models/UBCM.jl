@@ -645,17 +645,15 @@ Compute the likelihood maximising parameters of the UBCM model `m`.
 - `analytical_gradient::Bool`: set the use the analytical gradient instead of the one generated with autodiff (defaults to `false`)
 
 # Examples
-```jldoctest
+```jldoctest UBCM_solve
 # default use
 julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 
 julia> solve_model!(model);
 
 ```
-```jldoctest
-# default use
-julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
-
+```jldoctest UBCM_solve
+# using analytical gradient and degrees minor initial guess
 julia> solve_model!(model, method=:BFGS, analytical_gradient=true, initial=:degrees_minor)
 (UBCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (34 vertices, 11 unique degrees, 0.32 compression ratio), retcode: Success
 u: [2.851659905903854, 2.053008374573552, 1.5432639513870743, 1.152360118212239, 0.8271267490690292, 0.5445045274064909, -0.1398726818076551, -0.3293252270659469, -0.6706207459338859, -1.2685575582149227, -1.410096540372487]
@@ -754,7 +752,7 @@ precision(m::UBCM) = typeof(m).parameters[2]
 """
     f_UBCM(x::T)
 
-Helper function for the UBCM model to compute the expected value of the adjacency matrix. The function compute the expression `x / (1 + x)`.
+Helper function for the UBCM model to compute the expected value of the adjacency matrix. The function computes the expression `x / (1 + x)`.
 As an argument you need to pass the product of the maximum likelihood parameters `xᵣ[i] * xᵣ[j]` from a UBCM model.
 """
 f_UBCM(xixj::T) where {T} = xixj / (one(T) + xixj)
@@ -869,7 +867,7 @@ If the number of empirical observations becomes too small with respect to the nu
 that case, the corrected AIC (AICc) should be used instead.
 
 # Examples
-```julia-repl
+```jldoctest
 julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 
 julia> solve_model!(model);
@@ -920,7 +918,7 @@ function AICc(m::UBCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # compute AIC components
     k = m.status[:d] # number of parameters
-    n = (m.status[:d] - 1) * m.status[:d] / 2 # number of observations
+    n = (m.status[:d] - 1) * m.status[:d] / 2 # number of observations (divided by 2 because of symmetry)
     L = L_UBCM_reduced(m) # log-likelihood
 
     return 2*k - 2*L + (2*k*(k+1)) / (n - k - 1)
