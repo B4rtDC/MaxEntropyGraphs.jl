@@ -102,7 +102,7 @@ DBCM{Graphs.SimpleGraphs.SimpleDiGraph{Int64}, Float64} (3 vertices, 3 unique de
 
 ```
 
-See also [`Graphs.outdegree`](@ref), [`Graphs.indegree`](@ref), [`SimpleWeightedGraphs.outdegree`](@ref), [`SimpleWeightedGraphs.indegree`](@ref).
+See also [`Graphs.outdegree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.outdegree-Tuple{AbstractGraph,%20Integer}), [`Graphs.indegree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.indegree-Tuple{AbstractGraph,%20Integer}).
 """
 function DBCM(G::T; d_out::Vector=Graphs.outdegree(G), 
                     d_in::Vector=Graphs.indegree(G), 
@@ -529,20 +529,20 @@ julia> initial_guess(model);
 
 ```
 """
-function initial_guess(m::DBCM{T,N}; method::Symbol=:degrees) where {T,N}
+function initial_guess(m::DBCM; method::Symbol=:degrees)
     #N = typeof(m).parameters[2]
     if isequal(method, :degrees)
-        return Vector{N}(vcat(-log.(m.dᵣ_out), -log.(m.dᵣ_in)))
+        return Vector{precision(m)}(vcat(-log.(m.dᵣ_out), -log.(m.dᵣ_in)))
     elseif isequal(method, :degrees_minor)
         isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
-        return Vector{N}(vcat(-log.(m.dᵣ_out ./ (sqrt(Graphs.ne(m.G)) + 1)), -log.(m.dᵣ_in ./ (sqrt(Graphs.ne(m.G)) + 1)) ))
+        return Vector{precision(m)}(vcat(-log.(m.dᵣ_out ./ (sqrt(Graphs.ne(m.G)) + 1)), -log.(m.dᵣ_in ./ (sqrt(Graphs.ne(m.G)) + 1)) ))
     elseif isequal(method, :random)
-        return Vector{N}(-log.(rand(N, 2*length(m.dᵣ_out))))
+        return Vector{precision(m)}(-log.(rand(N, 2*length(m.dᵣ_out))))
     elseif isequal(method, :uniform)
-        return Vector{N}(-log.(0.5 .* ones(N, 2*length(m.dᵣ_out))))
+        return Vector{precision(m)}(-log.(0.5 .* ones(N, 2*length(m.dᵣ_out))))
     elseif isequal(method, :chung_lu)
         isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
-        return Vector{N}(vcat(-log.(m.dᵣ_out ./ (2 * Graphs.ne(m.G))), -log.(m.dᵣ_in ./ (2 * Graphs.ne(m.G)))))
+        return Vector{precision(m)}(vcat(-log.(m.dᵣ_out ./ (2 * Graphs.ne(m.G))), -log.(m.dᵣ_in ./ (2 * Graphs.ne(m.G)))))
     else
         throw(ArgumentError("The initial guess method $(method) is not supported"))
     end
@@ -1087,7 +1087,7 @@ If the number of empirical observations becomes too small with respect to the nu
 that case, the corrected AIC (AICc) should be used instead.
 
 # Examples
-```jldoctest
+```julia-repl
 julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
 
 julia> solve_model!(model);
