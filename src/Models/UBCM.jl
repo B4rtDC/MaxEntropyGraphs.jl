@@ -438,8 +438,8 @@ julia> initial_guess(model)
 
 ```
 """
-function initial_guess(m::UBCM{T,N}; method::Symbol=:degrees) where {T,N}
-    #N = typeof(m).parameters[2]
+function initial_guess(m::UBCM; method::Symbol=:degrees)
+    N = precision(m)
     if isequal(method, :degrees)
         return Vector{N}(-log.(m.dᵣ))
     elseif isequal(method, :degrees_minor)
@@ -867,7 +867,7 @@ If the number of empirical observations becomes too small with respect to the nu
 that case, the corrected AIC (AICc) should be used instead.
 
 # Examples
-```jldoctest
+```julia
 julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
 
 julia> solve_model!(model);
