@@ -35,6 +35,8 @@ MaxEntropyGraphs.rhesus_macaques
 ## Graph metrics
 ```@docs
 MaxEntropyGraphs.degree
+MaxEntropyGraphs.outdegree
+MaxEntropyGraphs.indegree
 MaxEntropyGraphs.strength
 MaxEntropyGraphs.ANND
 ```
@@ -73,9 +75,9 @@ MaxEntropyGraphs.solve_model!(::DBCM)
 MaxEntropyGraphs.initial_guess(::DBCM)
 Base.rand(::DBCM)
 Base.rand(::DBCM,::Int)
-
-
-
+MaxEntropyGraphs.AIC(::DBCM)
+MaxEntropyGraphs.AICc(::DBCM)
+MaxEntropyGraphs.BIC(::DBCM)
 Base.length(::DBCM)
 MaxEntropyGraphs.L_DBCM_reduced
 MaxEntropyGraphs.∇L_DBCM_reduced!
@@ -88,7 +90,7 @@ MaxEntropyGraphs.set_Ĝ!(::DBCM)
 MaxEntropyGraphs.σˣ(::DBCM)
 MaxEntropyGraphs.set_σ!(::DBCM)
 MaxEntropyGraphs.precision(::DBCM)
-
-
+MaxEntropyGraphs.A(::DBCM,::Int64,::Int64)
+MaxEntropyGraphs.f_DBCM(::DBCM)
 ```
 
