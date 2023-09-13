@@ -24,6 +24,10 @@ MaxEntropyGraphs.log_nan
 MaxEntropyGraphs.np_unique_clone
 ```
 
+```@docs
+MaxEntropyGraphs.parse_konect
+```
+
 ## Graph constructors
 ```@docs
 MaxEntropyGraphs.taro_exchange
