@@ -193,7 +193,7 @@ julia> ANND(Gd,1, check_directed=false)
 4.3125
 ```
 
-See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
+See also: [`ANND_in`](@ref), [`ANND_out`](@ref), [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
 """
 function ANND(G::T, i::Int; check_directed::Bool=true, kwargs...) where {T<:Graphs.AbstractGraph}
     if check_directed && Graphs.is_directed(G)
@@ -255,7 +255,7 @@ julia> ANND(Gd,[10; 20; 30], check_directed=false)
 
 See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graphs.jl/stable/core_functions/core/#Graphs.degree)
 """
-function ANND(G::T, vs=vertices(G); check_directed::Bool=true, kwargs...) where {T<:Graphs.AbstractGraph}
+function ANND(G::T, vs=Graphs.vertices(G); check_directed::Bool=true, kwargs...) where {T<:Graphs.AbstractGraph}
     # check only once before computing the rest
     if check_directed && Graphs.is_directed(G)
         throw(ArgumentError("The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead."))
@@ -395,6 +395,80 @@ function ANND(A::T, vs=1:size(A,1); check_dimensions::Bool=true, check_directed:
 
     # compute
     return [ANND(A,i, check_dimensions=false, check_directed=false) for i in vs]
+end
+
+
+
+
+function ANND_out(G::T, i::Int; kwargs...) where {T<:Graphs.AbstractGraph}
+    if iszero(Graphs.outdegree(G,i))
+        return zero(Float64)
+    else
+        return mapreduce(x -> Graphs.outdegree(G, x), +, Graphs.neighbors(G, i), init=zero(Float64)) / Graphs.outdegree(G, i)
+    end
+end
+
+ANND_out(G::T, v::Vector{Int}=collect(Graphs.vertices(G)); kwargs...) where {T<:Graphs.AbstractGraph} = [ANND_out(G, i; kwargs...) for i in v]
+
+
+function ANND_out(A::T, i::Int; check_dimensions::Bool=true) where {T<:AbstractMatrix}
+    # checks
+    if check_dimensions && !isequal(size(A)...) 
+        throw(DimensionMismatch("`A` must be a square matrix."))
+    end
+
+    # compute
+    if iszero(sum(@view A[i,:]))
+        return zero(Float64)
+    else
+        return mapreduce(x -> A[i,x] * sum(@view A[x,:]), +, 1:size(A,1), init=zero(Float64)) / sum(@view A[i,:])
+    end
+end
+
+function ANND_out(A::T, vs=1:size(A,1); check_dimensions::Bool=true) where {T<:AbstractMatrix}
+    # checks
+    if check_dimensions && !isequal(size(A)...) 
+        throw(DimensionMismatch("`A` must be a square matrix."))
+    end
+
+    # compute
+    return [ANND_out(A,i, check_dimensions=false) for i in vs]
+end
+
+
+function ANND_in(G::T, i::Int; kwargs...) where {T<:Graphs.AbstractGraph}
+    if iszero(Graphs.indegree(G,i))
+        return zero(Float64)
+    else
+        return mapreduce(x -> Graphs.indegree(G, x), +, Graphs.neighbors(G, i), init=zero(Float64)) / Graphs.indegree(G, i)
+    end
+end
+
+ANND_in(G::T, v::Vector{Int}=collect(Graphs.vertices(G)); kwargs...) where {T<:Graphs.AbstractGraph} = [ANND_in(G, i; kwargs...) for i in v]
+
+
+function ANND_in(A::T, i::Int; check_dimensions::Bool=true) where {T<:AbstractMatrix}
+    # checks
+    if check_dimensions && !isequal(size(A)...) 
+        throw(DimensionMismatch("`A` must be a square matrix."))
+    end
+
+    # compute
+    if iszero(sum(@view A[:,i]))
+        return zero(Float64)
+    else
+        return mapreduce(x -> A[i,x] * sum(@view A[:,x]), +, 1:size(A,1), init=zero(Float64)) / sum(@view A[:,i])
+    end
+end
+
+function ANND_in(A::T, vs=1:size(A,1); check_dimensions::Bool=true) where {T<:AbstractMatrix}
+    # checks
+    if check_dimensions && !isequal(size(A)...) 
+        throw(DimensionMismatch("`A` must be a square matrix."))
+    end
+
+    # compute
+    return [ANND_in(A,i, check_dimensions=false) for i in vs]
 end
 
 
