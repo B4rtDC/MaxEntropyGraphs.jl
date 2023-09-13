@@ -68,16 +68,16 @@ If you want to work from an adjacency matrix, or edge list, you can use the grap
 julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques())
 {16, 111} directed simple Int64 graph
 julia> model = DBCM(G)
-DBCM{SimpleDiGraph{Int64}, Float64} (16 vertices, 15 unique degree pairs, 0.94 compression ratio)
+DBCM{Graphs.SimpleGraphs.SimpleDiGraph{Int64}, Float64} (16 vertices, 15 unique degree pairs, 0.94 compression ratio)
 ```
 ```jldoctest DBCM_creation
 # generating a model directly from a degree sequence
-julia> model = DBCM(d_out=outdegree(G), d_in=indegree(G))
+julia> model = DBCM(d_out=MaxEntropyGraphs.Graphs.outdegree(G), d_in=MaxEntropyGraphs.Graphs.indegree(G))
 DBCM{Nothing, Float64} (16 vertices, 15 unique degree pairs, 0.94 compression ratio)
 ```
 ```jldoctest DBCM_creation
 # generating a model directly from a degree sequence with a different precision
-julia>  model = DBCM(d_out=outdegree(G), d_in=indegree(G), precision=Float32)
+julia>  model = DBCM(d_out=MaxEntropyGraphs.Graphs.outdegree(G), d_in=MaxEntropyGraphs.Graphs.indegree(G), precision=Float32)
 DBCM{Nothing, Float32} (16 vertices, 15 unique degree pairs, 0.94 compression ratio)
 ```
 ```jldoctest DBCM_creation
@@ -524,9 +524,7 @@ julia> initial_guess(model, method=:degrees_minor);
 
 julia> initial_guess(model, method=:chung_lu);
 
-julia> initial_guess(model)
-30-element Vector{Float64}:
-[...]
+julia> initial_guess(model);
 
 ```
 """
@@ -755,7 +753,34 @@ end
 
 Compute the likelihood maximising parameters of the DBCM model `m`. 
 
-By default the parameters are computed using the fixed point iteration method with the degree sequence as initial guess.
+# Arguments
+- `method::Symbol`: solution method to use, can be `:fixedpoint` (default), or :$(join(keys(MaxEntropyGraphs.optimization_methods), ", :", " and :")).
+- `initial::Symbol`: initial guess for the parameters ``\\Theta``, can be :degrees (default), :degrees_minor, :random, :uniform, or :chung_lu.
+- `maxiters::Int`: maximum number of iterations for the solver (defaults to 1000). 
+- `verbose::Bool`: set to show log messages (defaults to false).
+- `ftol::Real`: function tolerance for convergence with the fixedpoint method (defaults to 1e-8).
+- `abstol::Union{Number, Nothing}`: absolute function tolerance for convergence with the other methods (defaults to `nothing`).
+- `reltol::Union{Number, Nothing}`: relative function tolerance for convergence with the other methods (defaults to `nothing`).
+- `AD_method::Symbol`: autodiff method to use, can be any of :$(join(keys(MaxEntropyGraphs.AD_methods), ", :", " and :")). Performance depends on the size of the problem (defaults to `:AutoZygote`),
+- `analytical_gradient::Bool`: set the use the analytical gradient instead of the one generated with autodiff (defaults to `false`)
+
+# Examples
+```jldoctest DBCM_solve
+# default use
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
+
+julia> solve_model!(model);
+
+```
+```jldoctest DBCM_solve
+# using analytical gradient and degrees minor initial guess
+julia> solve_model!(model, method=:BFGS, analytical_gradient=true, initial=:degrees_minor)
+(DBCM{SimpleDiGraph{Int64}, Float64} (16 vertices, 15 unique degree pairs, 0.94 compression ratio), retcode: Success
+u: [3.118482950362848, 2.2567400402511617, 2.2467332710940333, 0.8596258292464105, 0.4957550197436504, 0.3427782029923598, 0.126564995232929, -0.3127732185244699, -0.3967757456352901, -0.43450987676209596  …  -0.5626916621021604, 1.223396713832784, 0.10977479732876981, -1.0367565290851806, -2.0427364999923148, -0.650376357149203, -1.5165614611776657, 0.7532475835319463, 0.39856890694767605, -0.6704522097652438]
+Final objective value:     120.15942408828177
+)
+
+```
 """
 function solve_model!(m::DBCM{T,N};  # common settings
                                 method::Symbol=:fixedpoint, 
@@ -787,7 +812,7 @@ function solve_model!(m::DBCM{T,N};  # common settings
             if verbose 
                 @info "Fixed point iteration converged after $(sol.iterations) iterations"
             end
-            m.θᵣ .= sol.zero;
+            m.θᵣ .= sol.zero; 
             m.θᵣ[ind_inf] .= Inf;
             m.status[:params_computed] = true;
             set_xᵣ!(m);
@@ -817,7 +842,7 @@ function solve_model!(m::DBCM{T,N};  # common settings
             if verbose 
                 @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
             end
-            m.Θᵣ .= sol.u;
+            m.θᵣ .= sol.u;
             m.status[:params_computed] = true;
             set_xᵣ!(m);
             set_yᵣ!(m);
@@ -826,7 +851,7 @@ function solve_model!(m::DBCM{T,N};  # common settings
         end
     end
 
-    return m
+    return m, sol
 end
 
 
@@ -844,10 +869,309 @@ Float64
 ```
 
 ```jldoctest
-julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()), precision=Float32))
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()), precision=Float32);
 
 julia> MaxEntropyGraphs.precision(model)
 Float32
 ```
 """
 precision(m::DBCM) = typeof(m).parameters[2]
+
+
+"""
+    f_DBCM(x::T)
+
+Helper function for the DBCM model to compute the expected value of the adjacency matrix. The function computes the expression `x / (1 + x)`.
+As an argument you need to pass the product of the maximum likelihood parameters `xᵣ[i] * yᵣ[j]` from a DBCM model.
+"""
+f_DBCM(xiyj::T) where {T} = xiyj/(1 + xiyj)
+
+
+"""
+    A(m::DBCM,i::Int,j::Int)
+
+Return the expected value of the adjacency matrix for the DBCM model `m` at the node pair `(i,j)`.
+
+❗ For perfomance reasons, the function does not check:
+- if the node pair is valid.
+- if the parameters of the model have been computed.
+"""
+function A(m::DBCM,i::Int,j::Int)
+    return i == j ? zero(precision(m)) : @inbounds f_DBCM(m.xᵣ[m.dᵣ_ind[i]] * m.yᵣ[m.dᵣ_ind[j]])
+end
+
+
+"""
+    outdegree(m::DBCM, i::Int; method=:reduced)
+
+Return the expected degree vector for node `i` of the DBCM model `m`.
+Uses the reduced model parameters `xᵣ` for perfomance reasons.
+
+# Arguments
+- `m::DBCM`: the DBCM model
+- `i::Int`: the node for which to compute the degree.
+- `method::Symbol`: the method to use for computing the degree. Can be any of the following:
+    - `:reduced` (default) uses the reduced model parameters `xᵣ` for perfomance reasons.
+    - `:full` uses all elements of the expected adjacency matrix.
+    - `:adjacency` uses the precomputed adjacency matrix `m.Ĝ` of the model.
+
+# Examples
+```jldoctest
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> typeof([outdegree(model, 1), outdegree(model, 1, method=:full), outdegree(model, 1, method=:adjacency)])
+Vector{Float64} (alias for Array{Float64, 1})
+
+``` 
+"""
+function outdegree(m::DBCM, i::Int; method::Symbol=:reduced)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    i > m.status[:d] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:d]) node graph")) : nothing
+    
+    if method == :reduced
+        res = zero(precision(m))
+        i_red = m.dᵣ_ind[i] # find matching index in reduced model
+        for j in eachindex(m.xᵣ)
+            if i_red ≠ j 
+                res += @inbounds f_DBCM(m.xᵣ[i_red] * m.yᵣ[j]) * m.f[j]
+            else
+                res += @inbounds f_DBCM(m.xᵣ[i_red] * m.yᵣ[i_red]) * (m.f[j] - 1) # subtract 1 because the diagonal is not counted
+            end
+        end
+    elseif method == :full
+        # using all elements of the adjacency matrix
+        res = zero(precision(m))
+        for j in eachindex(m.d_out)
+            res += A(m, i, j)
+        end
+    elseif method == :adjacency
+        #  using the precomputed adjacency matrix 
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
+        res = sum(@view m.Ĝ[i,:])  
+    else
+        throw(ArgumentError("Unknown method $method"))
+    end
+
+    return res
+end
+
+"""
+    outdegree(m::DBCM[, v]; method=:reduced)
+
+Return a vector corresponding to the expected outdegree of the DBCM model `m` each node. If v is specified, only return outdegrees for nodes in v.
+
+# Arguments
+- `m::DBCM`: the DBCM model
+- `v::Vector{Int}`: the nodes for which to compute the outdegree. Default is all nodes.
+- `method::Symbol`: the method to use for computing the outdegree. Can be any of the following:
+    - `:reduced` (default) uses the reduced model parameters `xᵣ` for perfomance reasons.
+    - `:full` uses all elements of the expected adjacency matrix.
+    - `:adjacency` uses the precomputed adjacency matrix `m.Ĝ` of the model.
+
+# Examples
+```jldoctest
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> typeof(outdegree(model, method=:adjacency)) 
+Vector{Float64} (alias for Array{Float64, 1})
+
+``` 
+"""
+outdegree(m::DBCM, v::Vector{Int}=collect(1:m.status[:d]); method::Symbol=:reduced) = [outdegree(m, i, method=method) for i in v]
+
+
+"""
+    indegree(m::DBCM, i::Int; method=:reduced)
+
+Return the expected degree vector for node `i` of the DBCM model `m`.
+Uses the reduced model parameters `xᵣ` for perfomance reasons.
+
+# Arguments
+- `m::DBCM`: the DBCM model
+- `i::Int`: the node for which to compute the degree.
+- `method::Symbol`: the method to use for computing the degree. Can be any of the following:
+    - `:reduced` (default) uses the reduced model parameters `xᵣ` for perfomance reasons.
+    - `:full` uses all elements of the expected adjacency matrix.
+    - `:adjacency` uses the precomputed adjacency matrix `m.Ĝ` of the model.
+
+# Examples
+```jldoctest
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> typeof([indegree(model, 1), indegree(model, 1, method=:full), indegree(model, 1, method=:adjacency)])
+Vector{Float64} (alias for Array{Float64, 1})
+
+``` 
+"""
+function indegree(m::DBCM, i::Int; method::Symbol=:reduced)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    i > m.status[:d] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:d]) node graph")) : nothing
+    
+    if method == :reduced
+        res = zero(precision(m))
+        i_red = m.dᵣ_ind[i] # find matching index in reduced model
+        for j in eachindex(m.xᵣ)
+            if i_red ≠ j 
+                res += @inbounds f_DBCM(m.xᵣ[j] * m.yᵣ[i_red]) * m.f[j]
+            else
+                res += @inbounds f_DBCM(m.xᵣ[j] * m.yᵣ[i_red]) * (m.f[j] - 1) # subtract 1 because the diagonal is not counted
+            end
+        end
+    elseif method == :full
+        # using all elements of the adjacency matrix
+        res = zero(precision(m))
+        for j in eachindex(m.d_out)
+            res += A(m, j, i)
+        end
+    elseif method == :adjacency
+        #  using the precomputed adjacency matrix 
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
+        res = sum(@view m.Ĝ[:,i])  
+    else
+        throw(ArgumentError("Unknown method $method"))
+    end
+
+    return res
+end
+
+
+"""
+    indegree(m::DBCM[, v]; method=:reduced)
+
+Return a vector corresponding to the expected indegree of the DBCM model `m` each node. If v is specified, only return indegrees for nodes in v.
+
+# Arguments
+- `m::DBCM`: the DBCM model
+- `v::Vector{Int}`: the nodes for which to compute the indegree. Default is all nodes.
+- `method::Symbol`: the method to use for computing the indegree. Can be any of the following:
+    - `:reduced` (default) uses the reduced model parameters `xᵣ` for perfomance reasons.
+    - `:full` uses all elements of the expected adjacency matrix.
+    - `:adjacency` uses the precomputed adjacency matrix `m.Ĝ` of the model.
+
+# Examples
+```jldoctest
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> typeof(indegree(model, method=:adjacency)) 
+Vector{Float64} (alias for Array{Float64, 1})
+
+``` 
+"""
+indegree(m::DBCM, v::Vector{Int}=collect(1:m.status[:d]); method::Symbol=:reduced) = [indegree(m, i, method=method) for i in v]
+
+
+"""
+    AIC(m::DBCM)
+
+Compute the Akaike Information Criterion (AIC) for the DBCM model `m`. The parameters of the models most be computed beforehand. 
+If the number of empirical observations becomes too small with respect to the number of parameters, you will get a warning. In 
+that case, the corrected AIC (AICc) should be used instead.
+
+# Examples
+```jldoctest
+julia> model = DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
+
+julia> solve_model!(model);
+
+julia> AIC(model);
+[...]
+
+```
+
+See also [`AICc`](@ref MaxEntropyGraphs.AICc), [`L_DBCM_reduced`](@ref MaxEntropyGraphs.L_DBCM_reduced).
+"""
+function AIC(m::DBCM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = m.status[:d] * 2 # number of parameters ( = 2 * number of in/out degree pairs)
+    n = (m.status[:d] - 1) * m.status[:d]  # number of observations (N-1)*N
+    L = L_DBCM_reduced(m) # log-likelihood
+
+    if n/k < 40
+        @warn """The number of observations is small with respect to the number of parameters (n/k < 40). Consider using the corrected AIC (AICc) instead."""
+    end
+
+    return 2*k - 2*L
+end
+
+
+
+"""
+    AICc(m::DBCM)
+
+Compute the corrected Akaike Information Criterion (AICc) for the DBCM model `m`. The parameters of the models most be computed beforehand. 
+
+
+# Examples
+```jldoctest
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
+julia> solve_model!(model);
+
+julia> AICc(model)
+314.5217467272881
+
+```
+
+See also [`AIC`](@ref MaxEntropyGraphs.AIC), [`L_DBCM_reduced`](@ref MaxEntropyGraphs.L_DBCM_reduced).
+"""
+function AICc(m::DBCM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = m.status[:d] * 2 # number of parameters ( = 2 * number of in/out degree pairs)
+    n = (m.status[:d] - 1) * m.status[:d]   # number of observations (N-1)*N
+    L = L_DBCM_reduced(m) # log-likelihood
+
+    return 2*k - 2*L + (2*k*(k+1)) / (n - k - 1)
+end
+
+
+"""
+    BIC(m::DBCM)
+
+Compute the Bayesian Information Criterion (BIC) for the DBCM model `m`. The parameters of the models most be computed beforehand. 
+BIC is believed to be more restrictive than AIC, as the former favors models with a lower number of parameters than those favored by the latter.
+
+# Examples
+```jldoctest
+julia> model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate));
+
+julia> solve_model!(model);
+
+julia> BIC(model)
+415.69929372350714
+
+```
+
+See also [`AIC`](@ref MaxEntropyGraphs.AIC), [`L_DBCM_reduced`](@ref MaxEntropyGraphs.L_DBCM_reduced).
+"""
+function BIC(m::DBCM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = m.status[:d] * 2 # number of parameters
+    n = (m.status[:d] - 1) * m.status[:d]  # number of observations
+    L = L_DBCM_reduced(m) # log-likelihood
+
+    return k * log(n) - 2*L
+end
