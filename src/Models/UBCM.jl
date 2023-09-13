@@ -477,14 +477,14 @@ end
 
 Compute the expected adjacency matrix for the UBCM model `m`
 """
-function Ĝ(m::UBCM{T,N}) where {T,N}
+function Ĝ(m::UBCM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     
     # get network size => this is the full size
     n = m.status[:d]
     # initiate G
-    G = zeros(N, n, n)
+    G = zeros(precision(m), n, n)
     # initiate x
     x = m.xᵣ[m.dᵣ_ind]
     # compute G
@@ -518,13 +518,13 @@ Compute the standard deviation for the elements of the adjacency matrix for the 
 
 **Note:** read as "sigma star"
 """
-function σˣ(m::UBCM{T,N}) where {T,N}
+function σˣ(m::UBCM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # check network size => this is the full size
     n = m.status[:d]
     # initiate G
-    σ = zeros(N, n, n)
+    σ = zeros(precision(m), n, n)
     # initiate x
     x = m.xᵣ[m.dᵣ_ind]
     # compute σ
@@ -664,7 +664,7 @@ Final objective value:     168.68325136302835
 
 See also: [`initial_guess`](@ref MaxEntropyGraphs.initial_guess(::UBCM)), [`∇L_UBCM_reduced!`](@ref MaxEntropyGraphs.∇L_UBCM_reduced!)
 """
-function solve_model!(m::UBCM{T,N};  # common settings
+function solve_model!(m::UBCM;  # common settings
                                 method::Symbol=:fixedpoint, 
                                 initial::Symbol=:degrees,
                                 maxiters::Int=1000, 
@@ -675,7 +675,8 @@ function solve_model!(m::UBCM{T,N};  # common settings
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
                                 AD_method::Symbol=:AutoZygote,
-                                analytical_gradient::Bool=false) where {T,N}
+                                analytical_gradient::Bool=false)
+    N = precision(m)
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     if method==:fixedpoint
