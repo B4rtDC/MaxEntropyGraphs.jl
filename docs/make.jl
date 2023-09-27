@@ -18,7 +18,7 @@ DocMeta.setdocmeta!(MaxEntropyGraphs, :DocTestSetup, :(using MaxEntropyGraphs); 
 
 # check if we are running on CI
 ci = get(ENV, "CI", "") == "true"
-const buildpath = haskey(ENV, "CI") ? ".." : ""
+const buildpath = haskey(ENV, "CI") ? ".." : "" # https://github.com/JuliaDocs/Documenter.jl/issues/921
 
 # makedocs will run all docstrings in the package
 makedocs(sitename="MaxEntropyGraphs.jl",
