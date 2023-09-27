@@ -78,15 +78,15 @@ The count of a specific network motif can be computed by using `M{motif_number}`
 ![directed network motifs naming convention](/assets/directed_motifs.jpg)
 ![directed network motifs naming convention](/directed_motifs.jpg)
 
-![Enter a descriptive caption for the image](/assets/logo.png)
+![Enter a descriptive caption for the image](../assets/logo.png)
 ```@example
-HTML("""<object type="image/svg+xml" data=$(joinpath(Main.buildpath, "assets","directed_motifs.png"))></object>""") # hide
+HTML("""<object type="image/png+xml" data=$(joinpath(Main.buildpath, "..","assets","directed_motifs.png"))></object>""") # hide
 ```
 ```@example
-HTML("""<object type="image/svg+xml" data=$(joinpath(Main.buildpath, "src", "assets","directed_motifs.png"))></object>""") # hide
+HTML("""<object type="image/png+xml" data=$(joinpath(Main.buildpath, "..", "src", "assets","directed_motifs.png"))></object>""") # hide
 ```
 ```@example
-HTML("""<object type="image/svg+xml" data=$(joinpath(Main.buildpath, "docs","src", "assets","directed_motifs.png"))></object>""") # hide
+HTML("""<object type="image/png+xml" data=$(joinpath(Main.buildpath, "..","docs","src", "assets","directed_motifs.png"))></object>""") # hide
 ```
 
 _References_
