@@ -50,6 +50,12 @@ rand(model, 10)
 AIC(model)
 ```
 
+## Counting network motifs
+The count of a specific network motif can be computed by using `M{motif_number}` e.g. `M13(model)`. The numbers following the patterns shown on the image below
+
+![directed network motifs naming convention](/assets/directed_motifs.png) ([source](https://snap-stanford.github.io/cs224w-notes/preliminaries/motifs-and-structral-roles_lecture))
+
+
 _References_
 
 ```@raw html
