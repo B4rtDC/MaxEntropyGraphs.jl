@@ -51,10 +51,43 @@ AIC(model)
 ```
 
 ## Counting network motifs
-The count of a specific network motif can be computed by using `M{motif_number}` e.g. `M13(model)`. The numbers following the patterns shown on the image below
+The count of a specific network motif can be computed by using `M{motif_number}` e.g. `M13(model)`. The numbers match the patterns shown on the image below. So if you want to compute the number of recipo
 
-![directed network motifs naming convention](/assets/directed_motifs.png) ([source](https://snap-stanford.github.io/cs224w-notes/preliminaries/motifs-and-structral-roles_lecture))
+![directed network motifs naming convention](https://snap-stanford.github.io/cs224w-notes/assets/img/Subgraphs_example.png?style=centerme) ([source](https://snap-stanford.github.io/cs224w-notes/preliminaries/motifs-and-structral-roles_lecture))
 
+![logo](./assets/logo.jpeg)
+![directed network motifs naming convention](./docs/src/assets/directed_motifs.png)
+![directed network motifs naming convention](./src/assets/directed_motifs.png)
+![directed network motifs naming convention](./assets/directed_motifs.png)
+![directed network motifs naming convention](./directed_motifs.png)
+![logo](/assets/logo.jpeg)
+![directed network motifs naming convention](/docs/src/assets/directed_motifs.png)
+![directed network motifs naming convention](/src/assets/directed_motifs.png)
+![directed network motifs naming convention](/assets/directed_motifs.png)
+![directed network motifs naming convention](/directed_motifs.png)
+
+
+![logo](./assets/logo.jpeg)
+![directed network motifs naming convention](./docs/src/assets/directed_motifs.jpg)
+![directed network motifs naming convention](./src/assets/directed_motifs.jpg)
+![directed network motifs naming convention](./assets/directed_motifs.jpg)
+![directed network motifs naming convention](./directed_motifs.jpg)
+![logo](/assets/logo.jpeg)
+![directed network motifs naming convention](/docs/src/assets/directed_motifs.jpg)
+![directed network motifs naming convention](/src/assets/directed_motifs.jpg)
+![directed network motifs naming convention](/assets/directed_motifs.jpg)
+![directed network motifs naming convention](/directed_motifs.jpg)
+
+![Enter a descriptive caption for the image](/assets/logo.png)
+```@example
+HTML("""<object type="image/svg+xml" data=$(joinpath(Main.buildpath, "assets","directed_motifs.png"))></object>""") # hide
+```
+```@example
+HTML("""<object type="image/svg+xml" data=$(joinpath(Main.buildpath, "src", "assets","directed_motifs.png"))></object>""") # hide
+```
+```@example
+HTML("""<object type="image/svg+xml" data=$(joinpath(Main.buildpath, "docs","src", "assets","directed_motifs.png"))></object>""") # hide
+```
 
 _References_
 
