@@ -34,31 +34,37 @@ module MaxEntropyGraphs
     #include("Models/UECM.jl")
     #include("Models/CReM.jl")
     include("utils.jl")
-    ## exports
-    # common types
+    include("smallnetworks.jl")
+    
+    ### exports
+    ## common types
     export AbstractMaxEntropyModel
-    # utils 
-    export np_unique_clone, ANND, AAND_in, ANND_out, wedges, triangles, squares
-    export rhesus_macaques, taro_exchange # demo networks
-    # common model functions
+    ## utils 
+    # compressing
+    export np_unique_clone
+    # graph metrics
+    export ANND, AAND_in, ANND_out
+    export wedges, triangles, squares
+    for motif_name in directed_graph_motif_function_names
+        @eval begin
+        export $(motif_name)
+        end
+    end
+
+    ## common model functions
     export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, precision, σₓ
     export degree, outdegree, indegree
     export AIC, AICc, BIC #, set_yᵣ!
-    # model specific types and functions
+    
+    ## model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
     export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
     #export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
-
-
-    #import Distributions
     
-    #import PyCall                   # for calling NEMtropy package in Python, dependency should be removed in a future version
-    #import ReverseDiff              # for gradient
+    ## demo networks
+    export rhesus_macaques, taro_exchange 
+    
     #import StatsBase: mean, std     # for mean and standard deviation
-    #import JLD2                     # for saving and loading models
-    #
-    #
-    #include("metrics.jl")
     
     
     # models
@@ -76,8 +82,6 @@ module MaxEntropyGraphs
     #end
     #export motifs
 
-    # utils
-    #export DBCM_analysis
 
 end
 

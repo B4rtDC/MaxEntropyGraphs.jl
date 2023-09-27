@@ -677,99 +677,91 @@ squares(m::UBCM) = squares(m.Ĝ, check_dimensions=false, check_directed=false)
 ########################################################################################################
 # directed network motifs and helper functions
 ########################################################################################################
+# building blocks used for the motif computation (adjecency matrix based)
+"""
+    a⭢(A::T, i::Int, j::Int) where T<:AbstractArray
 
-
-
-
+Compute non-recipocrated directed link from i to j and not from j to i.
+"""
+a⭢(A::T, i::Int, j::Int) where T<:AbstractArray = @inbounds A[i,j] * (one(eltype(T)) - A[j,i])
 
 """
-    parse_konect(content::String)
+    a⭠(A::T, i::Int, j::Int) where T<:AbstractArray
 
-Helper function to parse network data from the [KONECT Project](http://konect.cc) and return it to a graph object in the JuliaGraphs ecosystem.
-
-# Examples
-```julia
-# read the data from a file
-G = open(io -> parse_konect(read(io, String)), "/path/to/KONECT/network/data")
-# store the graph in Graphs.jl format
-savegraph("path/to/my_KONECT_graph.lgz", G)
-```
+Computed non-recipocrated directed link not from i to j and  from j to i.
 """
-function parse_konect(content::String)
-    # split content into lines
-    lines = split(content, "\n")
-    ## Determine type of graph
-    types = split(lines[1], " ")
-    # graph
-    if types[2] == "sym" && types[3] == "posweighted"
-        Gt = SimpleWeightedGraph
-    elseif types[2] == "asym" && types[3] == "posweighted"
-        Gt = SimpleWeightedDiGraph
-    elseif types[2] == "sym" && types[3] == "unweighted"
-        Gt = SimpleGraph
-    elseif types[2] == "asym" && types[3] == "unweighted"
-        Gt = SimpleDiGraph
-    else
-        # temporary solution, add bipartite too later
-        throw(ArgumentError("The graph type is not supported."))
-    end
-    ## Determine properties of graph
-    properties = split(lines[2], " ")
-    NE = parse(Int, properties[2])
-    NV = parse(Int, properties[3])
+a⭠(A::T, i::Int, j::Int) where T<:AbstractArray = @inbounds (one(eltype(T)) - A[i,j]) * A[j,i]
 
-    ## create graph
-    G = Gt(NV)
-    # add edges
-    for line in lines[3:end-1]
-        # split line into components
-        components = split(line, " ")
-        if components[3] == ""
-            # unweighted
-            add_edge!(G, parse(Int, components[1]), parse(Int, components[2]))
-        else
-            # weighted
-            @info components
-            add_edge!(G, parse(Int, components[1]), parse(Int, components[2]), parse(Float64, components[3]))
+"""
+    a⭤(A::T, i::Int, j::Int) where T<:AbstractArray
+
+Computed recipocrated directed link between i and j.
+"""
+a⭤(A::T, i::Int, j::Int) where T<:AbstractArray = @inbounds A[i,j]*A[j,i]
+
+"""
+    a̲(A::T, i::Int, j::Int) where T<:AbstractArray
+
+Compute absence of link between i and j.
+"""
+a̲(A::T, i::Int, j::Int)   where T<:AbstractArray = @inbounds (one(eltype(T)) - A[i,j])*(one(eltype(T)) - A[j,i])
+
+# The 13 directed 3-node motifs based on the combination of (i,j,k)
+const directed_graph_motif_functions = [ (a⭠, a⭢, a̲);
+                    (a⭠, a⭠, a̲);
+                    (a⭠, a⭤, a̲);
+                    (a⭠, a̲, a⭢);
+                    (a⭠, a⭢,a⭢);
+                    (a⭠, a⭤, a⭢);
+                    (a⭢, a⭤, a̲);
+                    (a⭤, a⭤, a̲);
+                    (a⭢, a⭢, a⭢);
+                    (a⭤, a⭢, a⭢);
+                    (a⭤, a⭠, a⭢);
+                    (a⭤, a⭤, a⭢);
+                    (a⭤, a⭤, a⭤);
+                    ]
+const directed_graph_motif_function_names = [Symbol("M$(i)") for i = 1:13]
+# use metaprogramming to generate the functions for the 13 directed 3-node motifs for a directed graph
+for i = 1:13
+    fname = directed_graph_motif_function_names[i]
+    @eval begin
+        # method based on matrix
+        """
+            $($fname)(A::T) where T<:AbstractArray
+        
+        Count the occurence of motif $($fname) (Σ_{i≠j≠k} $(directed_graph_motif_functions[$i][1])(i,j) $(directed_graph_motif_functions[$i][2])(j,k) $(directed_graph_motif_functions[$i][3])(k,i) ) from the adjacency matrix.
+        """
+        function $(fname)(A::T)  where T<:AbstractArray
+            res = zero(eltype(A))
+            for i = axes(A,1)
+                for j = axes(A,1)
+                    @simd for k = axes(A,1)
+                        if i ≠ j && j ≠ k && k ≠ i
+                            res += $(directed_graph_motif_functions[i][1])(A,i,j) * $(directed_graph_motif_functions[i][2])(A,j,k) *   $(directed_graph_motif_functions[i][3])(A,k,i)
+                        end
+                    end
+                end
+            end
+            return res
+        end
+
+        # method for DBCM > refer to underlying matrix
+        """
+            $($fname)(m::DBCM)
+        
+        Count the occurence of motif $($fname) (Σ_{i≠j≠k} $(directed_graph_motif_functions[$i][1]) (i,j) × $(directed_graph_motif_functions[$i][2]) (j,k) × $(directed_graph_motif_functions[$i][3]) (k,i) ) from the `DBCM` model.
+        """
+        function $(fname)(m::DBCM)
+            m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before counting the occurence of motif $($fname), see `set_Ĝ!`"))
+            
+            return $(fname)(m.Ĝ)
         end
     end
-
-    ## quality check
-    @assert NE == ne(G)
-    @assert NV == nv(G)
-    
-    return G
 end
 
 
 
-
-
-
-"""
-    taro_exchange()
-
-A small directed network that contains gift-givings (taro) between households in a Papuan village. A node represents a household and an edge between two households indicates that there happened a gift-giving.
-The network is directed and contains 22 nodes and 78 edges.
-
-See also: [KONECT](http://konect.cc/networks/moreno_taro/)
-"""
-taro_exchange() = Graphs.SimpleDiGraph(Graphs.SimpleDiGraphEdge.([(1, 2), (1, 3), (1, 4), (2, 1), (2, 4), (2, 5), (3, 1), (3, 6), (3, 7), (3, 9), (3, 10), (4, 1), (4, 2), (4, 5), (4, 12), (4, 19), (4, 22), (5, 2), (5, 4), (5, 6), (6, 3), (6, 5), (6, 7), (6, 8), (7, 3), (7, 6), (7, 8), (8, 6), (8, 7), (8, 11), (8, 12), (8, 13), (9, 3), (9, 10), (9, 17), (10, 3), (10, 9), (10, 17), (11, 8), (11, 14), (11, 15), (12, 4), (12, 8), (12, 21), (13, 8), (13, 18), (13, 22), (14, 11), (14, 15), (14, 16), (15, 11), (15, 14), (15, 17), (16, 14), (16, 18), (16, 20), (17, 9), (17, 10), (17, 15), (17, 18), (17, 19), (18, 13), (18, 16), (18, 17), (18, 20), (18, 21), (19, 4), (19, 17), (19, 22), (20, 16), (20, 18), (20, 21), (21, 12), (21, 18), (21, 20), (22, 4), (22, 13), (22, 19)]))
-
-"""
-    rhesus_maqaques()
-
-A small weighted, directed network that contains observed grooming episodes between free ranging rhesus macaques (Macaca mulatta) in Cayo Santiago during a two month period in 1963. Cayo Santiago is an island off the coast of Puerto Rico, also known as Isla de los monos (Island of the monkeys). A node represents a monkey and a directed edge A → B denotes that the rhesus macaque A groomed rhesus macaque B. The integer edge weights indicate how often this behaviour was observed.
-
-See also: [KONECT](http://konect.cc/networks/moreno_rhesus/)
-"""
-function rhesus_macaques()
-    sources = [1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15, 16, 16, 16, 16, 16, 16]
-    targets = [2, 3, 1, 3, 4, 9, 10, 11, 12, 15, 16, 1, 2, 9, 10, 11, 12, 13, 15, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 1, 3, 5, 8, 10, 12, 15, 2, 5, 8, 9, 14, 6, 7, 2, 3, 11, 13, 14, 15, 1, 2, 3, 5, 6, 9, 11, 12, 13, 15, 1, 2, 3, 5, 9, 10, 13, 15, 16, 2, 3, 5, 6, 8, 10, 11, 13, 14, 15, 1, 3, 5, 9, 10, 11, 12, 15, 2, 3, 4, 7, 8, 9, 10, 12, 13, 15, 2, 3, 4, 10, 11, 12, 14, 16, 2, 3, 9, 11, 12, 15]
-    weights = [3.0, 4.0, 49.0, 41.0, 3.0, 3.0, 2.0, 1.0, 6.0, 9.0, 1.0, 25.0, 8.0, 5.0, 1.0, 9.0, 2.0, 2.0, 21.0, 1.0, 2.0, 15.0, 8.0, 2.0, 1.0, 9.0, 3.0, 1.0, 4.0, 2.0, 17.0, 1.0, 5.0, 8.0, 4.0, 3.0, 1.0, 1.0, 5.0, 2.0, 2.0, 11.0, 11.0, 1.0, 4.0, 6.0, 4.0, 2.0, 6.0, 1.0, 1.0, 4.0, 4.0, 5.0, 3.0, 2.0, 8.0, 5.0, 16.0, 11.0, 5.0, 9.0, 7.0, 1.0, 4.0, 1.0, 1.0, 10.0, 5.0, 3.0, 24.0, 2.0, 1.0, 3.0, 4.0, 5.0, 2.0, 1.0, 25.0, 1.0, 9.0, 2.0, 2.0, 21.0, 3.0, 4.0, 5.0, 1.0, 1.0, 3.0, 1.0, 1.0, 8.0, 1.0, 5.0, 1.0, 2.0, 6.0, 23.0, 1.0, 4.0, 13.0, 2.0, 1.0, 4.0, 2.0, 2.0, 1.0, 3.0, 1.0, 3.0]
-    
-    return SimpleWeightedGraphs.SimpleWeightedDiGraph(sources, targets, weights)
-end
 
 
 #     DBCM_analysis
