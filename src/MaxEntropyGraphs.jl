@@ -23,6 +23,7 @@ module MaxEntropyGraphs
     #import NaNMath # returns a NaN instead of a DomainError for some functions. The solver(s) will use the NaN within the error control routines to reject the out of bounds step.
 
     import Distributions
+    import Combinatorics: combinations
     #import LoopVectorization: @tturbo, @turbo  # not for now
 
     # actual source code
@@ -37,7 +38,7 @@ module MaxEntropyGraphs
     # common types
     export AbstractMaxEntropyModel
     # utils 
-    export np_unique_clone, ANND
+    export np_unique_clone, ANND, AAND_in, ANND_out, wedges, triangles, squares
     export rhesus_macaques, taro_exchange # demo networks
     # common model functions
     export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, precision, σₓ

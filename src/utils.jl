@@ -98,52 +98,52 @@ end
 
 
 """
-    strength(g, T; dir)
+    strength(G, T; dir)
 
-Construct the strength vector for the graph `g`, filled with element type `T` and considering edge direction `dir ∈ [:in, :out, :both]` (default is `:out`).
+Construct the strength vector for the graph `G`, filled with element type `T` and considering edge direction `dir ∈ [:in, :out, :both]` (default is `:out`).
 """
-function strength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(g); dir::Symbol=:out)
-    if Graphs.is_directed(g)
+function strength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(G); dir::Symbol=:out)
+    if Graphs.is_directed(G)
         if dir == :out
-            d = vec(sum(g.weights; dims=1))
+            d = vec(sum(G.weights; dims=1))
         elseif dir == :in
-            d = vec(sum(g.weights; dims=2))
+            d = vec(sum(G.weights; dims=2))
         elseif dir == :both
-            d = vec(sum(g.weights; dims=1)) + vec(sum(g.weights; dims=2))
+            d = vec(sum(G.weights; dims=1)) + vec(sum(G.weights; dims=2))
         else
             throw(DomainError(dir, "invalid argument, only accept :in, :out and :both"))
         end
     else
-        d = vec(sum(g.weights; dims=1))
+        d = vec(sum(G.weights; dims=1))
     end
     
     return T.(d)
 end
 
-# TO DO: extend to other graph type (Graphs.jl)
+# TO DO: extend to other graph type (Graphs.jl) & add docs
 
-instrength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(g); dir::Symbol=:in)   = strength(g, T, dir=dir)
-outstrength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(g); dir::Symbol=:out) = strength(g, T, dir=dir)
+instrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(G); dir::Symbol=:in)   = strength(G, T, dir=dir)
+outstrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(G); dir::Symbol=:out) = strength(G, T, dir=dir)
 
 
 """
-    strength(g, i, T; dir)
+    strength(G, i, T; dir)
 
-Construct the strength of node `i` for the graph `g`, filled with element type `T` and considering edge direction `dir ∈ [:in, :out, :both]` (default is `:out`).
+Construct the strength of node `i` for the graph `G`, filled with element type `T` and considering edge direction `dir ∈ [:in, :out, :both]` (default is `:out`).
 """
-function strength(g::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, i::N, T::DataType=SimpleWeightedGraphs.weighttype(g); dir::Symbol=:out) where N<:Integer
-    if Graphs.is_directed(g)
+function strength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, i::N, T::DataType=SimpleWeightedGraphs.weighttype(G); dir::Symbol=:out) where N<:Integer
+    if Graphs.is_directed(G)
         if dir == :out
-            d = vec(sum(g.weights; dims=1))
+            d = vec(sum(G.weights; dims=1))
         elseif dir == :in
-            d = vec(sum(g.weights; dims=2))
+            d = vec(sum(G.weights; dims=2))
         elseif dir == :both
-            d = vec(sum(g.weights; dims=1)) + vec(sum(g.weights; dims=2))
+            d = vec(sum(G.weights; dims=1)) + vec(sum(G.weights; dims=2))
         else
             throw(DomainError(dir, "invalid argument, only accept :in, :out and :both"))
         end
     else
-        d = vec(sum(g.weights; dims=1))
+        d = vec(sum(G.weights; dims=1))
     end
     
     return T.(d)
@@ -399,7 +399,6 @@ end
 
 
 
-
 function ANND_out(G::T, i::Int; kwargs...) where {T<:Graphs.AbstractGraph}
     if iszero(Graphs.outdegree(G,i))
         return zero(Float64)
@@ -473,32 +472,213 @@ end
 
 
 
-"""
-    σₓ(m::UBCM, X::function)
 
-Compute the standard deviation of metric `X` for the UBCM model `m`. 
-    
-This requires that both the expected values (m.Ĝ) and standard deviations (m.σ) are computed for `m`.
+
+
 """
-function σₓ(m::UBCM, X::Function; gradient_method::Symbol=:ReverseDiff)
+    wedges(G::Graphs.SimpleGraph)
+    wedges(A::T; check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
+    wedges(m::UBCM)
+
+Compute the number of (expected) wedges for an undirected graph. Can be done directly from the graph, based on the adjacency matrix or a UBCM model.
+
+# Arguments
+For the adjacency matrix `A`, the following arguments can be passed:
+- `check_dimensions`: if true, check that `A` is a square matrix, otherwise throw an error.
+- `check_directed`: if true, check that `A` is symmetrical, otherwise throw an error.
+
+# Examples
+```jldoctest wedges_graph_docs
+julia> G = MaxEntropyGraphs.Graphs.smallgraph(:karate);
+
+julia> model = UBCM(G);
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> (wedges(G), wedges(MaxEntropyGraphs.Graphs.adjacency_matrix(G)), wedges(model))
+(528.0, 528.0, 528.0000011499742)
+```
+"""
+function wedges end
+
+function wedges(G::Graphs.SimpleGraph) 
+    d =  Graphs.degree(G)
+    return sum(d .* (d .- one(eltype(d))) ./ 2)
+end
+
+function wedges(A::T; check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
     # checks
-    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
-    m.status[:σ_computed] ? nothing : throw(ArgumentError("The standard deviations (m.σ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_σ!`"))
-
-    # gradient
-    if gradient_method == :ForwardDiff
-        ∇X = ForwardDiff.gradient(X, m.Ĝ)
-    elseif gradient_method == :ReverseDiff
-        ∇X = ReverseDiff.gradient(X, m.Ĝ)
-    elseif gradient_method == :Zygote
-        ∇X = Zygote.gradient(X, m.Ĝ)[1]
-    else
-        throw(ArgumentError("Invalid gradient method, only :ForwardDiff, :ReverseDiff and :Zygote are accepted"))
+    if check_dimensions && !isequal(size(A)...) 
+        throw(DimensionMismatch("`A` must be a square matrix."))
+    end
+    if check_directed && !issymmetric(A) 
+        throw(ArgumentError( "The matrix is not symmetrical. Consider using ANND_in or ANND_out instead."))
     end
 
-    # return value
-    return sqrt( sum((m.σ .* ∇X) .^ 2) )
+    # compute
+    d = sum(A, dims=1)
+
+    return sum(d .* (d .- one(eltype(A))) ./ 2)
 end
+
+function wedges(m::UBCM)
+    # checks
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
+
+    # compute
+    return wedges(m.Ĝ)
+end
+
+"""
+    triangles(G::Graphs.SimpleGraph)
+    triangles(A::T; check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
+    triangles(m::UBCM)
+
+Compute the number of (expected) triangles for an undirected graph. Can be done directly from the graph, based on the adjacency matrix or a UBCM model.
+
+# Arguments
+For the adjacency matrix `A`, the following arguments can be passed:
+- `check_dimensions`: if true, check that `A` is a square matrix, otherwise throw an error.
+- `check_directed`: if true, check that `A` is symmetrical, otherwise throw an error.
+These checks can be turned off for perfomance reasons.
+
+# Examples
+```jldoctest triangles_doc_all
+julia> G = MaxEntropyGraphs.Graphs.smallgraph(:karate);
+
+julia> model = UBCM(G);
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> (triangles(G), triangles(MaxEntropyGraphs.Graphs.adjacency_matrix(G)), triangles(model))
+(45, 45.0, 52.849301363026846)
+```
+"""
+function triangles end 
+
+triangles(G::Graphs.SimpleGraph) = sum(Graphs.triangles(G)) ÷ 3
+
+function triangles(A::T; check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
+    # checks
+    if check_dimensions && !isequal(size(A)...) 
+        throw(DimensionMismatch("`A` must be a square matrix."))
+    end
+    if check_directed && !issymmetric(A) 
+        throw(ArgumentError( "The matrix is not symmetrical. Consider using ANND_in or ANND_out instead."))
+    end
+
+    # compute
+    res = zero(eltype(A))
+    for i = axes(A,1)
+        for j = axes(A,1)
+            @simd for k = axes(A,1)
+                if i ≠ j && j ≠ k && k ≠ i
+                    res += A[i,j] * A[j,k] * A[k,i]
+                end
+            end
+        end
+    end
+
+    return res / 6
+end
+
+triangles(m::UBCM) = triangles(m.Ĝ,check_dimensions=false, check_directed=false)
+
+"""
+    squares(G::Graphs.SimpleGraph)
+    squares(A::T; check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
+    squares(m::UBCM)
+
+Compute the number of (expected) squares for an undirected graph. Can be done directly from the graph, based on the adjacency matrix or a UBCM model.
+
+# Notes:
+In this function, by ``square``, a \'pure\' square is understood, without any diagonals inside. This explains the difference with the induced subgraph count, which counts all squares, including those with triangles inside. 
+
+# Arguments
+For the adjacency matrix `A`, the following arguments can be passed:
+- `check_dimensions`: if true, check that `A` is a square matrix, otherwise throw an error.
+- `check_directed`: if true, check that `A` is symmetrical, otherwise throw an error.
+These checks can be turned off for perfomance reasons.
+
+# Examples
+```jldoctest squares_doc_all
+julia> G = MaxEntropyGraphs.Graphs.smallgraph(:karate);
+
+julia> model = UBCM(G);
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> (squares(G), squares(MaxEntropyGraphs.Graphs.adjacency_matrix(G)), squares(model))
+(36.0, 36.0, 45.644736823949344)
+```
+"""
+function squares end
+
+function squares(G::Graphs.SimpleGraph) 
+    res = 0
+    for i in Graphs.vertices(G)
+        # only valid candidates
+        if Graphs.degree(G, i) >= 2
+            for (k,j) in combinations(Graphs.neighbors(G, i), 2)
+                # edge betweenj and k should not exist
+                if !Graphs.has_edge(G, j, k)
+                    # search for common neighbors
+                    for l in intersect(Graphs.neighbors(G, j), Graphs.neighbors(G, k))
+                        if l ≠ i && !Graphs.has_edge(G, i, l)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return res / 4
+end
+
+function squares(A::T; check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
+    # checks
+    if check_dimensions && !isequal(size(A)...) 
+        throw(DimensionMismatch("`A` must be a square matrix."))
+    end
+    if check_directed && !issymmetric(A) 
+        throw(ArgumentError( "The matrix is not symmetrical. Consider using ANND_in or ANND_out instead."))
+    end
+
+    # compute
+    res = zero(eltype(A))
+    for i = axes(A,1)
+        for j = axes(A,1)
+            if j≠i
+                for k = axes(A,1)
+                    if k≠i && k≠j
+                        @simd for l in axes(A,1)
+                            if l≠i && l≠j && l≠k
+                                res += A[i,j] * A[j,k] * A[k,l] * A[l,i] * (one(eltype(A)) - A[i,k]) * (one(eltype(A)) -  A[l,j])
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return res / 8
+end
+
+squares(m::UBCM) = squares(m.Ĝ, check_dimensions=false, check_directed=false)
+
+
+########################################################################################################
+# directed network motifs and helper functions
+########################################################################################################
+
+
 
 
 
@@ -560,6 +740,10 @@ function parse_konect(content::String)
     
     return G
 end
+
+
+
+
 
 
 """

@@ -958,3 +958,30 @@ function BIC(m::UBCM)
 end
 
 
+
+"""
+    σₓ(m::UBCM, X::function)
+
+Compute the standard deviation of metric `X` for the UBCM model `m`. 
+    
+This requires that both the expected values (m.Ĝ) and standard deviations (m.σ) are computed for `m`.
+"""
+function σₓ(m::UBCM, X::Function; gradient_method::Symbol=:ReverseDiff)
+    # checks
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
+    m.status[:σ_computed] ? nothing : throw(ArgumentError("The standard deviations (m.σ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_σ!`"))
+
+    # gradient
+    if gradient_method == :ForwardDiff
+        ∇X = ForwardDiff.gradient(X, m.Ĝ)
+    elseif gradient_method == :ReverseDiff
+        ∇X = ReverseDiff.gradient(X, m.Ĝ)
+    elseif gradient_method == :Zygote
+        ∇X = Zygote.gradient(X, m.Ĝ)[1]
+    else
+        throw(ArgumentError("Invalid gradient method, only :ForwardDiff, :ReverseDiff and :Zygote are accepted"))
+    end
+
+    # return value
+    return sqrt( sum((m.σ .* ∇X) .^ 2) )
+end
