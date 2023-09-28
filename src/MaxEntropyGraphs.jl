@@ -62,7 +62,7 @@ module MaxEntropyGraphs
     #export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
     
     ## demo networks
-    export rhesus_macaques, taro_exchange 
+    export rhesus_macaques, taro_exchange, chesapeakebay, everglades, florida, littlerock, maspalomas, stmarks
     
     #import StatsBase: mean, std     # for mean and standard deviation
     
