@@ -642,8 +642,8 @@ function σˣ(m::DBCM)
         @simd for j = i+1:n
             @inbounds xiyj =  x[i]*y[j]
             @inbounds xjyi =  x[j]*y[i]
-            @inbounds res[i,j] = sqrt(xiyj)/(1 + xiyj)
-            @inbounds res[j,i] = sqrt(xjyi)/(1 + xjyi)
+            @inbounds σ[i,j] = sqrt(xiyj)/(1 + xiyj)
+            @inbounds σ[j,i] = sqrt(xjyi)/(1 + xjyi)
         end
     end
 
