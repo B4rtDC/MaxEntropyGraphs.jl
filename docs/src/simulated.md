@@ -32,4 +32,51 @@ nothing
 ```
 
 ### [Motif significance in the UBCM](@id Motif_simulation)
-TO DO
+Let us consider the DBCM applied to the Chesapeake Bay foodweb. We want to analyse if any of the different network motifs is statistically significant of what one would expect uner the null model. We want to know the values of `M1`, ..., `M13`. These are network-wide measures. 
+
+First, we define the network and the associated UBCM model.
+```jldoctest DBCM_simulation_demo; output = false
+using Graphs
+using MaxEntropyGraphs
+import Statistics: mean, std
+
+# define the network
+G = chesapeakebay();
+# extract its adjacency matrix
+A = adjacency_matrix(G);
+# generate a UBCM model from the karate club network
+model = DBCM(G); 
+# compute the maximum likelihood parameters
+solve_model!(model); 
+# compute and set the expected adjacency matrix
+set_Ĝ!(model); 
+# compute and set the standard deviation of the adjacency matrix
+set_σ!(model); 
+# compute the observed motif counts
+motifs_observed = [@eval begin $(f)(A) end for f in MaxEntropyGraphs.directed_graph_motif_function_names];
+nothing
+
+# output
+
+
+```
+
+Now we need to generate a sample from the network ensemble so that we can compute the sample mean and standard deviation for each motif.
+
+
+```jldoctest DBCM_simulation_demo; output = false
+# Get sample adjacency matrix
+S = adjacency_matrix.(rand(model, 100));
+# compute the motifs
+motif_counts_S = hcat(map(s -> [@eval begin $(f)($s) end for f in MaxEntropyGraphs.directed_graph_motif_function_names], S)...);
+# compute the sample mean and standard deviation
+motifs_mean_S = reshape(mean(motif_counts_S, dims=2),:);
+motifs_std_S = reshape(std(motif_counts_S, dims=2),:);
+# compute the z-score
+motifs_z_S = (motifs_observed .- motifs_mean_S) ./ motifs_std_S;
+nothing
+
+# output
+
+
+```

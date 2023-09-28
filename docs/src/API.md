@@ -24,12 +24,10 @@ MaxEntropyGraphs.log_nan
 MaxEntropyGraphs.np_unique_clone
 ```
 
-```@docs
-MaxEntropyGraphs.parse_konect
-```
 
 ## Graph constructors
 ```@docs
+MaxEntropyGraphs.parse_konect
 MaxEntropyGraphs.taro_exchange
 MaxEntropyGraphs.rhesus_macaques
 ```
@@ -42,7 +40,11 @@ MaxEntropyGraphs.degree
 MaxEntropyGraphs.outdegree
 MaxEntropyGraphs.indegree
 MaxEntropyGraphs.strength
+MaxEntropyGraphs.outstrength
+MaxEntropyGraphs.instrength
 MaxEntropyGraphs.ANND
+MaxEntropyGraphs.ANND_out
+MaxEntropyGraphs.ANND_in
 ```
 
 ## UBCM
@@ -69,6 +71,7 @@ MaxEntropyGraphs.set_σ!(::UBCM)
 MaxEntropyGraphs.precision(::UBCM)
 MaxEntropyGraphs.A(::UBCM,::Int64,::Int64)
 MaxEntropyGraphs.f_UBCM(::UBCM)
+
 ```
 
 ## DBCM
