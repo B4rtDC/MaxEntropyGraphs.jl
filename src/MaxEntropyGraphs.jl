@@ -66,7 +66,6 @@ module MaxEntropyGraphs
     
     #import StatsBase: mean, std     # for mean and standard deviation
     
-    
     # models
     #export AbstractMaxEntropyModel, UBCM, DBCM
     #export rand
