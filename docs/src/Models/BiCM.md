@@ -1,24 +1,31 @@
 # BiCM
 ## Model description
-The Bipartite Configuration Model (BiCM) is a maximum-entropy null model for undirected bipartite networks. It is based on the idea of fixing the in- and outdegree sequence of the network, i.e., the number of incoming and outgoing edges incident to each node, and then randomly rewiring the edges while preserving the degree sequence. The model assumes that the edges are unweighted and that the network is simple, i.e., it has no self-loops or multiple edges between the same pair of nodes [[1](#1),[2](#2)]. 
+An undirected bipartite network can be described by its biadjacency matrix ``B = \left{ b_{i\alpha} \right}_{i,\alpha}`` of size ``N \times M`` whose generic entry ``b_{iα}`` is 1 if node ``i`` belonging to layer ⊥ is linked to node α belonging to layer ⊤ and 0 otherwise.
+The two sets of nodes (sometimes referred to a layers) are defined as as ⊥ and ⊤. 
+The Bipartite Configuration Model (BiCM) is a maximum-entropy null model for undirected bipartite networks. 
+It is based on the idea of fixing the degree sequences for each set of nodes (layers) of the network. 
+The model assumes that the edges are unweighted and that the network is simple, i.e., it has no self-loops or multiple edges between the same pair of nodes [[1](#1),[2](#2)]. 
 
-We define the parameter vector as ``\theta = [\alpha ; \beta]``, where ``\alpha`` and ``\beta`` denote the parameters associated with the out- and indegree respectively.
+
+[!NOTE]  
+For the computation we use the bi-adjacency matrix, whereas the current implementation of the BiCM uses a `::Graphs.SimpleGraph` to construct the models and assesses its bipartiteness using the functionality available in the `Graphs.jl` package.
+
+We define the parameter vector as ``\theta = [\gamma ; \beta]``, where ``\gamma`` and ``\beta`` denote the parameters associated with the ⊥ and ⊤ layer respectively. To speed up the computation of the likelihood maximising parameters, we use the reduced version of the model where we consider the unique values the degrees in each layer [3](#3).
 
 | Description                   | Formula |
 | --------------------------    | :-------------------------------------------------------------------------------- |
-| Constraints                   | `` \forall i: \begin{cases} k_{i, out}(A^{*}) = \sum_{j=1}^{N} a^{*}_{ij} \\ k_{i, in}(A^{*}) = \sum_{j=1}^{N} a^{*}_{ji} \end{cases} ``|
-| Hamiltonian                   | `` H(A, \Theta) = H(A, \alpha, \beta) = \sum_{i=1}^{N} \alpha_i k_{i,out}(A) +  \beta_i k_{i,in}(A)`` |
-| Factorized graph probability  | `` P(A \| \Theta) = \prod_{i=1}^{N}\prod_{j=1, j \ne i}^{N} p_{ij}^{a_{ij}} (1 - p_{ij})^{1-a_{ij}}``  |
-| $\langle a_{ij} \rangle$      | `` p_{ij} = \frac{e^{-\alpha_i - \beta_j}}{1+e^{-\alpha_i - \beta_j}}`` |
-| Log-likelihood                | `` \mathcal{L}(\Theta) = -\sum_{i=1}^{N} \left[ \alpha_i k_{i,out}(A^{*}) +  \beta_i k_{i,in}(A^{*}) \right] - \sum_{i=1}^{N} \sum_{j=1, j\ne i}^{N} \ln \left( 1+e^{-\alpha_i - \beta_j} \right) ``|
-| $\langle a_{ij}^{2} \rangle$  | `` \langle a_{ij} \rangle`` |
-| $\langle a_{ij}a_{ts} \rangle$| `` \langle a_{ij} \rangle \langle a_{ts} \rangle`` |
-| $\sigma^{*}(X)$               | ``\sqrt{\sum_{i,j} \left( \sigma^{*}[a_{ij}] \frac{\partial X}{\partial a_{ij}}  \right)^{2}_{A = \langle A^{*} \rangle} + \dots }`` |
-| $\sigma^{*}[a_{ij}]$          | ``\frac{\sqrt{e^{-\alpha_i - \beta_j}}}{1+e^{-\alpha_i - \beta_j}} ``   |
+| Constraints                   | `` \begin{cases} \forall i \in \bot:  k_{i}(A^{*}) = \sum_{\alpha \in \top} b^{*}_{i\alpha} \\  \forall \alpha \in \top:  d_{\alpha}(A^{*}) = \sum_{i \in \bot} b^{*}_{i\alpha} \end{cases} ``|
+| Hamiltonian                   | `` H(A, \Theta) = H(A, \gamma, \beta) = \sum_{i \in \bot} \gamma_i k_{i}(A) +  \sum_{\alpha \in \top} \beta_\alpha d_{\alpha}(A)`` |
+| Factorized graph probability  | `` P(A \| \Theta) = \prod_{i=1}^{N}\prod_{j=1}^{M} p_{i\alpha}^{b_{i\alpha}} (1 - p_{\alpha})^{1-b_{i\alpha}}``  |
+| $\langle p_{i\alpha} \rangle$ | `` p_{i\alpha} = \frac{e^{-\gamma_i - \beta_{\alpha}}}{1+e^{-\gamma_i - \beta_{\alpha}}}`` |
+| Log-likelihood                | `` \mathcal{L}(\Theta) = -\sum_{i \in \bot} \gamma_i k_{i}(A) -  \sum_{\alpha \in \top} \beta_{\alpha} d_{\alpha}(A) - \sum_{i \in \bot}  \sum_{\alpha \in \top} \ln \left( 1 + e^{-\gamma_i - \beta_{\alpha}} \right) ``|
+| $\langle p_{i\alpha}^{2} \rangle$  | `` `` |
+| $\langle p_{i\alpha}a_{t\kappa} \rangle$| `` `` |
+| $\sigma^{*}(X)$               | `` `` |
+| $\sigma^{*}[p_{i\alpha}]$          | `` ``   |
 
 
-
-
+# complete this
 
 ## Creation
 ```julia
@@ -26,10 +33,10 @@ using Graphs
 using MaxEntropyGraphs
 
 # define the network
-G = SimpleDiGraph(rhesus_macaques())
+G =
 
 # instantiate a UBCM model
-model = DBCM(G)
+model = BiCM(G)
 ```
 
 ## Obtaining the parameters
@@ -51,9 +58,6 @@ AIC(model)
 ```
 
 ## Counting network motifs
-The count of a specific network motif can be computed by using `M{motif_number}`. The motif numbers match the patterns shown on the image below. So for example if you want to compute the number of reciprocated triangles, you would use `M13(model)`.
-
-![directed network motifs naming convention](https://snap-stanford.github.io/cs224w-notes/assets/img/Subgraphs_example.png?style=centerme) ([source](https://snap-stanford.github.io/cs224w-notes/preliminaries/motifs-and-structral-roles_lecture))
 
 ```julia
 # Compute the number of occurences of M13
@@ -83,7 +87,13 @@ M13(model)
 ![directed network motifs naming convention](/assets/directed_motifs.jpg)
 ![directed network motifs naming convention](/directed_motifs.jpg)
 
-![Enter a descriptive caption for the image](../assets/logo.png)
+![the logo](./assets/logo.png)
+![the logo](./../assets/logo.png)
+![the logo](./../../assets/logo.png)
+![the logo](/assets/logo.png)
+![the logo](/../assets/logo.png)
+![the logo](/../../assets/logo.png)
+
 ```@example
 HTML("""<object type="image/png+xml" data=$(joinpath(Main.buildpath, "..","assets","directed_motifs.png"))></object>""") # hide
 ```
@@ -112,6 +122,16 @@ Squartini, Tiziano and Garlaschelli, Diego. <!--  author(s) -->
 2011 New J. Phys. 13 083001. <!--  publisher(s) --> 
 <a href="https://iopscience.iop.org/article/10.1088/1367-2630/13/8/083001">https://iopscience.iop.org/article/10.1088/1367-2630/13/8/083001</a>
 </li>
+<li>
+<a id="3">[3]</a> 
+Vallarano, N., Bruno, M., Marchese, E. et al. <!--  author(s) --> 
+<em>"Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints"</em> <!--  title --> 
+Sci Rep 11, 15227 (2021) <!--  publisher(s) --> 
+<a href="https://doi.org/10.1038/s41598-021-93830-4">https://doi.org/10.1038/s41598-021-93830-4</a>
+</li>
 </ul>
 ```
 
+Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints
+
+Vallarano, N., Bruno, M., Marchese, E. et al. Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints. Sci Rep 11, 15227 (2021). https://doi.org/10.1038/s41598-021-93830-4

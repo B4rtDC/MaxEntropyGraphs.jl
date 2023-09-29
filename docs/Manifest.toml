@@ -986,8 +986,8 @@ uuid = "fdba3010-5040-5b88-9595-932c9decdf73"
 version = "0.7.8"
 
 [[deps.MaxEntropyGraphs]]
-deps = ["BenchmarkTools", "Dates", "Distributions", "FiniteDiff", "ForwardDiff", "Graphs", "Latexify", "Logging", "LoopVectorization", "ModelingToolkit", "NLsolve", "Optimization", "OptimizationNLopt", "OptimizationOptimJL", "PProf", "Printf", "Profile", "ReverseDiff", "Revise", "SimpleWeightedGraphs", "Symbolics", "Tracker", "Zygote"]
-git-tree-sha1 = "c560b2408716c8e23d3b20e1865eb02f17c25a40"
+deps = ["BenchmarkTools", "Combinatorics", "Dates", "Distributions", "FiniteDiff", "ForwardDiff", "Graphs", "Latexify", "LinearAlgebra", "Logging", "LoopVectorization", "ModelingToolkit", "NLsolve", "Optimization", "OptimizationNLopt", "OptimizationOptimJL", "PProf", "Printf", "Profile", "ReverseDiff", "Revise", "SimpleWeightedGraphs", "Symbolics", "Tracker", "Zygote"]
+git-tree-sha1 = "4e73c1d5b2cd2500a222120c2925eaad1b9170e4"
 repo-rev = "2023rework"
 repo-url = "/Users/bart/Documents/Stack/PhD/Coding (experiments)/MaxEntropyGraphs.jl"
 uuid = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"
