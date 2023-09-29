@@ -23,43 +23,76 @@ function parse_konect(content::String)
     lines = split(content, "\n")
     ## Determine type of graph
     types = split(lines[1], " ")
+    @info types
     # graph
     if types[2] == "sym" && types[3] == "posweighted"
-        Gt = SimpleWeightedGraph
+        Gt = Graphs.SimpleWeightedGraph
     elseif types[2] == "asym" && types[3] == "posweighted"
-        Gt = SimpleWeightedDiGraph
+        Gt = Graphs.SimpleWeightedDiGraph
     elseif types[2] == "sym" && types[3] == "unweighted"
-        Gt = SimpleGraph
+        Gt = Graphs.SimpleGraph
     elseif types[2] == "asym" && types[3] == "unweighted"
-        Gt = SimpleDiGraph
+        Gt = Graphs.SimpleDiGraph
+    elseif types[2] == "bip" && types[3] == "unweighted"
+        Gt = Graphs.SimpleGraph
     else
         # temporary solution, add bipartite too later
         throw(ArgumentError("The graph type is not supported."))
     end
     ## Determine properties of graph
     properties = split(lines[2], " ")
-    NE = parse(Int, properties[2])
-    NV = parse(Int, properties[3])
 
-    ## create graph
-    G = Gt(NV)
-    # add edges
-    for line in lines[3:end-1]
-        # split line into components
-        components = split(line, " ")
-        if components[3] == ""
-            # unweighted
-            add_edge!(G, parse(Int, components[1]), parse(Int, components[2]))
-        else
-            # weighted
-            @info components
-            add_edge!(G, parse(Int, components[1]), parse(Int, components[2]), parse(Float64, components[3]))
+    NE = parse(Int, properties[2])
+    if types[2] ∈ ["sym"; "asym"]    
+        NV = parse(Int, properties[3])
+        ## create graph
+        G = Gt(NV)
+        # add edges
+        for line in lines[3:end-1]
+            # split line into components
+            components = split(line, " ")
+            if components[3] == ""
+                # unweighted
+                Graphs.add_edge!(G, parse(Int, components[1]), parse(Int, components[2]))
+            else
+                # weighted
+                @info components
+                Graphs.add_edge!(G, parse(Int, components[1]), parse(Int, components[2]), parse(Float64, components[3]))
+            end
         end
+
+        ## quality check
+        @assert NE == Graphs.ne(G)
+        @assert NV == Graphs.nv(G)
+
+    elseif types[2] == "bip"
+        N⊥, N⊤ = parse(Int, properties[3]), parse(Int, properties[4])
+        NV = N⊥ + N⊤
+        ## create graph
+        G = Gt(NV)
+        # add edges
+        for line in lines[3:end-1]
+            # split line into components
+            components = split(line, " ")
+            if components[3] == ""
+                # unweighted
+                Graphs.add_edge!(G, parse(Int, components[1]), parse(Int, components[2])+ N⊥)
+            else
+                # weighted
+                @info components
+                Graphs.add_edge!(G, parse(Int, components[1]), parse(Int, components[2]), parse(Float64, components[3]+ N⊥))
+            end
+        end
+
+        ## quality check
+        @assert NE == Graphs.ne(G)
+        @assert NV == Graphs.nv(G)
+        membership = Graphs.bipartite_map(G)
+        @assert sum(membership .== UInt8(1)) == N⊥
+        @assert sum(membership .== UInt8(2)) == N⊤
     end
 
-    ## quality check
-    @assert NE == ne(G)
-    @assert NV == nv(G)
+    
     
     return G
 end
@@ -198,3 +231,15 @@ See also: [`MaxEntropyGraphs.readpajek`](@ref)
 """
 stmarks() = Graphs.SimpleDiGraph(Graphs.SimpleDiGraphEdge.([(1, 7), (1, 8), (1, 10), (1, 11), (1, 49), (1, 50), (1, 54), (2, 9), (2, 18), (2, 19), (2, 21), (2, 23), (2, 24), (2, 31), (2, 43), (2, 49), (2, 51), (2, 54), (3, 9), (3, 18), (3, 19), (3, 21), (3, 23), (3, 24), (3, 29), (3, 30), (3, 40), (3, 49), (3, 51), (3, 54), (4, 42), (4, 43), (4, 49), (4, 51), (4, 54), (5, 9), (5, 13), (5, 14), (5, 15), (5, 16), (5, 17), (5, 18), (5, 22), (5, 25), (5, 26), (5, 35), (5, 37), (5, 38), (5, 39), (5, 40), (5, 49), (5, 51), (5, 54), (6, 7), (6, 8), (6, 10), (6, 50), (6, 54), (7, 7), (7, 8), (7, 10), (7, 50), (7, 54), (8, 11), (8, 33), (8, 34), (8, 36), (8, 37), (8, 38), (8, 39), (8, 40), (8, 42), (8, 50), (8, 54), (9, 19), (9, 24), (9, 27), (9, 32), (9, 35), (9, 36), (9, 37), (9, 38), (9, 39), (9, 40), (9, 41), (9, 42), (9, 50), (9, 54), (10, 20), (10, 24), (10, 27), (10, 28), (10, 36), (10, 43), (10, 44), (10, 51), (10, 54), (11, 19), (11, 24), (11, 35), (11, 44), (11, 51), (11, 54), (12, 9), (12, 13), (12, 14), (12, 15), (12, 16), (12, 17), (12, 19), (12, 22), (12, 24), (12, 25), (12, 26), (12, 27), (12, 37), (12, 40), (12, 42), (12, 51), (12, 54), (13, 13), (13, 14), (13, 15), (13, 16), (13, 17), (13, 22), (13, 25), (13, 26), (13, 27), (13, 51), (13, 54), (14, 14), (14, 17), (14, 24), (14, 25), (14, 26), (14, 27), (14, 33), (14, 36), (14, 37), (14, 38), (14, 39), (14, 40), (14, 42), (14, 51), (14, 54), (15, 19), (15, 24), (15, 27), (15, 32), (15, 35), (15, 36), (15, 37), (15, 38), (15, 39), (15, 40), (15, 41), (15, 42), (15, 51), (15, 54), (16, 51), (16, 54), (17, 19), (17, 20), (17, 31), (17, 34), (17, 41), (17, 44), (17, 46), (17, 47), (17, 51), (17, 54), (18, 20), (18, 47), (18, 51), (18, 54), (19, 20), (19, 24), (19, 31), (19, 36), (19, 41), (19, 44), (19, 46), (19, 47), (19, 51), (19, 54), (20, 47), (20, 51), (20, 54), (21, 36), (21, 39), (21, 51), (21, 54), (22, 35), (22, 51), (22, 54), (23, 20), (23, 24), (23, 31), (23, 34), (23, 35), (23, 38), (23, 39), (23, 41), (23, 51), (23, 54), (24, 20), (24, 41), (24, 46), (24, 47), (24, 51), (24, 54), (25, 19), (25, 24), (25, 27), (25, 28), (25, 43), (25, 44), (25, 51), (25, 54), (26, 19), (26, 24), (26, 27), (26, 31), (26, 35), (26, 37), (26, 38), (26, 39), (26, 41), (26, 44), (26, 51), (26, 54), (27, 19), (27, 24), (27, 31), (27, 35), (27, 37), (27, 38), (27, 39), (27, 41), (27, 44), (27, 51), (27, 54), (28, 34), (28, 51), (28, 54), (29, 44), (29, 51), (29, 54), (30, 27), (30, 28), (30, 44), (30, 51), (30, 54), (31, 48), (31, 51), (31, 54), (32, 51), (32, 54), (33, 28), (33, 45), (33, 48), (33, 51), (33, 54), (34, 28), (34, 46), (34, 51), (34, 54), (35, 28), (35, 46), (35, 47), (35, 51), (35, 54), (36, 46), (36, 51), (36, 54), (37, 33), (37, 42), (37, 46), (37, 51), (37, 53), (37, 54), (38, 28), (38, 31), (38, 33), (38, 35), (38, 41), (38, 42), (38, 45), (38, 46), (38, 51), (38, 54), (39, 51), (39, 54), (40, 28), (40, 41), (40, 46), (40, 47), (40, 48), (40, 51), (40, 54), (41, 51), (41, 53), (41, 54), (42, 28), (42, 41), (42, 46), (42, 51), (42, 54), (43, 53), (43, 54), (44, 48), (44, 53), (44, 54), (45, 53), (45, 54), (46, 53), (46, 54), (47, 53), (47, 54), (48, 53), (48, 54), (49, 6), (49, 53), (50, 7), (50, 51), (50, 53), (51, 12), (51, 53), (52, 1), (52, 2), (52, 3), (52, 4), (52, 5), (52, 8), (52, 9), (52, 10), (52, 11), (52, 12), (52, 13), (52, 15), (52, 23), (52, 25), (52, 26), (52, 27), (52, 30), (52, 31), (52, 33), (52, 34), (52, 38), (52, 40), (52, 42), (52, 45), (52, 46), (52, 47), (52, 48)]))
 
+
+
+"""
+corporateclub()
+
+A bipartite network that contains membership information of corporate executive officers in social organizations such as clubs and boards. Nodes in the ⊥-layer represent persons and  nodes in the ⊤-layer represent social organisations. An edge between a person and a social organization shows that the person is a member. 
+
+Original data available [here](http://konect.cc/networks/brunson_club-membership/)
+
+See also: [`MaxEntropyGraphs.parse_konect`](@ref)
+"""
+corporateclub() = Graphs.SimpleGraph(Graphs.SimpleEdge.([(1, 26), (1, 27), (1, 28), (2, 26), (2, 29), (3, 26), (3, 30), (3, 31), (4, 26), (4, 32), (4, 33), (5, 26), (5, 30), (5, 33), (6, 26), (6, 34), (6, 35), (6, 36), (7, 28), (7, 34), (7, 35), (8, 34), (8, 35), (8, 37), (8, 38), (9, 26), (9, 39), (10, 26), (10, 30), (10, 39), (11, 28), (11, 34), (12, 26), (12, 27), (12, 34), (12, 39), (13, 26), (13, 29), (13, 30), (13, 31), (13, 32), (13, 34), (13, 36), (14, 26), (14, 30), (14, 31), (14, 32), (14, 40), (15, 26), (15, 30), (15, 33), (15, 38), (15, 40), (16, 26), (16, 27), (16, 29), (16, 30), (16, 31), (16, 36), (17, 29), (17, 31), (17, 32), (17, 34), (17, 39), (18, 26), (18, 28), (18, 34), (18, 37), (18, 39), (19, 26), (19, 30), (19, 31), (19, 34), (19, 36), (20, 26), (20, 34), (20, 38), (21, 26), (21, 31), (21, 38), (22, 26), (22, 30), (22, 31), (22, 40), (23, 26), (23, 31), (23, 34), (23, 37), (23, 40), (24, 26), (24, 30), (24, 32), (25, 26), (25, 29), (25, 30)]))
