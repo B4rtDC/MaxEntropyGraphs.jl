@@ -50,8 +50,10 @@
             Gd = MaxEntropyGraphs.Graphs.SimpleDiGraph(G)
             @test length(ANND(G)) == MaxEntropyGraphs.Graphs.nv(G)
             @test_logs (:warn,"The graph is directed. The degree function returns the incoming plus outgoing edges for node `i`. Consider using ANND_in or ANND_out instead.") ANND(Gd,1)
+            @test_throws ArgumentError ANND(Gd)
             # should give the same 
-            @test ANND(G) == ANND(Gd)
+            @test ANND(G) == ANND_in(Gd)
+            @test ANND(G) == ANND_out(Gd)
         end
     end
 end
