@@ -30,7 +30,7 @@ module MaxEntropyGraphs
     include("Models/models.jl")
     include("Models/UBCM.jl")
     include("Models/DBCM.jl")
-    #include("Models/BiCM.jl")
+    include("Models/BiCM.jl")
     #include("Models/UECM.jl")
     #include("Models/CReM.jl")
     include("utils.jl")
@@ -59,51 +59,11 @@ module MaxEntropyGraphs
     ## model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
     export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
-    #export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
+    export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
     
     ## demo networks
-    export rhesus_macaques, taro_exchange, chesapeakebay, everglades, florida, littlerock, maspalomas, stmarks
-    
-    #import StatsBase: mean, std     # for mean and standard deviation
-    
-    # models
-    #export AbstractMaxEntropyModel, UBCM, DBCM
-    #export rand
-    #export σˣ
-
-    # metrics
-    #export degree, indegree, outdegree, indegree_dist, outdegree_dist
-    #export ANND, ANND_in, ANND_out
-    #for foo in DBCM_motif_function_names
-    #    @eval begin
-    #    export $(foo)
-    #    end
-    #end
-    #export motifs
+    export rhesus_macaques, taro_exchange, chesapeakebay, everglades, florida, littlerock, maspalomas, stmarks, corporateclub
 
 
 end
 
-
-    #import Printf: @sprintf         # for specific printing
-#using Plots                     # for plotting
-#using Measures                  # for margin settings
-#using LaTeXStrings              # for LaTeX printing
-
-#using GraphIO                   # to read and write external graphs
-
-
-# using SimpleWeightedGraphs
-
-#using NLsolve
-#using IndirectArrays
-#using LoopVectorization
-# MODELS
-
-# METRICS
-#export degree
-
-
-
-#include("metrics.jl")
-#end # module
