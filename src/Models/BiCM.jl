@@ -122,11 +122,11 @@ BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (3 + 2 vertices, 1 + 2 uni
 ```
 ```jldoctest
 # generating a model from an edge list
-julia> edges = MaxEntropyGraphs.Graphs.SimpleEdge.([(1,4);(2,4); (3,5)]);
+julia> edges = MaxEntropyGraphs.Graphs.SimpleEdge.([(1,4); (2,4); (3,5)]);
 
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(edges); # generate graph
 
-model = BiCM(G) # generate model
+julia> model = BiCM(G) # generate model
 BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (3 + 2 vertices, 1 + 2 unique degrees, 0.60 compression ratio)
 
 ```
