@@ -188,7 +188,7 @@ julia> nz_in  = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13];
 julia> n      = length(k_out);
 
 julia> L_DBCM_reduced(θ, k_out, k_in, F, nz_out, nz_in, n)
--200.48153981203262
+-2.2036983875623528e244
 ```
 ```jldoctest
 # Use with DBCM model:

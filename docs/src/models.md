@@ -14,6 +14,10 @@ Please refer to the page of each specific model for more details.
 ## Solution methods
 Computing the parameters of a model can be done with different approaches. Either by running an optimisation algorithm on the Loglikelihood of the model (and thus implicitely solving a system of equations for the gradient of the loglikelihood of the model) [[1]](#1) or by using a fixed point approach [[2]](#2). In both cases, we have also included the acceleration method that was proposed in [[2]](#2) for nodes sharing the same (pair of) constraints.
 
+!!! note
+
+    Although it is technically possible to run the computation of the likelihood maximising parameters in a precision lower than `Float64`, experiments have shown that this might leads to convergence problems.
+
 
 ## Sampling
 We have extend ```Base.rand``` to accept substypes of `::AbstractMaxEntropyModel`. When working with larger network, it might not always be desirable to keep the entire expected adjacency matrix in memory, so by default this option is not used. Specifying a number of samples will return a vector of the appropriate substype of  `::AbstractGraph`. Multithreading will be used if available to generate multiple graphs in parallel.
