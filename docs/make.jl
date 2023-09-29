@@ -27,8 +27,8 @@ makedocs(sitename="MaxEntropyGraphs.jl",
                              "Simulation" => "simulated.md"],
             "GPU acceleration" => "GPU.md",
             "API" => "API.md"
-         ]#,
-         #doctest=false
+         ],
+         doctest=true
 )
 
 # Documenter can also automatically deploy documentation to gh-pages.

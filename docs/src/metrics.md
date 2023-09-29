@@ -10,10 +10,10 @@ The analytical method can be computationally expensive for large graphs due to t
 - the complete adjacency matrix
 - the gradient of the metric with respect to the adjacency matrix. 
 
-However, it provides a highly reliable estimate for the variance of the metric.  For more details, see the [Analytical](./exact.html) section.
+However, it provides a highly reliable estimate for the variance of the metric.  For more details, see the [Analytical](./exact.md) section.
 
 ### Simulation
-The simulation approach involves generating a large number of random graphs from the ensemble and computing the value of the metric(s) for each graph. This method can be more efficient for large graphs where the analytical method becomes computationally expensive. For more details, see the [Simulation](./simulated.html) section.
+The simulation approach involves generating a large number of random graphs from the ensemble and computing the value of the metric(s) for each graph. This method can be more efficient for large graphs where the analytical method becomes computationally expensive. For more details, see the [Simulation](./simulated.md) section.
 
 ### Examples
 The same examples are provided for both approaches.

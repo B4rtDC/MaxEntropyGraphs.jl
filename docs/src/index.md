@@ -13,7 +13,7 @@ The package provides the following functionalities:
 
 Each network models can be solved in different ways, with a fixed-point method typically being the fastest and a Newton-based method being the slowest. Depending on the complexity of the network model, some solvers might not always converge.
 
-Common usage for each model is given in the [Models](./models.html) section. For additional use cases, check the specific model page or the API reference.
+Common usage for each model is given in the [Models](./models.md) section. For additional use cases, check the specific model page or the API reference.
 
 *Note:* in allignment with the underlying theoretical framework, the graphs in the ensemble all have exactly the same number of nodes as the original network.
 

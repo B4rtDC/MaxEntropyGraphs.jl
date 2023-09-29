@@ -54,9 +54,9 @@ AIC(model)
 The count of a specific network motif can be computed by using `M{motif_number}`. The motif numbers match the patterns shown on the image below. So for example if you want to compute the number of reciprocated triangles, you would use `M13(model)`.
 
 ```@example
-HTML("""<object type="image/png" data=$(joinpath(Main.buildpath, "../assets/directed_motifs.png"))  alt="Motif image not found" ></object> """) # hide
+HTML("""<object type="image/png" data=$(joinpath(Main.buildpath, "../assets/directed_motifs.png"))  alt="Motif image not found" style="width: 100%;" ></object> """) # hide
 ```
-([source](https://snap-stanford.github.io/cs224w-notes/preliminaries/motifs-and-structral-roles_lecture))
+[source](https://snap-stanford.github.io/cs224w-notes/preliminaries/motifs-and-structral-roles_lecture)
 
 
 ```julia
