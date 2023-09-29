@@ -6,8 +6,6 @@ Maximum entropy model for the Undirected Bipartite Configuration Model (BiCM).
     
 The object holds the maximum likelihood parameters of the model (θ), the expected bi-adjacency matrix (Ĝ), 
 and the variance for the elements of the adjacency matrix (σ).
-
-cf. "Inferring monopartite projections of bipartite networks: an entropy-based approach", Fabio Saracco et al 2017 New J. Phys. 19 053022
 """
 mutable struct BiCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
     "Graph type, can be any bipartite subtype of AbstractGraph, but will be converted to SimpleGraph for the computation" # can also be empty
@@ -73,29 +71,69 @@ If you want to use a different definition of degrees, you can pass vectors of de
 If you want to generate a model directly from degree sequences without an underlying graph , you can simply pass the degree sequences as arguments (`d⊥`, `d⊤`).
 If you want to work from an adjacency matrix, or edge list, you can use the graph constructors from the ``JuliaGraphs`` ecosystem.
 
-
-DETAIL how zero degree nodes are treated
+Zero degree nodes have a zero probability of being connected to other nodes, so they are skipped in the computation of the model.
 
 # Examples     
 ```jldoctest
 # generating a model from a graph
+julia> G = corporateclub();
 
-
+julia> model =  BiCM(G)
+BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (25 + 15 vertices, 6 + 6 unique degrees, 0.30 compression ratio)
+```
+```jldoctest
 # generating a model directly from a degree sequence
-
-
+julia> model = model = BiCM(d⊥=[1,1,2,2,2,3,3,1,1,2], d⊤=[3,4,5,2,5,6,6,1,1,2])
+BiCM{Nothing, Float64} (10 + 10 vertices, 3 + 6 unique degrees, 0.45 compression ratio)
+```
+```jldoctest
 # generating a model directly from a degree sequence with a different precision
-
-
+julia> model = model = BiCM(d⊥=[1,1,2,2,2,3,3,1,1,2], d⊤=[3,4,5,2,5,6,6,1,1,2], precision=Float32)
+BiCM{Nothing, Float32} (10 + 10 vertices, 3 + 6 unique degrees, 0.45 compression ratio)
+```
+```jldoctest
 # generating a model from an adjacency matrix
+julia> A = [0 0 0 1 0;0 0 0 1 0;0 0 0 0 1;1 1 0 0 0;0 0 1 0 0];
 
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(A);
 
-# generating a model from an edge list
+# check if the graph is bipartite
+julia> @assert MaxEntropyGraphs.Graphs.is_bipartite(G);
 
+# generating the model
+julia> model = BiCM(G)
+BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (3 + 2 vertices, 1 + 2 unique degrees, 0.60 compression ratio)
+```
+```jldoctest
+# generating a model from a biadjacency matrix
+julia> biadjacency = [1 0;1 0; 0 1];
 
+# layer dimensions
+julia> N⊥,N⊤ = size(biadjacency);
+
+# construct adjacency matrix
+julia> adjacency = [zeros(Int, N⊥,N⊥) biadjacency; biadjacency' zeros(Int,N⊤,N⊤)];
+
+# generate graph
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(adjacency);
+
+# generate model
+julia> model = BiCM(G)
+BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (3 + 2 vertices, 1 + 2 unique degrees, 0.60 compression ratio)
 ```
 
-See also [`Graphs.degree`](@ref)
+```jldoctest
+# generating a model from an edge list
+julia> edges = MaxEntropyGraphs.Graphs.SimpleEdge.([(1,4);(2,4); (3,5)]);
+
+# generate graph
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(edges);
+
+# generate model
+model = BiCM(G)
+BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (3 + 2 vertices, 1 + 2 unique degrees, 0.60 compression ratio)
+```
+
 """
 function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing, 
                     d⊤::Union{Nothing, Vector}=nothing, 
@@ -136,7 +174,10 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
     !isnothing(d⊤) && length(d⊤) == 1 ? throw(ArgumentError("The degree sequences d⊤ only contains a single node")) : nothing    
     maximum(d⊥) >= length(d⊤) ? throw(DomainError("The maximum outdegree in the layer d⊥ is greater or equal to the number of vertices in layer d⊤, this is not allowed")) : nothing
     maximum(d⊤) >= length(d⊥) ? throw(DomainError("The maximum outdegree in the layer d⊤ is greater or equal to the number of vertices in layer d⊥, this is not allowed")) : nothing
-
+    if isnothing(G)
+        ⊥nodes = collect(1:length(d⊥))
+        ⊤nodes = collect(length(d⊥)+1:length(d⊥)+length(d⊤))
+    end
 
     # field generation
     d⊥ᵣ, d⊥_ind, d⊥ᵣ_ind, f⊥ = np_unique_clone(d⊥, sorted=true)
@@ -331,6 +372,7 @@ function set_yᵣ!(m::BiCM)
         throw(ArgumentError("The parameters have not been computed yet"))
     end
 end
+
 
 # NOTE: this will compute the bi-adjacency matrix, and not the adjacency matrix
 function Ĝ(m::BiCM{T,N}) where {T,N}

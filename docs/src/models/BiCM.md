@@ -83,10 +83,13 @@ Vallarano, N., Bruno, M., Marchese, E. et al. <!--  author(s) -->
 Sci Rep 11, 15227 (2021) <!--  publisher(s) --> 
 <a href="https://doi.org/10.1038/s41598-021-93830-4">https://doi.org/10.1038/s41598-021-93830-4</a>
 </li>
+<li>
+<a id="3">[3]</a> 
+F. Saracco, M. J. Straka, R. Di Clemente, A. Gabrielli, G. Caldarelli, and T. Squartini <!--  author(s) --> 
+<em>"Inferring monopartite projections of bipartite networks: an entropy-based approach"</em> <!--  title --> 
+ New J. Phys. 19, 053022 (2017) <!--  publisher(s) --> 
+<a href="http://stacks.iop.org/1367-2630/19/i=5/a=053022">http://stacks.iop.org/1367-2630/19/i=5/a=053022</a>
+</li>
 </ul>
+
 ```
-
-Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints
-
-Vallarano, N., Bruno, M., Marchese, E. et al. Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints. Sci Rep 11, 15227 (2021). https://doi.org/10.1038/s41598-021-93830-4
-
