@@ -58,6 +58,13 @@ The count of a specific network motif can be computed by using `M{motif_number}`
 ```
 ([source](https://snap-stanford.github.io/cs224w-notes/preliminaries/motifs-and-structral-roles_lecture))
 
+
+```@example
+HTML("""<object type="image/png" data=$(joinpath(Main.buildpath, "../assets/directed_motifs.png"))  alt="Motif image not found" ></object> """) # hide
+```
+
+
+
 ```julia
 # Compute the number of occurences of M13
 M13(model)
