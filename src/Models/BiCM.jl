@@ -80,16 +80,19 @@ julia> G = corporateclub();
 
 julia> model =  BiCM(G)
 BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (25 + 15 vertices, 6 + 6 unique degrees, 0.30 compression ratio)
+
 ```
 ```jldoctest
 # generating a model directly from a degree sequence
 julia> model = model = BiCM(d⊥=[1,1,2,2,2,3,3,1,1,2], d⊤=[3,4,5,2,5,6,6,1,1,2])
 BiCM{Nothing, Float64} (10 + 10 vertices, 3 + 6 unique degrees, 0.45 compression ratio)
+
 ```
 ```jldoctest
 # generating a model directly from a degree sequence with a different precision
 julia> model = model = BiCM(d⊥=[1,1,2,2,2,3,3,1,1,2], d⊤=[3,4,5,2,5,6,6,1,1,2], precision=Float32)
 BiCM{Nothing, Float32} (10 + 10 vertices, 3 + 6 unique degrees, 0.45 compression ratio)
+
 ```
 ```jldoctest
 # generating a model from an adjacency matrix
@@ -97,43 +100,36 @@ julia> A = [0 0 0 1 0;0 0 0 1 0;0 0 0 0 1;1 1 0 0 0;0 0 1 0 0];
 
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(A);
 
-# check if the graph is bipartite
-julia> @assert MaxEntropyGraphs.Graphs.is_bipartite(G);
+julia> @assert MaxEntropyGraphs.Graphs.is_bipartite(G); # check if the graph is bipartite
 
-# generating the model
-julia> model = BiCM(G)
+julia> model = BiCM(G) # generating the model
 BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (3 + 2 vertices, 1 + 2 unique degrees, 0.60 compression ratio)
+
 ```
 ```jldoctest
 # generating a model from a biadjacency matrix
 julia> biadjacency = [1 0;1 0; 0 1];
 
-# layer dimensions
-julia> N⊥,N⊤ = size(biadjacency);
+julia> N⊥,N⊤ = size(biadjacency); # layer dimensions
 
-# construct adjacency matrix
-julia> adjacency = [zeros(Int, N⊥,N⊥) biadjacency; biadjacency' zeros(Int,N⊤,N⊤)];
+julia> adjacency = [zeros(Int, N⊥,N⊥) biadjacency; biadjacency' zeros(Int,N⊤,N⊤)]; # construct adjacency matrix
 
-# generate graph
-julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(adjacency);
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(adjacency); # generate graph
 
-# generate model
-julia> model = BiCM(G)
+julia> model = BiCM(G) # generate model
 BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (3 + 2 vertices, 1 + 2 unique degrees, 0.60 compression ratio)
-```
 
+```
 ```jldoctest
 # generating a model from an edge list
 julia> edges = MaxEntropyGraphs.Graphs.SimpleEdge.([(1,4);(2,4); (3,5)]);
 
-# generate graph
-julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(edges);
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(edges); # generate graph
 
-# generate model
-model = BiCM(G)
+model = BiCM(G) # generate model
 BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (3 + 2 vertices, 1 + 2 unique degrees, 0.60 compression ratio)
-```
 
+```
 """
 function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing, 
                     d⊤::Union{Nothing, Vector}=nothing, 
