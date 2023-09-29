@@ -112,7 +112,7 @@ julia> biadjacency = [1 0;1 0; 0 1];
 
 julia> N⊥,N⊤ = size(biadjacency); # layer dimensions
 
-julia> adjacency = [zeros(Int, N⊥,N⊥) biadjacency; biadjacency' zeros(Int,N⊤,N⊤)]; # construct adjacency matrix
+julia> adjacency = [zeros(Int, N⊥,N⊥) biadjacency; biadjacency' zeros(Int,N⊤,N⊤)];
 
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(adjacency); # generate graph
 
