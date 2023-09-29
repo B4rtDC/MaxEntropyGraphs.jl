@@ -9,6 +9,7 @@ if LOCAL
     Pkg.update("MaxEntropyGraphs")
     using MaxEntropyGraphs
 else
+    Pkg.update("MaxEntropyGraphs")
     using MaxEntropyGraphs
 end
 
@@ -28,9 +29,9 @@ makedocs(sitename="MaxEntropyGraphs.jl",
          pages = [
             "Home" => "index.md",
             "Models" => Any["models.md",
-                            "UBCM" => "models/UBCM.md",
-                            "DBCM" => "models/DBCM.md",
-                            "BiCM" => "models/BiCM.md",
+                            "UBCM" => "/models/UBCM.md",
+                            "DBCM" => "/models/DBCM.md",
+                            "BiCM" => "/models/BiCM.md",
                             ],
             "Metrics" => Any["metrics.md",
                              "Analytical" => "exact.md", 
