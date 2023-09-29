@@ -60,6 +60,16 @@ The count of a specific network motif can be computed by using `M{motif_number}`
 M13(model)
 ```
 
+```@raw html
+<svg style="display: block; margin: 0 auto;" width="5em" height="5em">
+	<circle cx="2.5em" cy="2.5em" r="2em" stroke="black" stroke-width=".1em" fill="red" />
+</svg>
+```
+
+```@raw html
+<img src="/assets/directed_motifs.png" alt="Directed motifs">
+```
+
 _References_
 
 ```@raw html
