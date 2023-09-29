@@ -1,17 +1,6 @@
 using Documenter
+using MaxEntropyGraphs
 
-
-#push!(LOAD_PATH, joinpath(pwd(),".."))
-LOCAL = false
-if LOCAL
-    using Pkg
-    
-    Pkg.update("MaxEntropyGraphs")
-    using MaxEntropyGraphs
-else
-    Pkg.update("MaxEntropyGraphs")
-    using MaxEntropyGraphs
-end
 
 # to give all docstrings access to the package, we need to import it
 DocMeta.setdocmeta!(MaxEntropyGraphs, :DocTestSetup, :(using MaxEntropyGraphs); recursive=true)
@@ -29,9 +18,9 @@ makedocs(sitename="MaxEntropyGraphs.jl",
          pages = [
             "Home" => "index.md",
             "Models" => Any["models.md",
-                            "UBCM" => "/models/UBCM.md",
-                            "DBCM" => "/models/DBCM.md",
-                            "BiCM" => "/models/BiCM.md",
+                            "UBCM" => "models/UBCM.md",
+                            "DBCM" =>  "models/UBCM.md",
+                            "BiCM" =>  "models/BiCM.md"
                             ],
             "Metrics" => Any["metrics.md",
                              "Analytical" => "exact.md", 
