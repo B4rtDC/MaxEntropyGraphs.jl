@@ -2,10 +2,10 @@ using Documenter
 
 
 #push!(LOAD_PATH, joinpath(pwd(),".."))
-LOCAL = true
+LOCAL = false
 if LOCAL
     using Pkg
-    # Pkg.add(url="/Users/bart/Documents/Stack/PhD/Coding (experiments)/MaxEntropyGraphs.jl/", rev="2023rework")
+    
     Pkg.update("MaxEntropyGraphs")
     using MaxEntropyGraphs
 else
@@ -47,7 +47,6 @@ makedocs(sitename="MaxEntropyGraphs.jl",
 if ci
     @info "Deploying documentation to GitHub"
     deploydocs(
-        repo = "github.com/B4rtDC/MaxEntropyGraphs.jl.git",
-        devbranch = "2023rework"
+        repo = "github.com/B4rtDC/MaxEntropyGraphs.jl.git"
         )
 end

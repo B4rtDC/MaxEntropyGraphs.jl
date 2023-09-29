@@ -21,7 +21,6 @@ Each network models can be solved in different ways, with a fixed-point method t
 * [Installation](#installation)
 * [Example usage](#example-usage)
 * [Available models](#available-models)
-* 
 
 ## Installation
 Assuming that you already have Julia correctly installed, installation is straightforward. 
@@ -50,9 +49,6 @@ solve_model!(model)
 G_sample = rand(model, 100)
 ```
 
-## Citing
-
-
 ## Available models
 `MaxEntropyGraphs.jl` is intended to do *network randomization*. The specific kind of network to randomize and the properties to preserve defines the model you need. 
 Details for each of the available models can be found in the [Models](./models.html) section. 
@@ -61,6 +57,20 @@ The Bayesian Information Criterion (BIC) and Akaike Information Criterion (AIC) 
 Lower BIC or AIC values indicate a better model fit, considering the trade-off between complexity and fit.
 
 
+## Citing
+When using this package for your scientific research please consider citing:
+```
+@software{bart_de_clerck_2023_8314610,
+  author       = {Bart De Clerck},
+  title        = {B4rtDC/MaxEntropyGraphs.jl: v0.3.2},
+  month        = sep,
+  year         = 2023,
+  publisher    = {Zenodo},
+  version      = {v0.3.2},
+  doi          = {10.5281/zenodo.8314610},
+  url          = {https://doi.org/10.5281/zenodo.8314610}
+}
+```
 
 _References_
 
