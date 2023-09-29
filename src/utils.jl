@@ -121,8 +121,18 @@ function strength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataTy
 end
 
 # TO DO: extend to other graph type (Graphs.jl) & add docs
+"""
+    instrength(G, T; dir)
 
+Construct the instrength vector for the graph `G`, filled with element type `T`.
+"""
 instrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(G); dir::Symbol=:in)   = strength(G, T, dir=dir)
+
+"""
+    instrength(G, T; dir)
+
+Construct the outstrength vector for the graph `G`, filled with element type `T`.
+"""
 outstrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=SimpleWeightedGraphs.weighttype(G); dir::Symbol=:out) = strength(G, T, dir=dir)
 
 
@@ -410,6 +420,15 @@ end
 ANND_out(G::T, v::Vector{Int}=collect(Graphs.vertices(G)); kwargs...) where {T<:Graphs.AbstractGraph} = [ANND_out(G, i; kwargs...) for i in v]
 
 
+"""
+ANND_out(A::T, vs=1:size(A,1); check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
+
+Return a vector corresponding to the average nearest neighbor outdegree (ANND) all nodes in the graph with adjacency matrix `A`. 
+If v is specified, only return the ANND_out for nodes in v. 
+
+
+See also: [`ANND_in`](@ref), [`ANND`](@ref)
+"""
 function ANND_out(A::T, i::Int; check_dimensions::Bool=true) where {T<:AbstractMatrix}
     # checks
     if check_dimensions && !isequal(size(A)...) 
@@ -446,6 +465,15 @@ end
 ANND_in(G::T, v::Vector{Int}=collect(Graphs.vertices(G)); kwargs...) where {T<:Graphs.AbstractGraph} = [ANND_in(G, i; kwargs...) for i in v]
 
 
+"""
+ANND_in(A::T, vs=1:size(A,1); check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
+
+Return a vector corresponding to the average nearest neighbor indegree (ANND) all nodes in the graph with adjacency matrix `A`. 
+If v is specified, only return the ANND_in for nodes in v. 
+
+
+See also: [`ANND_out`](@ref), [`ANND`](@ref)
+"""
 function ANND_in(A::T, i::Int; check_dimensions::Bool=true) where {T<:AbstractMatrix}
     # checks
     if check_dimensions && !isequal(size(A)...) 

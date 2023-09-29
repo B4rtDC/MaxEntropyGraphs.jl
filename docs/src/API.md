@@ -60,9 +60,9 @@ MaxEntropyGraphs.M1
 MaxEntropyGraphs.M2
 MaxEntropyGraphs.M3
 MaxEntropyGraphs.M4
-MaxEntropyGraphs.M4
 MaxEntropyGraphs.M5
 MaxEntropyGraphs.M6
+MaxEntropyGraphs.M7
 MaxEntropyGraphs.M8
 MaxEntropyGraphs.M9
 MaxEntropyGraphs.M10
