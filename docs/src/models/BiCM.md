@@ -65,43 +65,6 @@ M13(model)
 ```
 
 
-![directed network motifs naming convention](/docs/src/assets/directed_motifs.png)
-
-
-![logo](/docs/src/assets/logo.png)
-![directed network motifs naming convention](/src/assets/directed_motifs.png)
-![directed network motifs naming convention](/assets/directed_motifs.png)
-![directed network motifs naming convention](/directed_motifs.png)
-
-
-![logo](./assets/logo.jpeg)
-![directed network motifs naming convention](./docs/src/assets/directed_motifs.jpg)
-![directed network motifs naming convention](./src/assets/directed_motifs.jpg)
-![directed network motifs naming convention](./assets/directed_motifs.jpg)
-![directed network motifs naming convention](./directed_motifs.jpg)
-![logo](/assets/logo.jpeg)
-![directed network motifs naming convention](/docs/src/assets/directed_motifs.jpg)
-![directed network motifs naming convention](/src/assets/directed_motifs.jpg)
-![directed network motifs naming convention](/assets/directed_motifs.jpg)
-![directed network motifs naming convention](/directed_motifs.jpg)
-
-![the logo](./assets/logo.png)
-![the logo](./../assets/logo.png)
-![the logo](./../../assets/logo.png)
-![the logo](/assets/logo.png)
-![the logo](/../assets/logo.png)
-![the logo](/../../assets/logo.png)
-
-```@example
-HTML("""<object type="image/png+xml" data=$(joinpath(Main.buildpath, "..","assets","directed_motifs.png"))></object>""") # hide
-```
-```@example
-HTML("""<object type="image/png+xml" data=$(joinpath(Main.buildpath, "..", "src", "assets","directed_motifs.png"))></object>""") # hide
-```
-```@example
-HTML("""<object type="image/png+xml" data=$(joinpath(Main.buildpath, "..","docs","src", "assets","directed_motifs.png"))></object>""") # hide
-```
-
 _References_
 
 ```@raw html
