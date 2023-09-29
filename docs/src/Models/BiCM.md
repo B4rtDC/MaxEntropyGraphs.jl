@@ -4,13 +4,14 @@ An undirected bipartite network can be described by its biadjacency matrix ``B =
 The two sets of nodes (sometimes referred to a layers) are defined as as ⊥ and ⊤. 
 The Bipartite Configuration Model (BiCM) is a maximum-entropy null model for undirected bipartite networks. 
 It is based on the idea of fixing the degree sequences for each set of nodes (layers) of the network. 
-The model assumes that the edges are unweighted and that the network is simple, i.e., it has no self-loops or multiple edges between the same pair of nodes [[1](#1),[2](#2)]. 
+The model assumes that the edges are unweighted and that the network is simple, i.e., it has no self-loops or multiple edges between the same pair of nodes [[1](#1)]. 
 
 
 [!NOTE]  
 For the computation we use the bi-adjacency matrix, whereas the current implementation of the BiCM uses a `::Graphs.SimpleGraph` to construct the models and assesses its bipartiteness using the functionality available in the `Graphs.jl` package.
 
-We define the parameter vector as ``\theta = [\gamma ; \beta]``, where ``\gamma`` and ``\beta`` denote the parameters associated with the ⊥ and ⊤ layer respectively. To speed up the computation of the likelihood maximising parameters, we use the reduced version of the model where we consider the unique values the degrees in each layer [3](#3).
+We define the parameter vector as ``\theta = [\gamma ; \beta]``, where ``\gamma`` and ``\beta`` denote the parameters associated with the ⊥ and ⊤ layer respectively. To speed up the computation of the likelihood maximising parameters, 
+we use the reduced version of the model where we consider the unique values the degrees in each layer [[2](#2)].
 
 | Description                   | Formula |
 | --------------------------    | :-------------------------------------------------------------------------------- |
@@ -25,7 +26,6 @@ We define the parameter vector as ``\theta = [\gamma ; \beta]``, where ``\gamma`
 | $\sigma^{*}[p_{i\alpha}]$          | `` ``   |
 
 
-# complete this
 
 ## Creation
 ```julia
@@ -64,13 +64,11 @@ AIC(model)
 M13(model)
 ```
 
-![logo](./assets/logo.jpeg)
-![directed network motifs naming convention](./docs/src/assets/directed_motifs.png)
-![directed network motifs naming convention](./src/assets/directed_motifs.png)
-![directed network motifs naming convention](./assets/directed_motifs.png)
-![directed network motifs naming convention](./directed_motifs.png)
-![logo](/assets/logo.jpeg)
+
 ![directed network motifs naming convention](/docs/src/assets/directed_motifs.png)
+
+
+![logo](/docs/src/assets/logo.png)
 ![directed network motifs naming convention](/src/assets/directed_motifs.png)
 ![directed network motifs naming convention](/assets/directed_motifs.png)
 ![directed network motifs naming convention](/directed_motifs.png)
@@ -110,20 +108,13 @@ _References_
 <ul>
 <li>
 <a id="1">[1]</a> 
-Squartini, Tiziano and Garlaschelli, Diego. <!--  author(s) --> 
-<em>"Maximum-Entropy Networks: Pattern Detection, Network Reconstruction and Graph Combinatorics"</em> <!--  title --> 
-Springer-Verlag GmbH; 1st ed. 2017 edition (25 Dec. 2017). <!--  publisher(s) --> 
-<a href="https://link.springer.com/book/10.1007/978-3-319-69438-2">https://link.springer.com/book/10.1007/978-3-319-69438-2</a>
+M. Baltakiene, K. Baltakys, D. Cardamone, F. Parisi, T. Radicioni, M. Torricelli, J. A. van Lidth de Jeude, F. Saracco <!--  author(s) --> 
+<em>"Maximum entropy approach to link prediction in bipartite networks"</em> <!--  title --> 
+ arXiv preprint arXiv:1805.04307 (2018). <!--  publisher(s) --> 
+<a href="https://arxiv.org/abs/1805.04307">https://arxiv.org/abs/1805.04307</a>
 </li>
 <li>
 <a id="2">[2]</a> 
-Squartini, Tiziano and Garlaschelli, Diego. <!--  author(s) --> 
-<em>"Analytical maximum-likelihood method to detect patterns in real networks"</em> <!--  title --> 
-2011 New J. Phys. 13 083001. <!--  publisher(s) --> 
-<a href="https://iopscience.iop.org/article/10.1088/1367-2630/13/8/083001">https://iopscience.iop.org/article/10.1088/1367-2630/13/8/083001</a>
-</li>
-<li>
-<a id="3">[3]</a> 
 Vallarano, N., Bruno, M., Marchese, E. et al. <!--  author(s) --> 
 <em>"Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints"</em> <!--  title --> 
 Sci Rep 11, 15227 (2021) <!--  publisher(s) --> 
@@ -135,3 +126,4 @@ Sci Rep 11, 15227 (2021) <!--  publisher(s) -->
 Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints
 
 Vallarano, N., Bruno, M., Marchese, E. et al. Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints. Sci Rep 11, 15227 (2021). https://doi.org/10.1038/s41598-021-93830-4
+
