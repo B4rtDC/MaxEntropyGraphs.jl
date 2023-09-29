@@ -19,7 +19,7 @@ makedocs(sitename="MaxEntropyGraphs.jl",
             "Home" => "index.md",
             "Models" => Any["models.md",
                             "UBCM" => "models/UBCM.md",
-                            "DBCM" =>  "models/UBCM.md",
+                            "DBCM" =>  "models/DBCM.md",
                             "BiCM" =>  "models/BiCM.md"
                             ],
             "Metrics" => Any["metrics.md",
