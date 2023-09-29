@@ -55,70 +55,11 @@ G_sample = rand(model, 100)
 
 ## Available models
 `MaxEntropyGraphs.jl` is intended to do *network randomization*. The specific kind of network to randomize and the properties to preserve defines the model you need. 
+Details for each of the available models can be found in the [Models](./models.html) section. 
+Sometimes multiple models might be applicable. In that case, you can use information theory-based metrics to help make an informed decision. 
+The Bayesian Information Criterion (BIC) and Akaike Information Criterion (AIC) are available to quantify this.
+Lower BIC or AIC values indicate a better model fit, considering the trade-off between complexity and fit.
 
-The checklists below indicate the status of each model that is currently available.
-
-* [ ] **UBCM** *Undirected Binary Configuration Model* [[1]](#1)
-    - [x] Types
-    - [x] Likelihood related functions
-    - [x] Likelihood maximisation in pure Julia (FP + optimisation)
-    - [x] Sampling
-    - [ ] Unit tests
-    - [ ] Check for:
-        - [ ] behavior of zero degree nodes
-        - [ ] networks with self links (in principle not allowed in SimpleGraphs, TBC)
-    - [ ] $\dots$
-* [ ] **DBCM** *Directed Binary Configuration Model* [[1]](#1)
-    - [x] Types
-    - [x] Likelihood related functions
-    - [x] Likelihood maximisation in pure Julia (FP ok + optimisation)
-    - [x] Sampling
-    - [ ] Unit tests
-    - [ ] Check for:
-        - [X] behavior of zero degree nodes
-        - [ ] networks with self links (in principle not allowed in SimpleGraphs, TBC)
-    - [ ] $\dots$
-* [ ] **BiCM** *Bipartite Configuration Model* [[3]](#3)
-    - [x] Types
-    - [x] Likelihood related functions
-    - [x] Likelihood maximisation in pure Julia (FP ok + optimisation). Note: possible problem in Nemtropy gradient implementation (difference when compared to autodiff and method does not converge)
-    - [x] Sampling
-    - [ ] Unit tests
-    - [ ] Monopartite projection
-    - [x] Check for:
-        - [x] behavior of zero degree nodes
-        - [ ] networks with self links (in principle not allowed in SimpleGraphs, TBC)
-    - [ ] $\dots$
-* [ ] **UECM** *Undirected Enhanced Configuration Model* [[1]](#1)
-    - [x] Types
-    - [x] Likelihood related functions
-    - [x] Likelihood maximisation in pure Julia (FP ok + optimisation). Note: FP method needs very good initial conditions to work propoerly (expected)
-    - [x] Sampling
-    - [ ] Unit tests
-    - [x] Check for:
-        - [x] behavior of zero degree nodes
-        - [ ] networks with self links (in principle not allowed in SimpleGraphs, TBC)
-    - [ ] $\dots$
-* [ ] **CReM** *Conditional Reconstruction Method*[[2]](#2)
-* [ ] **DBiCM** *Directed Bipartite Configuration Model*  **add ref**
-* [ ] **DECM** *Directed Enhanced Configuration Model* [[1]](#1)
-
-
-
-
-
-
-
-
-## To do list:
-- [ ] convergence metrics to check if expected adjacency matrix matches the constraints
-- [ ] add additional models
-- [ ] optimize the code for speed after benchmarking 
-- [ ] update documentation
-- [ ] add information criterion for model selection (AIC)
-- [ ] add GPU support 
-    - [ ] maximum liklihood parametercomputation
-    - [ ] metric computation
 
 
 _References_
