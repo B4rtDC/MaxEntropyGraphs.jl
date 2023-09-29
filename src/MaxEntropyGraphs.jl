@@ -43,7 +43,7 @@ module MaxEntropyGraphs
     # compressing
     export np_unique_clone
     # graph metrics
-    export ANND, AAND_in, ANND_out
+    export ANND, ANND_in, ANND_out
     export wedges, triangles, squares
     for motif_name in directed_graph_motif_function_names
         @eval begin
