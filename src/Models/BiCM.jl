@@ -180,6 +180,7 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
     if isnothing(G)
         ⊥nodes = collect(1:length(d⊥))
         ⊤nodes = collect(length(d⊥)+1:length(d⊥)+length(d⊤))
+        is⊥ = vcat(ones(Bool, length(d⊥)), zeros(Bool, length(d⊤)))
     end
 
     # field generation
@@ -258,7 +259,7 @@ julia> G = corporateclub();
 
 julia> model = BiCM(G);
 
-julia> model_fun = θ -> L_BiCM_reduced(θ, model.d⊥ᵣ, model.d⊤ᵣ, model.f⊥, model.f⊤, model.d⊥ᵣ_nz, model.d⊤ᵣ_nz, model.status[:d⊥_unique])
+julia> model_fun = θ -> L_BiCM_reduced(θ, model.d⊥ᵣ, model.d⊤ᵣ, model.f⊥, model.f⊤, model.d⊥ᵣ_nz, model.d⊤ᵣ_nz, model.status[:d⊥_unique]);
 
 julia> model_fun(ones(size(model.θᵣ)))
 -237.5980041411147
@@ -540,7 +541,7 @@ The methods available are:
 
 # Examples
 ```jldoctest
-julia> model = corporateclub();
+julia> model = BiCM(corporateclub());
 
 julia> initial_guess(model, method=:random);
 
