@@ -52,9 +52,9 @@ module MaxEntropyGraphs
     end
 
     ## common model functions
-    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, precision, σₓ
+    export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, set_yᵣ!, precision, σₓ
     export degree, outdegree, indegree
-    export AIC, AICc, BIC #, set_yᵣ!
+    export AIC, AICc, BIC
     
     ## model specific types and functions
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
