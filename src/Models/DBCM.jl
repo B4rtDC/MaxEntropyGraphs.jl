@@ -418,7 +418,7 @@ end
 """
     DBCM_reduced_iter!(θ::AbstractVector, k_out::AbstractVector, k_in::AbstractVector, F::AbstractVector, nz_out::Vector, nz_in::Vector,x::AbstractVector, y::AbstractVector, G::AbstractVector, H::AbstractVector, n::Int)
 
-Computer the next fixed-point iteration for the DBCM model using the exponential formulation in order to maintain convexity.
+Compute the next fixed-point iteration for the DBCM model using the exponential formulation in order to maintain convexity.
 The function is non-allocating and will update pre-allocated vectors (`θ`, `x`, `y` and `G`) for speed.
 
 # Arguments
@@ -722,7 +722,6 @@ Generate `n` random graphs from the DBCM model `m`. If multithreading is availab
   recommended to not precompute the expected adjacency matrix to limit memory pressure.
 
 # Examples
-# Examples
 ```jldoctest
 # generate a DBCM model macaques network
 julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques());
@@ -860,7 +859,7 @@ end
 """
     precision(m::DBCM)
 
-Determine the compute precision of the UBCM model `m`.
+Determine the compute precision of the DBCM model `m`.
 
 # Examples
 ```jldoctest
