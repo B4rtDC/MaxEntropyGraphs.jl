@@ -553,7 +553,7 @@ julia> initial_guess(model);
 
 ```
 """
-function initial_guess(m::BiCM{T,N}; method::Symbol=:degrees) where {T,N}
+function initial_guess(m::BiCM; method::Symbol=:degrees)
     if isequal(method, :degrees)
         return Vector{precision(m)}(vcat(-log.(m.d⊥ᵣ), -log.(m.d⊤ᵣ)))
     elseif isequal(method, :random)
