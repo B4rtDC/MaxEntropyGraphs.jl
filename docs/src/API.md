@@ -136,7 +136,7 @@ MaxEntropyGraphs.initial_guess(::BiCM)
 Base.rand(::BiCM)
 Base.rand(::BiCM, ::Int)
 MaxEntropyGraphs.AIC(::BiCM)
-MaxEntropyGraphs.AICc(:BiCM)
+MaxEntropyGraphs.AICc(::BiCM)
 MaxEntropyGraphs.BIC(::BiCM)
 Base.length(::BiCM)
 MaxEntropyGraphs.L_BiCM_reduced
@@ -149,5 +149,6 @@ MaxEntropyGraphs.Ĝ(::BiCM)
 MaxEntropyGraphs.set_Ĝ!(::BiCM)
 MaxEntropyGraphs.precision(::BiCM)
 MaxEntropyGraphs.A(::BiCM,::Int64,::Int64)
-MaxEntropyGraphs.f_DBCM(::BiCM)
+MaxEntropyGraphs.f_BiCM(::BiCM)
 ```
+
