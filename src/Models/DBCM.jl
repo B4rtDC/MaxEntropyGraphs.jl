@@ -240,7 +240,7 @@ julia> model = DBCM(G);
 julia> solve_model!(model);
 
 julia> L_DBCM_reduced(model);
--120.15942408828172
+
 ```
 
 See also [`L_DBCM_reduced(::Vector, ::Vector, ::Vector, ::Vector, ::Vector, ::Vector)`](@ref)
