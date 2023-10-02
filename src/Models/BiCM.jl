@@ -52,6 +52,12 @@ mutable struct BiCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.Abstr
     const status::Dict{Symbol, Any}
     "Function used to computed the log-likelihood of the (reduced) model"
     fun::Union{Nothing, Function}
+    "Membership vector of ⊥ layer (boolean)"
+    const is⊥::Vector{Bool}
+    "mapping between node id and index in ⊥-node degree sequence"
+    const ⊥map::Dict{Int, Int}
+    "mapping between node id and index in ⊤-node degree sequence"
+    const ⊤map::Dict{Int, Int}
 end
 
 Base.show(io::IO, m::BiCM{T,N}) where {T,N} = print(io, """BiCM{$(T), $(N)} ($(m.status[:N⊥]) + $(m.status[:N⊤]) vertices, $(m.status[:d⊥_unique]) + $(m.status[:d⊤_unique]) unique degrees, $(@sprintf("%.2f", m.status[:cᵣ])) compression ratio)""")
@@ -154,6 +160,7 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
         # get layer membership
         membership = Graphs.bipartite_map(G)
         ⊥nodes, ⊤nodes = findall(membership .== 1), findall(membership .== 2)
+        is⊥ = membership .== 1 # keep track of the membership of each node for later use (e.g. degree etc.)
         # degree sequences
         d⊥ = isnothing(d⊥) ? Graphs.degree(G, ⊥nodes) : d⊥
         d⊤ = isnothing(d⊤) ? Graphs.degree(G, ⊤nodes) : d⊤
@@ -180,6 +187,8 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
     d⊥ᵣ_nz = iszero(first(d⊥ᵣ)) ? (2:length(d⊥ᵣ)) : (1:length(d⊥ᵣ)) # precomputed indices for the reduced degree sequence (works because sorted and unique values)
     d⊤ᵣ, d⊤_ind, d⊤ᵣ_ind, f⊤ = np_unique_clone(d⊤, sorted=true)
     d⊤ᵣ_nz = iszero(first(d⊤ᵣ)) ? (2:length(d⊤ᵣ)) : (1:length(d⊤ᵣ)) # precomputed indices for the reduced degree sequence
+    ⊥map = Dict(node => i for (i,node) in enumerate(⊥nodes)) # for retrieval of the row/column in the biadjacency matrix matching node i of the graph
+    ⊤map = Dict(node => i for (i,node) in enumerate(⊤nodes))
 
     # initiate parameters
     θᵣ = Vector{precision}(undef, length(d⊥ᵣ) + length(d⊤ᵣ))
@@ -196,13 +205,65 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
                                 :N => length(d⊥) + length(d⊤)       # number of vertices in the original graph 
                 )   
     
-    return BiCM{T,precision}(G, θᵣ, xᵣ, yᵣ, d⊥, d⊤, d⊥ᵣ, d⊤ᵣ, d⊥ᵣ_nz, d⊤ᵣ_nz, f⊥, f⊤, d⊥_ind, d⊤_ind, d⊥ᵣ_ind, d⊤ᵣ_ind, ⊥nodes, ⊤nodes, nothing, nothing, status, nothing)
+    return BiCM{T,precision}(G, θᵣ, xᵣ, yᵣ, d⊥, d⊤, d⊥ᵣ, d⊤ᵣ, d⊥ᵣ_nz, d⊤ᵣ_nz, f⊥, f⊤, d⊥_ind, d⊤_ind, d⊥ᵣ_ind, d⊤ᵣ_ind, ⊥nodes, ⊤nodes, nothing, nothing, status, nothing,is⊥,⊥map,⊤map)
 end
 
 BiCM(; d⊥::Vector{T}, d⊤::Vector{T}, precision::Type{N}=Float64, kwargs...) where {T<:Signed, N<:AbstractFloat} = BiCM(nothing; d⊥=d⊥, d⊤=d⊤, precision=precision, kwargs...)
 
 
+"""
+    L_BiCM_reduced(θ::Vector, k⊥::Vector, k⊤::Vector, f⊥::Vector, f⊤::Vector, nz⊥::UnitRange, nz⊤::UnitRange, n⊥ᵣ::Int)
 
+
+Compute the log-likelihood of the reduced BiCM model using the exponential formulation in order to maintain convexity.
+
+# Arguments
+- `θ`: the maximum likelihood parameters of the model ([α; β])
+- `k⊥`: the reduced degree sequence of the ⊥ layer
+- `k⊤`: the reduced degree sequence of the ⊤ layer
+- `f⊥`: the frequency of each degree in the ⊥ layer
+- `f⊤`: the frequency of each degree in the ⊤ layer
+- `nz⊥`: the indices of non-zero elements in the reduced ⊥ layer degree sequence
+- `nz⊤`: the indices of non-zero elements in the reduced ⊤ layer degree sequence
+- `n⊥ᵣ`: the number unique values in the reduced ⊥ layer degree sequence
+
+The function returns the log-likelihood of the reduced model. For the optimisation, this function will be used to
+generate an anonymous function associated with a specific model.
+
+# Examples
+```jldoctest
+# Generic use:
+julia> k⊥ = [1, 2, 3, 4];
+
+julia> k⊤  = [1, 2, 4];
+
+julia> f⊥  = [1; 3; 1; 1];
+
+julia> f⊤  = [4; 2; 1];
+
+julia> nz⊥ = 1:length(k⊥);
+
+julia> nz⊤ = 1:length(k⊤);
+
+julia> n⊥ᵣ = length(k⊥);
+
+julia> θ   = collect(range(0.1, step=0.1, length=length(k⊥) + length(k⊤)));
+
+julia> L_BiCM_reduced(θ, k⊥, k⊤, f⊥, f⊤, nz⊥, nz⊤, n⊥ᵣ)
+-26.7741690720244
+```
+```jldoctest
+# Use with DBCM model:
+julia> G = corporateclub();
+
+julia> model = BiCM(G);
+
+julia> model_fun = θ -> L_BiCM_reduced(θ, model.d⊥ᵣ, model.d⊤ᵣ, model.f⊥, model.f⊤, model.d⊥ᵣ_nz, model.d⊤ᵣ_nz, model.status[:d⊥_unique])
+
+julia> model_fun(ones(size(model.θᵣ)))
+-237.5980041411147
+```
+"""
 function L_BiCM_reduced(θ::Vector, k⊥::Vector, k⊤::Vector, f⊥::Vector, f⊤::Vector, nz⊥::UnitRange, nz⊤::UnitRange, n⊥ᵣ::Int)
     # set pre-allocated values
     α = @view θ[1:n⊥ᵣ]
@@ -222,9 +283,69 @@ function L_BiCM_reduced(θ::Vector, k⊥::Vector, k⊤::Vector, f⊥::Vector, f�
 end
 
 
+"""
+    L_BiCM_reduced(m::BiCM)
+
+Return the log-likelihood of the BiCM model `m` based on the computed maximum likelihood parameters.
+
+# Examples
+```jldoctest
+# Use with DBCM model:
+julia> G = corporateclub();
+
+julia> model = BiCM(G);
+
+julia> solve_model!(model);
+
+julia> L_BiCM_reduced(model);
+
+```
+
+See also [`L_BiCM_reduced(::Vector, ::Vector, ::Vector, ::Vector, ::Vector, ::UnitRange, ::UnitRange, ::Int)`](@ref)
+"""
 L_BiCM_reduced(m::BiCM) = L_BiCM_reduced(m.θᵣ, m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, m.status[:d⊥_unique])
 
 
+"""
+    ∇L_BiCM_reduced!(∇L::AbstractVector, θ::AbstractVector, k⊥::Vector, k⊤::Vector, f⊥::Vector, f⊤::Vector,  nz⊥::UnitRange{T}, nz⊤::UnitRange{T}, x::AbstractVector, y::AbstractVector, n⊥::Int) where {T<:Signed}
+
+Compute the gradient of the log-likelihood of the reduced DBCM model using the exponential formulation in order to maintain convexity.
+
+For the optimisation, this function will be used togenerate an anonymous function associated with a specific model. The function 
+will update pre-allocated vectors (`∇L`,`x` and `y`) for speed. The gradient is non-allocating.
+
+# Arguments
+- `∇L`: the gradient of the log-likelihood of the reduced model
+- `θ`: the maximum likelihood parameters of the model ([α; β])
+- `k⊥`: the reduced degree sequence of the ⊥ layer
+- `k⊤`: the reduced degree sequence of the ⊤ layer
+- `f⊥`: the frequency of each degree in the ⊥ layer
+- `f⊤`: the frequency of each degree in the ⊤ layer
+- `nz⊥`: the indices of non-zero elements in the reduced ⊥ layer degree sequence
+- `nz⊤`: the indices of non-zero elements in the reduced ⊤ layer degree sequence
+- `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-αᵢ) )
+- `y`: the exponentiated maximum likelihood parameters of the model ( yᵢ = exp(-βᵢ) )
+- `n⊥`: the number unique values in the reduced ⊥ layer degree sequence
+
+# Examples
+```jldoctest ∇L_BiCM_reduced
+# Explicit use with BiCM model:
+julia> G = corporateclub();
+
+julia> model = BiCM(G);
+
+julia> ∇L = zeros(Real, length(model.θᵣ));
+
+julia> x  = zeros(Real, length(model.xᵣ));
+
+julia> y  = zeros(Real, length(model.yᵣ));
+
+julia> ∇model_fun! = θ -> ∇L_BiCM_reduced!(∇L, θ, model.d⊥ᵣ, model.d⊤ᵣ, model.f⊥, model.f⊤, model.d⊥ᵣ_nz, model.d⊤ᵣ_nz, x, y, model.status[:d⊥_unique]);
+
+julia> ∇model_fun!(model.θᵣ);
+
+```
+"""
 function ∇L_BiCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector,
                             k⊥::Vector, k⊤::Vector,
                             f⊥::Vector, f⊤::Vector, 
@@ -263,7 +384,13 @@ function ∇L_BiCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector,
 end
 
 
+"""
+    ∇L_BiCM_reduced_minus!(args...)
 
+Compute minus the gradient of the log-likelihood of the reduced BiCM model using the exponential formulation in order to maintain convexity. Used for optimisation in a non-allocating manner.
+
+See also [`∇L_BiCM_reduced!`](@ref)
+"""
 function ∇L_BiCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector,
                                 k⊥::Vector, k⊤::Vector,
                                 f⊥::Vector, f⊤::Vector, 
@@ -301,6 +428,46 @@ function ∇L_BiCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector,
     return ∇L
 end
 
+"""
+    BiCM_reduced_iter!(θ::AbstractVector, k⊥::Vector, k⊤::Vector, f⊥::Vector, f⊤::Vector, nz⊥::UnitRange{T}, nz⊤::UnitRange{T}, x::AbstractVector, y::AbstractVector, G::AbstractVector, n⊥::Int) where {T<:Signed}
+
+Compute the next fixed-point iteration for the BiCM model using the exponential formulation in order to maintain convexity.
+The function is non-allocating and will update pre-allocated vectors (`θ`, `x`, `y` and `G`) for speed.
+
+# Arguments
+- `θ`: the maximum likelihood parameters of the model ([α; β])
+- `k⊥`: the reduced degree sequence of the ⊥ layer
+- `k⊤`: the reduced degree sequence of the ⊤ layer
+- `f⊥`: the frequency of each degree in the ⊥ layer
+- `f⊤`: the frequency of each degree in the ⊤ layer
+- `nz⊥`: the indices of non-zero elements in the reduced ⊥ layer degree sequence
+- `nz⊤`: the indices of non-zero elements in the reduced ⊤ layer degree sequence
+- `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-αᵢ) )
+- `y`: the exponentiated maximum likelihood parameters of the model ( yᵢ = exp(-βᵢ) )
+- `G`: buffer for computations
+- `n⊥`: the number unique values in the reduced ⊥ layer degree sequence
+
+
+# Examples
+```jldoctest
+# Use with BiCM model:
+julia> G = corporateclub();
+
+julia> model = BiCM(G);
+
+julia> G = zeros(eltype(model.θᵣ), length(model.θᵣ));
+
+julia> x = zeros(eltype(model.θᵣ), length(model.xᵣ));
+
+julia> y = zeros(eltype(model.θᵣ), length(model.yᵣ));
+
+
+julia> BiCM_FP! = θ -> BiCM_reduced_iter!(θ, model.d⊥ᵣ, model.d⊤ᵣ, model.f⊥, model.f⊤, model.d⊥ᵣ_nz, model.d⊤ᵣ_nz, x, y, G, model.status[:d⊥_unique]);
+
+julia> BiCM_FP!(model.θᵣ);
+
+```
+"""
 function BiCM_reduced_iter!(θ::AbstractVector, k⊥::Vector, k⊤::Vector,
                             f⊥::Vector, f⊤::Vector, 
                             nz⊥::UnitRange{T}, nz⊤::UnitRange{T}, 
@@ -336,21 +503,76 @@ function BiCM_reduced_iter!(θ::AbstractVector, k⊥::Vector, k⊤::Vector,
     return G
 end
 
+
+"""
+    precision(m::BiCM)
+
+Determine the compute precision of the BiCM model `m`.
+
+# Examples
+```jldoctest
+julia> model = BiCM(corporateclub());
+
+julia> MaxEntropyGraphs.precision(model)
+Float64
+```
+
+```jldoctest
+julia> model = BiCM(corporateclub(), precision=Float32);
+
+julia> MaxEntropyGraphs.precision(model)
+Float32
+```
+"""
+precision(m::BiCM) = typeof(m).parameters[2]
+
+
+"""
+    initial_guess(m::BiCM; method::Symbol=:degrees)
+
+Compute an initial guess for the maximum likelihood parameters of the BiCM model `m` using the method `method`.
+
+The methods available are: 
+- `:degrees` (default): the initial guess is computed using the degrees of the graph, i.e. ``\\theta = [-\\log(d_{\bot}); -\\log(d_{\top})]`` 
+- `:random`: the initial guess is computed using random values between 0 and 1, i.e. ``\\theta_{i} = -\\log(r_{i})`` where ``r_{i} \\sim U(0,1)``
+- `:uniform`: the initial guess is uniformily set to 0.5, i.e. ``\\theta_{i} = -\\log(0.5)``
+- `:chung_lu`: the initial guess is computed using the degrees of the graph and the number of edges, i.e. ``\\theta = [-\\log(d_{\bot}/(2E)); -\\log(d_{\top}/(2E))]``
+
+# Examples
+```jldoctest
+julia> model = corporateclub();
+
+julia> initial_guess(model, method=:random);
+
+julia> initial_guess(model, method=:uniform);
+
+julia> initial_guess(model, method=:chung_lu);
+
+julia> initial_guess(model);
+
+```
+"""
 function initial_guess(m::BiCM{T,N}; method::Symbol=:degrees) where {T,N}
     if isequal(method, :degrees)
-        return Vector{N}(vcat(-log.(m.d⊥ᵣ), -log.(m.d⊤ᵣ)))
+        return Vector{precision(m)}(vcat(-log.(m.d⊥ᵣ), -log.(m.d⊤ᵣ)))
     elseif isequal(method, :random)
-        return Vector{N}(-log.(rand(N, length(m.θᵣ))))
+        return Vector{precision(m)}(-log.(rand(N, length(m.θᵣ))))
     elseif isequal(method, :uniform)
-        return Vector{N}(-log.(0.5 .* ones(N, length(m.θᵣ))))
+        return Vector{precision(m)}(-log.(0.5 .* ones(N, length(m.θᵣ))))
     elseif isequal(method, :chung_lu)
         isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
-        return Vector{N}(vcat(-log.(m.d⊥ᵣ ./ sqrt(Graphs.ne(m.G)) ), -log.(m.d⊤ᵣ ./ sqrt(Graphs.ne(m.G)) ) ))
+        return Vector{precision(m)}(vcat(-log.(m.d⊥ᵣ ./ sqrt(Graphs.ne(m.G)) ), -log.(m.d⊤ᵣ ./ sqrt(Graphs.ne(m.G)) ) ))
     else
         throw(ArgumentError("The initial guess method $(method) is not supported"))
     end
 end
 
+
+"""
+    set_xᵣ!(m::BiCM)
+
+Set the value of xᵣ to exp(-αᵣ) for the BiCM model `m`
+"""
 function set_xᵣ!(m::BiCM)
     if m.status[:params_computed]
         αᵣ = @view m.θᵣ[1:m.status[:d⊥_unique]]
@@ -360,6 +582,12 @@ function set_xᵣ!(m::BiCM)
     end
 end
 
+
+"""
+    set_yᵣ!(m::BiCM)
+
+Set the value of yᵣ to exp(-βᵣ) for the BiCM model `m`
+"""
 function set_yᵣ!(m::BiCM)
     if m.status[:params_computed]
         βᵣ = @view m.θᵣ[m.status[:d⊥_unique]+1:end]
@@ -370,8 +598,15 @@ function set_yᵣ!(m::BiCM)
 end
 
 
-# NOTE: this will compute the bi-adjacency matrix, and not the adjacency matrix
-function Ĝ(m::BiCM{T,N}) where {T,N}
+"""
+    Ĝ(m::BiCM)
+
+Compute the expected **biadjacency matrix** for the BiCM model `m`
+
+!!! note
+    Please note that this generates a bi-adjacency matrix, not an adjacency matrix.
+"""
+function Ĝ(m::BiCM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     
@@ -379,7 +614,7 @@ function Ĝ(m::BiCM{T,N}) where {T,N}
     n⊥, n⊤ = m.status[:N⊥], m.status[:N⊤] 
 
     # initiate Ĝ
-    G = zeros(N, n⊥, n⊤)
+    G = zeros(precision(m), n⊥, n⊤)
 
     # initiate x and y
     x = m.xᵣ[m.d⊥ᵣ_ind]
@@ -395,6 +630,12 @@ function Ĝ(m::BiCM{T,N}) where {T,N}
     return G
 end
 
+
+"""
+    set_Ĝ!(m::BiCM)
+
+Set the expected **biadjacency matrix** for the BiCM model `m`
+"""
 function set_Ĝ!(m::BiCM)
     m.Ĝ = Ĝ(m)
     m.status[:G_computed] = true
@@ -406,8 +647,11 @@ end
 
 Generate a random graph from the BiCM model `m`.
 
-**Note**: the generated matrix from the `BiCM` is a bi-adjacency matrix, not an adjacency matrix. The generated graph
-wil also be bipartite and respect the layer membership of the original graph.
+# Arguments:
+- `precomputed::Bool`: if `true`, the precomputed expected **biadjacency matrix** (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
+  recommended to not precompute the expected adjacency matrix to limit memory pressure.
+
+**Note**: The generated graph will also be bipartite and respect the layer membership of the original graph used to define the model.
 """
 function rand(m::BiCM; precomputed::Bool=false)
     if precomputed
@@ -432,6 +676,18 @@ function rand(m::BiCM; precomputed::Bool=false)
     return G
 end
 
+
+"""
+    rand(m::BiCM, n::Int; precomputed::Bool=false)
+
+    Generate `n` random graphs from the BiCM model `m`. If multithreading is available, the graphs are generated in parallel.
+
+# Arguments:
+- `precomputed::Bool`: if `true`, the precomputed expected **biadjacency matrix** (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
+  recommended to not precompute the expected adjacency matrix to limit memory pressure.
+
+**Note**: The generated graph will also be bipartite and respect the layer membership of the original graph used to define the model.
+"""
 function rand(m::BiCM, n::Int; precomputed::Bool=false)
     # pre-allocate
     res = Vector{Graphs.SimpleGraph{Int}}(undef, n)
@@ -443,6 +699,329 @@ function rand(m::BiCM, n::Int; precomputed::Bool=false)
     return res
 end
 
+"""
+    solve_model!(m::BiCM)
 
-function solve_model!(m::BiCM{T,N}) where {T,N}
+Compute the likelihood maximising parameters of the BiCM model `m`. 
+
+# Arguments
+- `method::Symbol`: solution method to use, can be `:fixedpoint` (default), or :$(join(keys(MaxEntropyGraphs.optimization_methods), ", :", " and :")).
+- `initial::Symbol`: initial guess for the parameters ``\\Theta``, can be :degrees (default), :random, :uniform, or :chung_lu.
+- `maxiters::Int`: maximum number of iterations for the solver (defaults to 1000). 
+- `verbose::Bool`: set to show log messages (defaults to false).
+- `ftol::Real`: function tolerance for convergence with the fixedpoint method (defaults to 1e-8).
+- `abstol::Union{Number, Nothing}`: absolute function tolerance for convergence with the other methods (defaults to `nothing`).
+- `reltol::Union{Number, Nothing}`: relative function tolerance for convergence with the other methods (defaults to `nothing`).
+- `AD_method::Symbol`: autodiff method to use, can be any of :$(join(keys(MaxEntropyGraphs.AD_methods), ", :", " and :")). Performance depends on the size of the problem (defaults to `:AutoZygote`),
+- `analytical_gradient::Bool`: set the use the analytical gradient instead of the one generated with autodiff (defaults to `false`)
+
+# Examples
+```jldoctest BiCM_solve
+# default use
+julia> model = BiCM(corporateclub());
+
+julia> solve_model!(model);
+
+```
+```jldoctest BiCM_solve
+# using analytical gradient and uniform initial guess
+julia> solve_model!(model, method=:BFGS, analytical_gradient=true, initial=:uniform)
+(BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (25 + 15 vertices, 6 + 6 unique degrees, 0.30 compression ratio), retcode: Success
+u: [1.449571644621672, 0.8231752829683303, 0.34755085972479766, -0.04834480708852856, -0.3984299800917503, -0.7223268299919358, 1.6090554004279671, 1.2614196476197532, 0.9762560461922147, 0.11406188481061938, -0.24499004480426345, -2.2646067641037333]
+Final objective value:     171.15095803718134
+)
+
+```
+"""
+function solve_model!(m::BiCM;  # common settings
+                                method::Symbol=:fixedpoint, 
+                                initial::Symbol=:degrees,
+                                maxiters::Int=1000, 
+                                verbose::Bool=false,
+                                # NLsolve.jl specific settings (fixed point method)
+                                ftol::Real=1e-8,
+                                # optimisation.jl specific settings (optimisation methods)
+                                abstol::Union{Number, Nothing}=nothing,
+                                reltol::Union{Number, Nothing}=nothing,
+                                AD_method::Symbol=:AutoZygote,
+                                analytical_gradient::Bool=false)
+    N = precision(m)
+    # initial guess
+    θ₀ = initial_guess(m, method=initial)
+    # find Inf values
+    ind_inf = findall(isinf, θ₀)
+    if method == :fixedpoint
+        # initiate buffers
+        x_buffer = zeros(N, length(m.d⊥ᵣ));  # buffer for x = exp(-α)
+        y_buffer = zeros(N, length(m.d⊤ᵣ));  # buffer for y = exp(-β)
+        G_buffer = zeros(N, length(m.θᵣ));   # buffer for G(x)
+        # define fixed point function
+        FP_model! = (θ::Vector) -> BiCM_reduced_iter!(θ, m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, x_buffer, y_buffer, G_buffer, m.status[:d⊥_unique]);
+        # obtain solution
+        θ₀[ind_inf] .= zero(N);
+        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        if NLsolve.converged(sol)
+            if verbose 
+            @info "Fixed point iteration converged after $(sol.iterations) iterations"
+            end
+            m.θᵣ .= sol.zero; 
+            m.θᵣ[ind_inf] .= Inf;
+            m.status[:params_computed] = true;
+            set_xᵣ!(m);
+            set_yᵣ!(m);
+        else
+            throw(ConvergenceError(method, nothing))
+        end
+    else
+        if analytical_gradient
+            # initiate buffers
+            x_buffer = zeros(N, length(m.d⊥ᵣ)); # buffer for x = exp(-α)
+            y_buffer = zeros(N, length(m.d⊤ᵣ)); # buffer for y = exp(-β)
+            
+            # define gradient function for optimisation.jl
+            #θ ->               ∇L_BiCM_reduced_minus!(∇L, θ, m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, x_buffer, y_buffer, m.status[:d⊥_unique]);
+            grad! = (G, θ, p) ->∇L_BiCM_reduced_minus!(G,  θ, m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, x_buffer, y_buffer, m.status[:d⊥_unique]);
+        end
+        # define objective function and its AD method
+        f = AD_method ∈ keys(AD_methods)            ? Optimization.OptimizationFunction( (θ, p) ->   -L_BiCM_reduced(θ, m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, m.status[:d⊥_unique]),
+                                                                                            AD_methods[AD_method],
+                                                                                            grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
+        prob = Optimization.OptimizationProblem(f, θ₀);
+        # obtain solution
+        sol = method ∈ keys(optimization_methods)   ? Optimization.solve(prob, optimization_methods[method], abstol=abstol, reltol=reltol)   : throw(ArgumentError("The method $(method) is not supported (yet)"))
+        # check convergence
+        if Optimization.SciMLBase.successful_retcode(sol.retcode)
+            if verbose 
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
+            end
+            m.θᵣ .= sol.u;
+            m.status[:params_computed] = true;
+            set_xᵣ!(m);
+            set_yᵣ!(m);
+        else
+            throw(ConvergenceError(method, sol.retcode))
+        end
+    end
+
+    return m, sol
+    
+end
+
+"""
+    f_BiCM(x::T)
+
+Helper function for the BiCM model to compute the expected value of the biadjacency matrix. The function computes the expression `x / (1 + x)`.
+As an argument you need to pass the product of the maximum likelihood parameters `xᵣ[i] * yᵣ[j]` from a BiCM model.
+"""
+f_BiCM(xiyj::T) where {T} = xiyj/(1 + xiyj)
+
+"""
+    A(m::BiCM,i::Int,j::Int)
+
+Return the expected value of the **biadjacency matrix** for the BiCM model `m` at the node pair `(i,j)`.
+
+❗ For perfomance reasons, the function does not check:
+- if the node pair is valid.
+- if the parameters of the model have been computed.
+"""
+function A(m::BiCM,i::Int,j::Int)
+    return @inbounds f_BiCM(m.xᵣ[m.d⊥ᵣ_ind[i]] * m.yᵣ[m.d⊤ᵣ_ind[j]])
+end
+
+
+"""
+    degree(m::BiCM, i::Int; method=:reduced)
+
+Return the expected degree for node `i` of the BiCM model `m`.
+Uses the reduced model parameters `xᵣ` for perfomance reasons.
+
+# Arguments
+- `m::BiCM`: the BiCM model
+- `i::Int`: the node for which to compute the degree. This can be any of the nodes in the original graph used to define the model.
+- `method::Symbol`: the method to use for computing the degree. Can be any of the following:
+    - `:reduced` (default) uses the reduced model parameters `xᵣ`, `yᵣ`, `f⊥` and `f⊤` for perfomance reasons.
+    - `:full` uses all elements of the expected adjacency matrix.
+    - `:adjacency` uses the precomputed adjacency matrix `m.Ĝ` of the model.
+
+# Examples
+```jldoctest
+julia> model = BiCM(corporateclub());
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> typeof([degree(model, 1), degree(model, 1, method=:full), degree(model, 1, method=:adjacency)])
+Vector{Float64} (alias for Array{Float64, 1})
+
+``` 
+"""
+function degree(m::BiCM, i::Int; method::Symbol=:reduced)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
+
+    if method == :reduced
+        res = zero(precision(m))
+        if m.is⊥[i]
+            i_red = m.d⊥ᵣ_ind[m.⊥map[i]]
+            for j in eachindex(m.yᵣ)
+                res += f_BiCM(m.xᵣ[i_red] * m.yᵣ[j]) * m.f⊤[j]
+            end
+        else
+            i_red = m.d⊤ᵣ_ind[m.⊤map[i]]
+            for j in eachindex(m.xᵣ)
+                res += f_BiCM(m.xᵣ[j] * m.yᵣ[i_red]) * m.f⊥[j]
+            end
+        end
+    elseif method == :full
+        # using all elements of the adjacency matrix
+        res = zero(precision(m))
+        if m.is⊥[i]
+            for j in eachindex(m.d⊤)
+                res += A(m, m.⊥map[i], j)
+            end
+        else
+            for j in eachindex(m.d⊥)
+                res += A(m, j, m.⊤map[i]) 
+            end
+        end
+    elseif method == :adjacency
+        #  using the precomputed biadjacency matrix 
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
+        # check layer membership
+        res = m.is⊥[i] ? sum(@view m.Ĝ[m.⊥map[i],:]) : sum(@view m.Ĝ[:, m.⊤map[i]])
+    else
+        throw(ArgumentError("Unknown method $method"))
+    end
+
+    return res
+end
+
+
+"""
+    degree(m::BiCM[, v]; method=:reduced)
+
+Return a vector corresponding to the expected degree of the BiCM model `m` each node. If v is specified, only return degrees for nodes in v.
+
+# Arguments
+- `m::BiCM`: the BiCM model
+- `v::Vector{Int}`: the nodes for which to compute the degree. Default is all nodes.
+- `method::Symbol`: the method to use for computing the degree. Can be any of the following:
+    - `:reduced` (default) uses the reduced model parameters `xᵣ` for perfomance reasons.
+    - `:full` uses all elements of the expected adjacency matrix.
+    - `:adjacency` uses the precomputed adjacency matrix `m.Ĝ` of the model.
+
+# Examples
+```jldoctest
+julia> model = BiCM(corporateclub());
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> typeof(degree(model, method=:adjacency)) 
+Vector{Float64} (alias for Array{Float64, 1})
+
+``` 
+"""
+degree(m::BiCM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced) = [degree(m, i, method=method) for i in v]
+
+
+
+"""
+    AIC(m::BiCM)
+
+Compute the Akaike Information Criterion (AIC) for the BiCM model `m`. The parameters of the models most be computed beforehand. 
+If the number of empirical observations becomes too small with respect to the number of parameters, you will get a warning. In 
+that case, the corrected AIC (AICc) should be used instead.
+
+# Examples
+```julia
+julia> model = BiCM(corporateclub());
+
+julia> solve_model!(model);
+
+julia> AIC(model);
+[...]
+
+```
+
+See also [`AICc`](@ref MaxEntropyGraphs.AICc), [`L_BiCM_reduced`](@ref MaxEntropyGraphs.L_BiCM_reduced).
+"""
+function AIC(m::BiCM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = m.status[:N⊥] + m.status[:N⊤] # number of parameters
+    n = m.status[:N⊥] *  m.status[:N⊤] # number of observations
+    L = L_BiCM_reduced(m) # log-likelihood
+
+    if n/k < 40
+        @warn """The number of observations is small with respect to the number of parameters (n/k < 40). Consider using the corrected AIC (AICc) instead."""
+    end
+
+    return 2*k - 2*L
+end
+
+
+"""
+    AICc(m::BiCM)
+
+Compute the corrected Akaike Information Criterion (AICc) for the BiCM model `m`. The parameters of the models most be computed beforehand. 
+
+
+# Examples
+```jldoctest
+julia> model = BiCM(corporateclub());
+
+julia> solve_model!(model);
+
+julia> AICc(model)
+432.12227535579956
+
+```
+
+See also [`AIC`](@ref MaxEntropyGraphs.AIC), [`L_BiCM_reduced`](@ref MaxEntropyGraphs.L_BiCM_reduced).
+"""
+function AICc(m::BiCM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = m.status[:N⊥] + m.status[:N⊤] # number of parameters
+    n = m.status[:N⊥] *  m.status[:N⊤] # number of observations (divided by 2 because of symmetry)
+    L = L_BiCM_reduced(m) # log-likelihood
+
+    return 2*k - 2*L + (2*k*(k+1)) / (n - k - 1)
+end
+
+
+"""
+    BIC(m::BiCM)
+
+Compute the Bayesian Information Criterion (BIC) for the BiCM model `m`. The parameters of the models most be computed beforehand. 
+BIC is believed to be more restrictive than AIC, as the former favors models with a lower number of parameters than those favored by the latter.
+
+# Examples
+```julia-repl
+julia> model = BiCM(corporateclub());
+
+julia> solve_model!(model);
+
+julia> BIC(model)
+579.3789571131789
+
+```
+
+See also [`AIC`](@ref MaxEntropyGraphs.AIC), [`L_BiCM_reduced`](@ref MaxEntropyGraphs.L_BiCM_reduced).
+"""
+function BIC(m::BiCM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = m.status[:N⊥] + m.status[:N⊤] # number of parameters
+    n = m.status[:N⊥] *  m.status[:N⊤] # number of observations
+    L = L_BiCM_reduced(m) # log-likelihood
+
+    return k * log(n) - 2*L
 end
