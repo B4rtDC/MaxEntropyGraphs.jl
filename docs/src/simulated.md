@@ -4,7 +4,8 @@ The analytical method can quickly become expensive to compute since each element
 ## Examples
 Some examples using built-in function of package are listed below:
 * [Assortativity in the UBCM](@ref Assortativity_simulation)
-* [Motif significance in the UBCM](@ref Motif_simulation)
+* [Motif significance in the DBCM](@ref Motif_simulation)
+* [Significance of V-motifs and projection in the BiCM](@ref BiCM_Vmotifs_simulation)
 
 ### [Assortativity in the UBCM](@id Assortativity_simulation)
 Let us consider the UBCM applied to the Zachary Karate Club network. We want to analyse if the assortativity of each node (measured by its ANND) is statistically significant from what one would expect under the null model.
@@ -31,7 +32,7 @@ nothing
 
 ```
 
-### [Motif significance in the UBCM](@id Motif_simulation)
+### [Motif significance in the DBCM](@id Motif_simulation)
 Let us consider the DBCM applied to the Chesapeake Bay foodweb. We want to analyse if any of the different network motifs is statistically significant of what one would expect uner the null model. We want to know the values of `M1`, ..., `M13`. These are network-wide measures. 
 
 First, we define the network and the associated UBCM model.
@@ -80,3 +81,7 @@ nothing
 
 
 ```
+
+
+### [Significance of V-motifs and projection in the BiCM](@id BiCM_Vmotifs_simulation)
+placeholder

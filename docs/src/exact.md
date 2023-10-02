@@ -31,7 +31,8 @@ Using the appropriate expressions for
 ## Examples
 Some examples using built-in function of package are listed below:
 * [Assortativity in the UBCM](@ref Assortativity_analytical)
-* [Motif significance in the UBCM](@ref Motif_analytical)
+* [Motif significance in the DBCM](@ref Motif_analytical)
+* [Significance of V-motifs and projection in the BiCM](@ref BiCM_Vmotifs_analytical)
 
 ### [Assortativity in the UBCM](@id Assortativity_analytical)
 Let us consider the UBCM applied to the Zachary Karate Club network. We want to analyse if the assortativity of each node (measured by its ANND) is statistically significant from what one would expect under the null model.
@@ -114,7 +115,7 @@ Z_ANND = (ANND_obs - ANND_exp) ./ ANND_std;
  -1.2188220468342164
 ```
 
-### [Motif significance in the UBCM](@id Motif_analytical)
+### [Motif significance in the DBCM](@id Motif_analytical)
 Let us consider the DBCM applied to the Chesapeake Bay foodweb. We want to analyse if any of the different network motifs is statistically significant of what one would expect uner the null model.
 
 First, we define the network and the associated UBCM model.
@@ -170,3 +171,7 @@ motifs_z = (motifs_observed .- motifs_expected) ./ motifs_std
   4.862910567915945
  -0.8148586665737436
 ```
+
+
+### [Significance of V-motifs and projection in the BiCM](@id BiCM_Vmotifs_analytical)
+placeholder
