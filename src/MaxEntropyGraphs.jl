@@ -34,6 +34,7 @@ module MaxEntropyGraphs
     #include("Models/UECM.jl")
     #include("Models/CReM.jl")
     include("utils.jl")
+    include("metrics.jl")
     include("smallnetworks.jl")
     
     ### exports
@@ -65,5 +66,27 @@ module MaxEntropyGraphs
     export rhesus_macaques, taro_exchange, chesapeakebay, everglades, florida, littlerock, maspalomas, stmarks, corporateclub
 
 
+    ## ------------------------------------------------ ##
+    ## Precompiletools workload to accelate first usage ##
+    ## ________________________________________________ ##
+    ### Has a **substantial** impact on precompiletime of the package, but massive performance improvements for first usage 
+    ### => 30x to >100x speedup for parameter computation
+    using PrecompileTools
+    using Preferences
+    # disable during development
+    set_preferences!(MaxEntropyGraphs, "precompile_workload" => false; force=true)
+    let
+        @setup_workload begin
+            G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+            @compile_workload begin
+                # UBCM workload
+                model = UBCM(G)
+                solve_model!(model)
+                solve_model!(model, method=:BFGS)
+                solve_model!(model, method=:BFGS, analytical_gradient=true)
+                # DBCM workload
+            end
+        end
+    end
 end
 
