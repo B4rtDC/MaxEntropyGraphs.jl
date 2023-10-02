@@ -775,7 +775,7 @@ end
 """
     degree(m::UBCM, i::Int; method=:reduced)
 
-Return the expected degree vector for node `i` of the UBCM model `m`.
+Return the expected degree for node `i` of the UBCM model `m`.
 Uses the reduced model parameters `xᵣ` for perfomance reasons.
 
 # Arguments
