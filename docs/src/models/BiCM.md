@@ -33,7 +33,7 @@ using Graphs
 using MaxEntropyGraphs
 
 # define the network
-G =
+G = corporateclub()
 
 # instantiate a UBCM model
 model = BiCM(G)
