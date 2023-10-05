@@ -1,7 +1,7 @@
 name = "MaxEntropyGraphs"
 uuid = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"
 authors = ["Bart De Clerck <declerck.bart@pm.me>"]
-version = "0.4.2"
+version = "0.4.3"
 
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"

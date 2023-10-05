@@ -698,6 +698,63 @@ for i = 1:13
 end
 
 
+########################################################################################################
+# Bipartite networks motifs and helper functions
+########################################################################################################
+"""
+    project(G::Graphs.SimpleGraph; layer::Symbol=:bottom)
+
+Project the bipartite graph `G` onto one of its layers.
+
+# Arguments 
+- `membership`: the bipartite mapping of the graphs. This can be computed using `Graphs.bipartite_map(G)`.
+- `bottom`: the nodes in the bottom layer. This can be computed using `findall(membership .== 1)`.
+- `top`: the nodes in the top layer. This can be computed using `findall(membership .== 2)`.
+- `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`. Layer membership is determined by the bipartite map of the graph.
+- `method`: the method used to compute the adjacency matrix of the projected graph. This can be `:simple` or `:weighted`. Both methods compute 
+    the product of the biadjacency matrix with its transposed, but the `:weighted` method uses the weights of the edges in the projected graph.
+
+
+# Examples
+```jldoctest project_bipartite_to_simple
+julia> using Graphs
+
+julia> G = SimpleGraph(5); add_edge!(G, 1, 4); add_edge!(G, 2, 4); add_edge!(G, 3, 4); add_edge!(G, 3, 5);
+
+julia> project(G, layer=:bottom)
+{3, 3} undirected simple Int64 graph
+
+```
+```jldoctest project_bipartite_to_simple
+julia> project(G, layer=:top)
+{2, 1} undirected simple Int64 graph
+
+"""
+function project(G::Graphs.SimpleGraph, membership::Vector=Graphs.bipartite_map(G), 
+                                        bottom::Vector=findall(membership .== 1), 
+                                        top::Vector=findall(membership .== 2); 
+                                        layer::Symbol=:bottom, method::Symbol=:simple)
+    # check if bipartite
+    Graphs.is_bipartite(G) || throw(ArgumentError("The graph `G` must be bipartite."))    
+    # get the adjacency_matrix
+    A = Graphs.adjacency_matrix(G)
+    # get the biadjacency-matrix
+    B = @view A[bottom, top]
+    if layer ∈ [:bottom; :⊥]
+        G = method == :simple ? Graphs.SimpleGraph(B * B') : throw(ArgumentError("The method $(method) is not yet implemented."))
+    elseif layer ∈ [:top; :⊤]
+        G = method == :simple ? Graphs.SimpleGraph(B' * B) : throw(ArgumentError("The method $(method) is not yet implemented."))
+    else
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+    end
+    # remove self-links
+    for i in Graphs.vertices(G)
+        Graphs.rem_edge!(G, i, i)
+    end
+    return G
+end
+
+
 #= OLDER VERSION
 #For undirected, unweighted, and unsigned networks, four types of triads exist: (1) triads without ties/edges (empty triads); (2) triads with one tie present, and two ties absent (one edge triads); (3) triads with one edge absent, and two edges present, referred to in the literature as two-path, two-star, or open triads (or forbidden triads in weighted networks when present edges are strong); and (4) triads with all edges present (triangles, closed triads) (Triads should not be confused with triplets. 
 

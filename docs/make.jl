@@ -1,14 +1,24 @@
 using Documenter
-using MaxEntropyGraphs
+using Pkg
 
 
-# to give all docstrings access to the package, we need to import it
-DocMeta.setdocmeta!(MaxEntropyGraphs, :DocTestSetup, :(using MaxEntropyGraphs); recursive=true)
 
 
 # check if we are running on CI
 ci = get(ENV, "CI", "") == "true"
-const buildpath = haskey(ENV, "CI") ? ".." : "" # https://github.com/JuliaDocs/Documenter.jl/issues/921
+@info "CI status: $ci"
+const buildpath = haskey(ENV, "CI") ? ".." : "" # https://github.com/JuliaDocs/Documenter.jl/issues/921 for images
+
+# activate the package environment
+if !ci
+    Pkg.develop(PackageSpec(path=joinpath(dirname(@__FILE__), "..")))
+    Pkg.instantiate()
+end
+
+using MaxEntropyGraphs
+
+# to give all docstrings access to the package, we need to import it
+DocMeta.setdocmeta!(MaxEntropyGraphs, :DocTestSetup, :(using MaxEntropyGraphs); recursive=true)
 
 # makedocs will run all docstrings in the package
 makedocs(sitename="MaxEntropyGraphs.jl",
@@ -28,7 +38,8 @@ makedocs(sitename="MaxEntropyGraphs.jl",
             "GPU acceleration" => "GPU.md",
             "API" => "API.md"
          ],
-         doctest=true
+         doctest=true,
+         build=joinpath(dirname(@__FILE__), "build")
 )
 
 # Documenter can also automatically deploy documentation to gh-pages.
