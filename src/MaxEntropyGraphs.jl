@@ -11,6 +11,7 @@ module MaxEntropyGraphs
     
 
     # to work with all sorts of graphs
+    import Graphs
     import Graphs: degree
     import SimpleWeightedGraphs
 
@@ -43,7 +44,7 @@ module MaxEntropyGraphs
     export AbstractMaxEntropyModel
     ## utils 
     # compressing
-    export np_unique_clone
+    export np_unique_clone, project
     # graph metrics
     export ANND, ANND_in, ANND_out
     export wedges, triangles, squares
