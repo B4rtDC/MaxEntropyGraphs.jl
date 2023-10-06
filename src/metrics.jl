@@ -814,7 +814,7 @@ julia> project(A, layer=:top)
  0  0  0  0  1
  0  0  0  1  0
 
- ```
+```
 ```jldoctest project_bipartite_matrix
 julia> A = [0 0 0 1 1; 0 0 0 1 1; 0 0 0 1 0];
 
