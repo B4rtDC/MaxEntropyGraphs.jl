@@ -36,8 +36,11 @@ makedocs(sitename="MaxEntropyGraphs.jl",
                              "Analytical" => "exact.md", 
                              "Simulation" => "simulated.md"],
             "GPU acceleration" => "GPU.md",
-            "API" => "API.md"
-         ],
+            "API" => Any[   "Shared" =>"API/API.md",
+                            "UBCM" => "API/API_UBCM.md",
+                            "DBCM" => "API/API_DBCM.md",
+                            "BiCM" => "API/API_BiCM.md",]
+                            ],
          doctest=true,
          build=joinpath(dirname(@__FILE__), "build")
 )
