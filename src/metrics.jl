@@ -1180,7 +1180,7 @@ end
 
 
 """
-    V_pB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
+    V_PB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
 
 Compute the parameters of the Poisson-Binomial distribution for the number of V-motifs between nodes `i` and `j` for the `BiCM` model `m`.
 
@@ -1194,7 +1194,7 @@ Compute the parameters of the Poisson-Binomial distribution for the number of V-
 # Examples
 
 """
-function V_pB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
+function V_PB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
     layer = model.is⊥[i] ? (:bottom) : (:top)
     if precomputed
         # checks
@@ -1276,7 +1276,7 @@ function V_p(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
     Vij_obs = V_motifs(m.G, i, j ; membership=m.is⊥)
     
     # distribution
-    dPB = Distributions.PoissonBinomial(V_pB_parameters(m, m.is⊥[i] ? m.⊥map[i] : m.⊤map[i], m.is⊥[j] ? m.⊥map[j] : m.⊤map[j]; precomputed=precomputed))
+    dPB = Distributions.PoissonBinomial(V_PB_parameters(m, m.is⊥[i] ? m.⊥map[i] : m.⊤map[i], m.is⊥[j] ? m.⊥map[j] : m.⊤map[j]; precomputed=precomputed))
 
     # expected value
     Vij_exp = Distributions.mean(dPB)
