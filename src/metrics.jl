@@ -827,7 +827,7 @@ julia> project(A, layer=:bottom, method=:weighted)
 ```
 ```jldoctest project_bipartite_matrix
 julia> project(A, layer=:top, method=:weighted)
-5×5 Matrix{Bool}:
+5×5 Matrix{Int64}:
  0  0  0  0  0
  0  0  0  0  0
  0  0  0  0  0
