@@ -701,8 +701,24 @@ end
 ########################################################################################################
 # Bipartite networks motifs and helper functions
 ########################################################################################################
+
+function biadjacency_matrix(G::Graphs.SimpleGraph; skipchecks::Bool=false)
+    if !skipchecks
+        Graphs.is_bipartite(G) || throw(ArgumentError("The graph `G` must be bipartite."))  
+    end
+    # get the bipartite map
+    membership = Graphs.bipartite_map(G)
+    # get the adjacency_matrix
+    A = Graphs.adjacency_matrix(G)
+    # get the biadjacency-matrix
+    return A[membership .== 1, membership .== 2]
+end
+
 """
-    project(G::Graphs.SimpleGraph; layer::Symbol=:bottom)
+    project(G::Graphs.SimpleGraph;  membership::Vector=Graphs.bipartite_map(G), 
+                                    bottom::Vector=findall(membership .== 1), 
+                                    top::Vector=findall(membership .== 2); 
+                                    layer::Symbol=:bottom)
 
 Project the bipartite graph `G` onto one of its layers.
 
@@ -729,139 +745,489 @@ julia> project(G, layer=:bottom)
 julia> project(G, layer=:top)
 {2, 1} undirected simple Int64 graph
 
+```
 """
 function project(G::Graphs.SimpleGraph, membership::Vector=Graphs.bipartite_map(G), 
                                         bottom::Vector=findall(membership .== 1), 
                                         top::Vector=findall(membership .== 2); 
                                         layer::Symbol=:bottom, method::Symbol=:simple)
     # check if bipartite
-    Graphs.is_bipartite(G) || throw(ArgumentError("The graph `G` must be bipartite."))    
+    Graphs.is_bipartite(G) || throw(ArgumentError("The graph `G` must be bipartite."))  
+    # define graph type
+    if method == :simple
+        Gtype = Graphs.SimpleGraph
+    elseif method ==:weighted
+        Gtype = SimpleWeightedGraphs.SimpleWeightedGraph
+    else
+        throw(ArgumentError("The method $(method) is not yet implemented."))
+    end
+
     # get the adjacency_matrix
     A = Graphs.adjacency_matrix(G)
     # get the biadjacency-matrix
     B = @view A[bottom, top]
+    # get projected adjacency_matrix
     if layer ∈ [:bottom; :⊥]
-        G = method == :simple ? Graphs.SimpleGraph(B * B') : throw(ArgumentError("The method $(method) is not yet implemented."))
+        Aproj = B * B'
     elseif layer ∈ [:top; :⊤]
-        G = method == :simple ? Graphs.SimpleGraph(B' * B) : throw(ArgumentError("The method $(method) is not yet implemented."))
+        Aproj = B' * B
     else
         throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
     end
-    # remove self-links
-    for i in Graphs.vertices(G)
-        Graphs.rem_edge!(G, i, i)
+    # avoid self-loops
+    Aproj[diagind(Aproj)] .= zero(eltype(Aproj))
+    # dropzeros
+    dropzeros!(Aproj)
+
+    return Gtype(Aproj)
+end
+
+
+"""
+    project(A::T; layer::Symbol=:bottom, method::Symbol=:simple) where {T<:AbstractMatrix}
+
+Project the biadjacency matrix `A` onto one of its layers.
+
+# Arguments 
+- `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`. Layer membership is determined by the bipartite map of the graph.
+- `method`: the method used to compute the adjacency matrix of the projected graph. This can be `:simple` or `:weighted`. Both methods compute 
+    the product of the biadjacency matrix with its transposed, but the `:weighted` method uses the weights of the edges in the projected graph.
+
+
+# Examples
+```jldoctest project_bipartite_matrix
+julia> A = [0 0 0 1 1; 0 0 0 1 1; 0 0 0 1 0];
+
+julia> project(A, layer=:bottom)
+3×3 Matrix{Bool}:
+ 0  1  1
+ 1  0  1
+ 1  1  0
+
+```
+```jldoctest project_bipartite_matrix
+julia> project(G, layer=:top)
+5×5 Matrix{Bool}:
+ 0  0  0  0  0
+ 0  0  0  0  0
+ 0  0  0  0  0
+ 0  0  0  0  1
+ 0  0  0  1  0
+
+ ```
+```jldoctest project_bipartite_matrix
+julia> A = [0 0 0 1 1; 0 0 0 1 1; 0 0 0 1 0];
+
+julia> project(A, layer=:bottom, method=:weighted)
+×3 Matrix{Int64}:
+ 0  2  1
+ 2  0  1
+ 1  1  0
+
+```
+```jldoctest project_bipartite_matrix
+julia> project(G, layer=:top, method=:weighted)
+5×5 Matrix{Bool}:
+ 0  0  0  0  0
+ 0  0  0  0  0
+ 0  0  0  0  0
+ 0  0  0  0  1
+ 0  0  0  1  0
+
+```
+"""
+function project(A::T; layer::Symbol=:bottom, method::Symbol=:simple) where {T<:AbstractMatrix}
+    if isequal(size(A)...)
+        @warn "The matrix `A` is square, make sure it is a biadjacency matrix."
     end
-    return G
+    # define return type
+    if method == :simple
+        returnmethod =  A -> map(x -> !iszero(x), A)
+    elseif method ==:weighted
+        returnmethod = identity
+    else
+        throw(ArgumentError("The method $(method) is not yet implemented."))
+    end
+
+    # project
+    if layer ∈ [:bottom; :⊥]
+        Aproj = A * A'
+    elseif layer ∈ [:top; :⊤]
+        Aproj = A' * A
+    else
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+    end
+    # avoid self-loops
+    Aproj[diagind(Aproj)] .= zero(eltype(Aproj))
+    # dropzeros
+    issparse(Aproj) ? dropzeros!(Aproj) : nothing
+
+    return returnmethod(Aproj)
 end
 
 
-#= OLDER VERSION
-#For undirected, unweighted, and unsigned networks, four types of triads exist: (1) triads without ties/edges (empty triads); (2) triads with one tie present, and two ties absent (one edge triads); (3) triads with one edge absent, and two edges present, referred to in the literature as two-path, two-star, or open triads (or forbidden triads in weighted networks when present edges are strong); and (4) triads with all edges present (triangles, closed triads) (Triads should not be confused with triplets. 
-
 """
-    degree_dist(m::UBCM, i::Int)
+    V_motifs(G::Graphs.SimpleGraph; membership::Vector=Graphs.bipartite_map(G), layer::Symbol=:bottom)
 
-Compute the Poisson-Binomial distribution for the indegree of node `i` for the `UBCM` model `m`.
-"""
-degree_dist(m::UBCM, i::Int) = Distributions.PoissonBinomial(m.G[axes(m.G, 1) .!= i, i])
+Count the total number of V-motif occurences in graph `G` for one of its layers.
 
-"""
-    indegree_dist(m::UBCM)
+*Note*: the bipartiteness of the graph is not explicitely checked.
 
-Compute the Poisson-Binomial distribution for the indegree for all nodes for the `UBCM` model `m`.
-"""
-degree_dist(m::UBCM) = map(i -> degree_dist(m, i), axes(m.G,1))
-
-
-
-
-"""
-    motifs(M::DBCM, n::Int...)
-
-Compute the number of occurrences of motif `n` in the `DBCM` model. If no `n` is given, compute the number of occurrences of all motifs.
-
+# Arguments 
+- `membership`: the bipartite mapping of the graphs. This can be computed using `Graphs.bipartite_map(G)`.
+- `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`. Layer membership is determined by the bipartite map of the graph.
 
 # Examples
-```julia-repl
-julia> motifs(model, 13)
-[37]
+```jldoctest V_motifs_bipartite
+julia> using Graphs
 
-julia> motifs(model, 1,2,3)
-[36; 1; 19]
+julia> G = SimpleGraph(5); add_edge!(G, 1, 4); add_edge!(G, 2, 4); add_edge!(G, 3, 4); add_edge!(G, 3, 5);
 
-julia> motifs(model, 1:13...)
-[36;  1;  19;  24;  13;  14;  32;  44;  16;  3;  36;  26;  37]
+julia> V_motifs(G, layer=:bottom)
+3
+
+```
+```jldoctest V_motifs_bipartite
+julia> V_motifs(G, layer=:top)
+1
+
 ```
 """
-function motifs(M::DBCM, n::Int...)
-    iszero(length(n)) && return nothing
+function V_motifs(G::Graphs.SimpleGraph; membership::Vector=Graphs.bipartite_map(G), layer::Symbol=:bottom)
+    counted = zeros(Bool, Graphs.nv(G))
+    # define the layer identification value
+    if layer ∈ [:bottom; :⊥]
+        layerid = 1
+    elseif layer ∈ [:top; :⊤]
+        layerid = 2
+    else
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+    end
 
-    return eval.(map(f -> :($(f)($M.G)), [DBCM_motif_functions[i] for i in n])) 
+    res = 0
+    # go over all nodes in the layer
+    for i in Graphs.vertices(G)
+        if membership[i] == layerid
+            # go over all its neighbors
+            for j in Graphs.neighbors(G, i)
+                if membership[j] ≠ layerid
+                    # go over all neighbors of j
+                    for k in Graphs.neighbors(G, j)
+                        if k≠i && membership[k] == layerid
+                            if !counted[k]
+                                res += 1
+                            end
+                        end
+                    end
+                end
+            end
+            # all links with i have been counted
+            counted[i] = true
+        end
+    end
+    return res
 end
 
-motifs(M::DBCM) = motifs(M, 1:13...)
 
 """
-    motifs(G::SimpleDiGraph, n::Int...; full::Bool=false))
+    V_motifs(A::T; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
 
-Compute the number of occurrences of motif `n` in the `SimpleDiGraph`. If no `n` is given, compute the number of occurrences of all motifs.
-The keyword `full` allows you to choose between using a sparse or dense representation for the adjacency matrix. For small networks, a full representation is faster.
+Count the total number of V-motif occurence in the biadjacency matrix `A` for one of its layers.
+
+# Arguments 
+- `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`. Layer membership is determined by the bipartite map of the graph.
+- `skipchecks`: if true, skip the dimension check on `A`
 
 # Examples
-```julia-repl
-julia> motifs(G, 13)
-[37]
 
-julia> motifs(G, 1,2,3)
-[36; 1; 19]
-
-julia> motifs(G, 1:13...)
-[36;  1;  19;  24;  13;  14;  32;  44;  16;  3;  36;  26;  37]
-```
 """
-function motifs(G::Graphs.SimpleDiGraph, n::Int...; full::Bool=false)
-    iszero(length(n)) && return nothing
-    # generate adjacency matrix
-    A = full ? Array(Graphs.adjacency_matrix(G)) : Graphs.adjacency_matrix(G)
-    # apply function
-    res = Vector{Int64}(undef, length(n)) # fixed type for performance reasons (x35 faster)
-    for i = 1:length(n)
-        res[i] = eval(:($(DBCM_motif_function_names[i])($A)))
+function V_motifs(A::T; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
+    # check dimensions
+    if !skipchecks && isequal(size(A)...)
+        @warn "The matrix `A` is square, make sure it is a biadjacency matrix."
+    end
+    res = zero(eltype(A))
+    # determine 
+    if layer ∈ [:bottom; :⊥]
+        for i in axes(A, 1)
+            for j in axes(A, 1)
+                if j > i
+                    res += @views dot(A[i,:], A[j,:]) # possible perfomance gain with custom dot function
+                end
+            end
+        end
+    elseif layer ∈ [:top; :⊤]
+        for i in axes(A, 2)
+            for j in axes(A, 2)
+                if j > i
+                    res += @views dot(A[:,i], A[:,j]) # possible perfomance gain with custom dot function
+                end
+            end
+        end
+    else
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+    end
+    
+    return res
+end
+
+
+"""
+    V_motifs(m::BiCM; layer::Symbol=:bottom)
+
+Count the total number of V-motif occurences in the BiCM `m` for one of its layers.
+
+# Arguments 
+- `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`. Layer membership is determined by the bipartite map of the graph.
+- `precomputed`: if true, the expected values of the biadjacency matrix are used, otherwise the parameters are computed from the model parameters.
+
+# Examples
+
+"""
+function V_motifs(m::BiCM; layer::Symbol=:bottom, precomputed::Bool=true)
+    # checks
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) of the *biadjecency matrix* must be computed for `m` first, see `set_Ĝ!`"))
+
+    if precomputed
+        # check
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed first see `set_Ĝ!`"))
+
+        # compute
+        return V_motifs(m.Ĝ, layer=layer, skipchecks=true)
+
+    else
+        res = zero(precision(m))
+        for i in (layer == :bottom ? eachindex(m.⊥nodes) : eachindex(m.⊤nodes))
+            for j in (layer == :bottom ? eachindex(m.⊥nodes) : eachindex(m.⊤nodes))
+                if j > i
+                    res += V_motifs(m, i, j; layer=layer, precomputed=false)
+                end
+            end
+        end
+        return res
+    end
+end
+
+
+
+"""
+    V_motifs(G::Graphs.SimpleGraph, i::Int, j::Int; membership::Vector=Graphs.bipartite_map(G))
+
+Count the number of V-motif occurences in graph `G` between nodes `i` and `j`.
+
+*Notes*: 
+1. the bipartiteness of the graph is not explicitely checked.
+2. this uses the actual node numbers in the graph, not their numbering in the specific layer.
+
+# Arguments 
+- `membership`: the bipartite mapping of the graphs. This can be computed using `Graphs.bipartite_map(G)`.
+
+# Examples
+```jldoctest V_motifs_nodes
+julia> using Graphs
+
+julia> G = SimpleGraph(5); add_edge!(G, 1, 4); add_edge!(G, 1, 5); add_edge!(G, 2, 4); add_edge!(G, 2, 5); add_edge!(G, 3, 4);
+
+julia> V_motifs(G, 1, 2)
+2
+
+```
+
+"""
+function V_motifs(G::Graphs.SimpleGraph, i::Int, j::Int; membership::Vector=Graphs.bipartite_map(G))
+    # check membership
+    membership[i] == membership[j] || throw(ArgumentError("The nodes `i` and `j` must be in the same layer."))
+    # do the count
+    res = 0
+    for k in Graphs.neighbors(G, i)
+        if Graphs.has_edge(G, k, j) && membership[k] ≠ membership[i]
+            res += 1
+        end
     end
 
     return res
 end
 
-motifs(G::Graphs.SimpleDiGraph; full::Bool=false) = motifs(G, 1:13...; full=full)
+
+"""
+    V_motifs(A::T, i::Int, j::Int; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
+
+Count the number of V-motif occurences in the biadjacency matrix `A` between nodes `i` and `j` of a `layer`.
+
+# Arguments
+- `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`.
+- `skipchecks`: if true, skip the dimension check on `A`
+
+*Notes*: depending on the layer, the tuple (`i`, `j`) denotes rows (:bottom) or columns (:top) of the biadjacency matrix `A`.
+
+# Examples
+"""
+function V_motifs(A::T, i::Int, j::Int; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
+    # check dimensions
+    if !skipchecks && isequal(size(A)...)
+        @warn "The matrix `A` is square, make sure it is a biadjacency matrix."
+    end
+    # do the count
+    if layer ∈ [:bottom; :⊥]
+        return dot(A[i,:], A[j,:])
+    elseif layer ∈ [:top; :⊤]
+        return dot(A[:,i], A[:,j])
+    else
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+    end
+end
 
 
 """
-    indegree_dist(m::DBCM, i::Int)
+    V_motifs(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=true)
 
-Compute the Poisson-Binomial distribution for the indegree of node `i` for the `DBCM` model `m`.
+Count the number of expected V-motif occurences in the BiCM `m` between nodes `i` and `j` of a `layer`.
+
+# Arguments
+- `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`.
+- `precomputed`: if true, the expected values of the biadjacency matrix are used, otherwise the parameters are computed from the model parameters.
+
+*Notes*: depending on the layer, the tuple (`i`, `j`) denotes rows (:bottom) or columns (:top) of the expected biadjacency matrix `A`.
+
+# Examples
 """
-indegree_dist(m::DBCM, i::Int) = Distributions.PoissonBinomial(m.G[axes(m.G, 1) .!= i, i])
+function V_motifs(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=true)
+    if precomputed
+        # checks
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) of the *biadjecency matrix* must be computed for `m` first, see `set_Ĝ!`"))
+
+        # compute
+        return V_motifs(m.Ĝ, i, j; layer=layer, skipchecks=true)
+
+    else
+        # checks
+        m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters (m.Θᵣ) must be computed for `m` first, see `solve_model!`"))
+
+        # compute
+        res = zero(eltype(m.θᵣ)) 
+        if layer ∈ [:bottom; :⊥]
+            i_red = m.d⊥ᵣ_ind[i]
+            j_red = m.d⊥ᵣ_ind[j]
+            for α in eachindex(m.yᵣ)
+                res += m.f⊤[α] * f_BiCM(m.xᵣ[i_red] * m.yᵣ[α]) * f_BiCM(m.xᵣ[j_red] * m.yᵣ[α])
+            end
+        elseif layer ∈ [:top; :⊤]
+            α_red = m.d⊤ᵣ_ind[i]
+            β_red = m.d⊤ᵣ_ind[j]
+            for k in eachindex(m.xᵣ)
+                res += m.f⊥[k] * f_BiCM(m.xᵣ[k] * m.yᵣ[α_red]) * f_BiCM(m.xᵣ[k] * m.yᵣ[β_red])
+            end
+        else
+            throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+        end
+
+        return res
+    end
+end
+
 
 """
-    indegree_dist(m::DBCM)
+    V_pB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
 
-Compute the Poisson-Binomial distribution for the indegree for all nodes for the `DBCM` model `m`.
+Compute the parameters of the Poisson-Binomial distribution for the number of V-motifs between nodes `i` and `j` for the `BiCM` model `m`.
+
+# Arguments
+- `precomputed`: if true, the expected values of the biadjacency matrix are used, otherwise the parameters are computed from the model parameters.
+
+*Notes*: 
+1. layer membership is infered from node `i`
+2. depending on the layer, the tuple (`i`, `j`) denotes rows (:bottom) or columns (:top) of the biadjacency matrix `m.Ĝ`.
+
+# Examples
 """
-indegree_dist(m::DBCM) = map(i -> indegree_dist(m, i), axes(m.G,1))
+function V_pB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
+    layer = model.is⊥[i] ? (:bottom) : (:top)
+    if precomputed
+        # checks
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) of the *biadjecency matrix* must be computed for `m` first, see `set_Ĝ!`"))
+        
+        # compute
+        if layer ∈ [:bottom; :⊥]
+            return m.Ĝ[i,:] .* m.Ĝ[j,:]
+        elseif layer ∈ [:top; :⊤]
+            return m.Ĝ[:,i] .* m.Ĝ[:,j]
+        else
+            throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+        end
+    else
+        if layer ∈ [:bottom; :⊥]
+            # initialize
+            # res = zeros(eltype(m.θᵣ), m.status[:N⊤])
+            # i_red = m.d⊥ᵣ_ind[i]
+            # j_red = m.d⊥ᵣ_ind[j]
+            # for α in eachindex(res) # instead of all, go only over the reduced ones and impute them
+            #     α_red = m.d⊤ᵣ_ind[α]
+            #     res[α] = f_BiCM(m.xᵣ[i_red] * m.yᵣ[α_red]) * f_BiCM(m.xᵣ[j_red] * m.yᵣ[α_red])
+            # end
+
+            # return res
+
+            res = zeros(eltype(m.θᵣ), m.status[:d⊤_unique])
+            i_red = m.d⊥ᵣ_ind[i]
+            j_red = m.d⊥ᵣ_ind[j]
+            for α in eachindex(res) # instead of all, go only over the reduced ones and impute them => allocations and compute time reduced
+                res[α] = f_BiCM(m.xᵣ[i_red] * m.yᵣ[α]) * f_BiCM(m.xᵣ[j_red] * m.yᵣ[α])
+            end
+
+            return res[m.d⊤ᵣ_ind]
+        elseif layer ∈ [:top; :⊤]
+            # initialise
+            # res = zeros(eltype(m.θᵣ), m.status[:N⊥])
+            # α_red = m.d⊤ᵣ_ind[i]
+            # β_red = m.d⊤ᵣ_ind[j]
+            # for k in eachindex(res)
+            #     k_red = m.d⊥ᵣ_ind[k]
+            #     res[k] = f_BiCM(m.xᵣ[k_red] * m.yᵣ[α_red]) * f_BiCM(m.xᵣ[k_red] * m.yᵣ[β_red])
+            # end
+
+            res = zeros(eltype(m.θᵣ), m.status[:d⊥_unique])
+            α_red = m.d⊤ᵣ_ind[i]
+            β_red = m.d⊤ᵣ_ind[j]
+            for k in eachindex(res) # instead of all, go only over the reduced ones and impute them => allocations and compute time reduced
+                res[k] = f_BiCM(m.xᵣ[k] * m.yᵣ[α_red]) * f_BiCM(m.xᵣ[k] * m.yᵣ[β_red])
+            end
+
+            return res[m.d⊥ᵣ_ind]
+        else
+            throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+        end
+    end
+end
+
 
 """
-    outdegree_dist(m::DBCM, i::Int)
+    V_p(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=false)
 
-Compute the Poisson-Binomial distribution for node `i` for the `DBCM` model `m`.
+Compute the p-value for the number of V-motifs between nodes `i` and `j` in the original graphs for the `BiCM` model `m` when projected onto the layer `layer`.
 """
-outdegree_dist(m::DBCM, i::Int) = Distributions.PoissonBinomial(m.G[i, axes(m.G, 2) .!= i])
+function V_p(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
+    ## checks
+    # same layer
+    m.is⊥[i] ≠ m.is⊥[j] && throw(ArgumentError("The nodes `i` and `j` must be in the same layers."))
+    # parameters computed
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters (m.Θᵣ) must be computed for `m` first, see `solve_model!`"))
+    # using precomputed biadjacency matrix
+    if precomputed
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) of the *biadjecency matrix* must be computed for `m` first, see `set_Ĝ!`"))
+    end
 
-"""
-    outdegree_dist(m::DBCM)
+    # observed value
+    Vij_obs = V_motifs(m.G, i, j ; membership=m.is⊥)
+    
+    # distribution
+    dPB = Distributions.PoissonBinomial(V_pB_parameters(m, m.is⊥[i] ? m.⊥map[i] : m.⊤map[i], m.is⊥[j] ? m.⊥map[j] : m.⊤map[j]; precomputed=precomputed))
 
-Compute the Poisson-Binomial distribution for the outdegree for all nodes for the `DBCM` model `m`.
-"""
-outdegree_dist(m::DBCM) = map(i -> outdegree_dist(m, i), axes(m.G,1))
+    # expected value
+    Vij_exp = Distributions.mean(dPB)
 
+    # compute p-value
+    pPB = Distributions.ccdf(dPB, Vij_obs)
 
-=#
+    return Vij_obs, Vij_exp, pPB
+end
+

@@ -11,7 +11,7 @@ module MaxEntropyGraphs
     
 
     # to work with all sorts of graphs
-    import Graphs
+    import Graphs: degree
     import SimpleWeightedGraphs
 
     # to solve the optimization problem
@@ -19,7 +19,8 @@ module MaxEntropyGraphs
     import OptimizationOptimJL
     import ForwardDiff, ReverseDiff, Zygote
     import NLsolve
-    import LinearAlgebra: issymmetric
+    import LinearAlgebra: issymmetric, diagind, dot
+    import SparseArrays: dropzeros!, issparse
     #import NaNMath # returns a NaN instead of a DomainError for some functions. The solver(s) will use the NaN within the error control routines to reject the out of bounds step.
 
     import Distributions
@@ -51,6 +52,7 @@ module MaxEntropyGraphs
         export $(motif_name)
         end
     end
+    export V_motifs
 
     ## common model functions
     export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, set_yᵣ!, precision, σₓ
