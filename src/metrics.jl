@@ -819,7 +819,7 @@ julia> project(A, layer=:top)
 julia> A = [0 0 0 1 1; 0 0 0 1 1; 0 0 0 1 0];
 
 julia> project(A, layer=:bottom, method=:weighted)
-×3 Matrix{Int64}:
+3×3 Matrix{Int64}:
  0  2  1
  2  0  1
  1  1  0
