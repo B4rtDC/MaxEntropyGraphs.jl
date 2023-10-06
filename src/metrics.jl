@@ -806,7 +806,7 @@ julia> project(A, layer=:bottom)
 
 ```
 ```jldoctest project_bipartite_matrix
-julia> project(G, layer=:top)
+julia> project(A, layer=:top)
 5×5 Matrix{Bool}:
  0  0  0  0  0
  0  0  0  0  0
@@ -1094,7 +1094,7 @@ julia> V_motifs(A, 1, 2, layer=:bottom)
 
 ```
 ```jldoctest V_motifs_bipartite_matrix_local
-julia> V_motifs(A, 1,2 layer=:top)
+julia> V_motifs(A, 1, 2, layer=:top)
 2
 
 ```
@@ -1259,7 +1259,7 @@ end
 
 Compute the p-value for the number of V-motifs between nodes `i` and `j` in the original graphs for the `BiCM` model `m` when projected onto the layer `layer`.
 
-See also: [`V_motifs(::BiCM,::Int, ::Int)`](@ref)
+See also: [`V_motifs(::BiCM,::Int,::Int)`](@ref)
 """
 function V_p(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
     ## checks
