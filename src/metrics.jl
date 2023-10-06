@@ -826,13 +826,13 @@ julia> project(A, layer=:bottom, method=:weighted)
 
 ```
 ```jldoctest project_bipartite_matrix
-julia> project(G, layer=:top, method=:weighted)
+julia> project(A, layer=:top, method=:weighted)
 5×5 Matrix{Bool}:
  0  0  0  0  0
  0  0  0  0  0
  0  0  0  0  0
- 0  0  0  0  1
- 0  0  0  1  0
+ 0  0  0  0  2
+ 0  0  0  2  0
 
 ```
 """
@@ -939,7 +939,18 @@ Count the total number of V-motif occurence in the biadjacency matrix `A` for on
 - `skipchecks`: if true, skip the dimension check on `A`
 
 # Examples
+```jldoctest V_motifs_bipartite_matrix
+julia> A = [1 1; 1 1; 1 0];
 
+julia> V_motifs(A, layer=:bottom)
+4
+
+```
+```jldoctest V_motifs_bipartite_matrix
+julia> V_motifs(A, layer=:top)
+2
+
+```
 """
 function V_motifs(A::T; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
     # check dimensions
@@ -982,7 +993,21 @@ Count the total number of V-motif occurences in the BiCM `m` for one of its laye
 - `precomputed`: if true, the expected values of the biadjacency matrix are used, otherwise the parameters are computed from the model parameters.
 
 # Examples
+```jldoctest V_motifs_bicm
+julia> model = BiCM(corporateclub());
 
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> V_motifs(model, layer=:bottom), V_motifs(model, layer=:bottom, precomputed=false)
+(449.2569925909879, 449.2569925909879)
+
+```
+```jldoctest V_motifs_bicm
+julia> V_motifs(model, layer=:top), V_motifs(model, layer=:top, precomputed=false)
+(180.2569926636081, 180.2569926636081)
+```
 """
 function V_motifs(m::BiCM; layer::Symbol=:bottom, precomputed::Bool=true)
     # checks
@@ -1061,6 +1086,18 @@ Count the number of V-motif occurences in the biadjacency matrix `A` between nod
 *Notes*: depending on the layer, the tuple (`i`, `j`) denotes rows (:bottom) or columns (:top) of the biadjacency matrix `A`.
 
 # Examples
+```jldoctest V_motifs_bipartite_matrix_local
+julia> A = [1 1; 1 1; 1 0];
+
+julia> V_motifs(A, 1, 2, layer=:bottom)
+2
+
+```
+```jldoctest V_motifs_bipartite_matrix_local
+julia> V_motifs(A, 1,2 layer=:top)
+2
+
+```
 """
 function V_motifs(A::T, i::Int, j::Int; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
     # check dimensions
@@ -1090,6 +1127,22 @@ Count the number of expected V-motif occurences in the BiCM `m` between nodes `i
 *Notes*: depending on the layer, the tuple (`i`, `j`) denotes rows (:bottom) or columns (:top) of the expected biadjacency matrix `A`.
 
 # Examples
+```jldoctest V_motifs_bicm_local
+julia> model = BiCM(corporateclub());
+
+julia> solve_model!(model);
+
+julia> set_Ĝ!(model);
+
+julia> V_motifs(model, 16, 13, layer=:bottom), V_motifs(model, 16, 13, layer=:bottom, precomputed=false)
+(3.385652998856113, 3.385652998856112)
+
+```
+```jldoctest V_motifs_bicm_local
+julia> V_motifs(model, 5, 1, layer=:top), V_motifs(model, 5, 1, layer=:top, precomputed=false)
+(9.469880242964534, 9.469880242964534)
+
+```
 """
 function V_motifs(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=true)
     if precomputed
@@ -1139,6 +1192,7 @@ Compute the parameters of the Poisson-Binomial distribution for the number of V-
 2. depending on the layer, the tuple (`i`, `j`) denotes rows (:bottom) or columns (:top) of the biadjacency matrix `m.Ĝ`.
 
 # Examples
+
 """
 function V_pB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
     layer = model.is⊥[i] ? (:bottom) : (:top)
@@ -1204,6 +1258,8 @@ end
     V_p(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=false)
 
 Compute the p-value for the number of V-motifs between nodes `i` and `j` in the original graphs for the `BiCM` model `m` when projected onto the layer `layer`.
+
+See also: [`V_motifs(::BiCM,::Int, ::Int)`](@ref)
 """
 function V_p(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
     ## checks
