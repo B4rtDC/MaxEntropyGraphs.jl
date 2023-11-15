@@ -1,6 +1,10 @@
 using Test
 using MaxEntropyGraphs
 
-include("./utils.jl")
-include("./models.jl")
+@testset "MaxEntropyGraphs.jl" begin
+    include("./utils.jl")
+    include("./metrics.jl")
+    include("./models.jl")
+end
+
 
