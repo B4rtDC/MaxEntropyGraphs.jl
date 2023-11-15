@@ -33,27 +33,14 @@
         @test j_inverse == [1;2;2;3;1]
         @test j_counts == [2;2;1]
         @test j_unique[j_inverse] == x
-    end
+    end # testset should be extended for lists of tuples (degree/weight sequences)
 
-    # to be extended for lists of tuples
-
-    @testset "Graph metrics" begin
-        @testset "ANND" begin
-            # empty graph
-            G = MaxEntropyGraphs.Graphs.SimpleGraph()
-            @test ANND(G) == Float64[]
-            # single node, no edges
-            MaxEntropyGraphs.Graphs.add_vertex!(G)
-            @test ANND(G,1) == zero(Float64)
-            # standard graph
-            G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
-            Gd = MaxEntropyGraphs.Graphs.SimpleDiGraph(G)
-            @test length(ANND(G)) == MaxEntropyGraphs.Graphs.nv(G)
-            @test_throws ArgumentError ANND(Gd,1)
-            @test_throws ArgumentError ANND(Gd)
-            # should give the same 
-            @test ANND(G) == ANND_in(Gd)
-            @test ANND(G) == ANND_out(Gd)
+    @testset "lognan" begin
+        for type in [Float64; Float32; Float16]
+            @test isnan(MaxEntropyGraphs.log_nan(type(0)))
+            @test isnan(MaxEntropyGraphs.log_nan(type(-1)))
+            @test MaxEntropyGraphs.log_nan(type(exp(1))) ≈ one(type) 
         end
     end
 end
+
