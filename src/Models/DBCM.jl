@@ -122,11 +122,11 @@ function DBCM(G::T; d_out::Vector=Graphs.outdegree(G),
 
         Graphs.nv(G) == 0 ? throw(ArgumentError("The graph is empty")) : nothing
         Graphs.nv(G) == 1 ? throw(ArgumentError("The graph has only one vertex")) : nothing
-        Graphs.nv(G) != length(d_out) ? throw(DimensionMismatch("The number of vertices in the graph ($(Graphs.nv(G))) and the length of the degree sequence ($(length(d))) do not match")) : nothing
+        (Graphs.nv(G) != length(d_out) || Graphs.nv(G) != length(d_in)) ? throw(DimensionMismatch("The number of vertices in the graph ($(Graphs.nv(G))) and the length of the degree sequence ($(length(d))) do not match")) : nothing
     end
     # coherence checks specific to the degree sequences
-    length(d_out) == 0 ? throw(ArgumentError("The degree sequences are empty")) : nothing
-    length(d_out) == 1 ? throw(ArgumentError("The degree sequences only contain a single node")) : nothing
+    (iszero(length(d_out)) || iszero(length(d_in))) ? throw(ArgumentError("The degree sequences are empty")) : nothing
+    (length(d_out) == 1 || length(d_in) ==1 ) ? throw(ArgumentError("The degree sequences only contain a single node")) : nothing
     maximum(d_out) >= length(d_out) ? throw(DomainError("The maximum outdegree in the graph is greater or equal to the number of vertices, this is not allowed")) : nothing
     maximum(d_in)  >= length(d_in)  ? throw(DomainError("The maximum indegree in the graph is greater or equal to the number of vertices, this is not allowed")) : nothing
 
