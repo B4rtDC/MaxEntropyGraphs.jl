@@ -505,7 +505,7 @@ function triangles(A::T; check_dimensions::Bool=true, check_directed::Bool=true)
         throw(DimensionMismatch("`A` must be a square matrix."))
     end
     if check_directed && !issymmetric(A) 
-        throw(ArgumentError( "The matrix is not symmetrical. Consider using ANND_in or ANND_out instead."))
+        throw(ArgumentError( "The matrix is not symmetrical. Consider using `M13` instead."))
     end
 
     # compute
@@ -523,7 +523,13 @@ function triangles(A::T; check_dimensions::Bool=true, check_directed::Bool=true)
     return res / 6
 end
 
-triangles(m::UBCM) = triangles(m.Ĝ,check_dimensions=false, check_directed=false)
+# does this need additional checks/allow for on-the-fly computation?
+function triangles(m::UBCM)
+    # check if Ĝ is computed
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing triangles, see `set_Ĝ!`"))
+    
+    return triangles(m.Ĝ, check_dimensions=false, check_directed=false)
+end
 
 """
     squares(G::Graphs.SimpleGraph)
@@ -608,7 +614,13 @@ function squares(A::T; check_dimensions::Bool=true, check_directed::Bool=true) w
     return res / 8
 end
 
-squares(m::UBCM) = squares(m.Ĝ, check_dimensions=false, check_directed=false)
+# does this need additional checks/allow for on-the-fly computation?
+function squares(m::UBCM)
+    # check if Ĝ is computed
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing squares, see `set_Ĝ!`"))
+
+    return squares(m.Ĝ, check_dimensions=false, check_directed=false)
+end
 
 
 ########################################################################################################
