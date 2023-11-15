@@ -10,8 +10,8 @@
 
 @testset "Models" begin
     @testset "UBCM" begin
-        allowedDataTypes = [Float64]
         @testset "UBCM - generation" begin
+            allowedDataTypes = [Float64; Float32; Float16]
             G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
             d = MaxEntropyGraphs.Graphs.degree(G)
             # simple model, directly from graph, different precisions
@@ -72,7 +72,7 @@
         end
 
         @testset "UBCM - parameter computation" begin
-            #for (method, analytical_gradient) in [(:BFGS, true), (:Newton, true))]
+            allowedDataTypes = [Float64] # ; Float32; Float16 kept out for ocasional convergence issues
             G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
             d = MaxEntropyGraphs.Graphs.degree(G)
             # simple model, directly from graph, different precisions
@@ -138,6 +138,8 @@
             solve_model!(model)
             # check out of bounds
             @test_throws ArgumentError degree(model, length(model.d) + 1)
+            # check methods
+            @test_throws ArgumentError degree(model, method=:unknown_method)
             # check that the degree is correct
             for method in [:reduced, :full]
                 @test isapprox(degree(model, method=method), model.d)
@@ -162,21 +164,203 @@
             @test isa(MaxEntropyGraphs.AICc(model), precision(model))
             @test isa(MaxEntropyGraphs.BIC(model), precision(model))
         end
+
+        @testset "UBCM - adjacancy matrix variance" begin
+            model = UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate))
+            MaxEntropyGraphs.solve_model!(model)
+            # parameters not computed yet
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum)
+            MaxEntropyGraphs.set_Ĝ!(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum)
+            MaxEntropyGraphs.set_σ!(model)
+            # unknown autodiff method
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum, gradient_method=:unknown_method)
+            # normal functioning
+            for method in [:ForwardDiff; :ReverseDiff; :Zygote]
+                @testset "gradient_method: $(method)" begin
+                    @assert MaxEntropyGraphs.σₓ(model, sum, gradient_method=method) ≈ sqrt(sum(model.σ .^ 2))
+                end
+            end
+        end
     end
-    #=
+    
     
     @testset "DBCM" begin
         @testset "DBCM - generation" begin
-            
+            allowedDataTypes = [Float64; Float32; Float16]
+            G = MaxEntropyGraphs.taro_exchange()
+            d_in = MaxEntropyGraphs.Graphs.indegree(G)
+            d_out = MaxEntropyGraphs.Graphs.outdegree(G)
+            # simple model, directly from graph, different precisions
+            for precision in allowedDataTypes
+                model = DBCM(G, precision=precision)
+                @test isa(model, DBCM)
+                @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
+                @test typeof(model).parameters[1] == typeof(G)
+                @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision])
+            end
+            # simple model, directly from degree sequence, different precisions
+            for precision in allowedDataTypes
+                model = DBCM(d_in=d_in, d_out=d_out, precision=precision)
+                @test isa(model, DBCM)
+                @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
+                @test typeof(model).parameters[1] == Nothing
+                @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision])
+            end
+            ## testing breaking conditions
+            @test_throws MethodError DBCM(1) # wrong input type
+            # directed graph info loss warning message
+            G_und = MaxEntropyGraphs.Graphs.SimpleGraph(G)
+            @test_logs (:warn,"The graph is undirected, while the DBCM model is directed, the in- and out-degree will be the same") DBCM(G_und)
+            # weighted graph info loss warning message
+            Gw = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedDiGraph(G)
+            @test_logs (:warn,"The graph is weighted, while DBCM model is unweighted, the weight information will be lost") DBCM(Gw)
+            # graph problems
+            @test_throws ArgumentError DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(0)) # zero node graph
+            @test_throws ArgumentError DBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(1)) # single node graph
+            @test_throws DimensionMismatch DBCM(G, d_in=d_in[1:end-1], d_out=d_out)
+            @test_throws DimensionMismatch DBCM(G, d_in=d_in, d_out=d_out[1:end-1])
+            # degree sequences problems
+            @test_throws ArgumentError DBCM(d_in=Int[], d_out=Int[])
+            @test_throws ArgumentError DBCM(d_in=Int[1], d_out=Int[1])
+            d_inb = copy(d_in); d_inb[end] = length(d_in) + 1
+            @test_throws DomainError DBCM(d_in=d_inb, d_out=d_out) # degree out of range
+            d_outb = copy(d_out); d_outb[end] = length(d_out) + 1
+            @test_throws DomainError DBCM(d_in=d_in, d_out=d_outb) # degree out of range
         end
+
+        @testset "DBCM - Likelihood gradient test" begin
+            G = MaxEntropyGraphs.taro_exchange()
+            model = MaxEntropyGraphs.DBCM(G)
+            θ₀ = MaxEntropyGraphs.initial_guess(model)
+            ∇L_buf = zeros(length(θ₀))
+            ∇L_buf_min = zeros(length(θ₀))
+            x_buf = zeros(length(model.xᵣ))
+            y_buf = zeros(length(model.yᵣ))
+            MaxEntropyGraphs.∇L_DBCM_reduced!(∇L_buf, θ₀, model.dᵣ_out, model.dᵣ_in,  model.f, model.dᵣ_in_nz, model.dᵣ_out_nz, x_buf, y_buf, model.status[:d_unique])
+            MaxEntropyGraphs.∇L_DBCM_reduced_minus!(∇L_buf_min, θ₀, model.dᵣ_out, model.dᵣ_in,  model.f, model.dᵣ_in_nz, model.dᵣ_out_nz, x_buf, y_buf, model.status[:d_unique])
+            @test ∇L_buf ≈ -∇L_buf_min
+        end
+        
         @testset "DBCM - parameter computation" begin
-            
+            #G = MaxEntropyGraphs.taro_exchange()
+            G = MaxEntropyGraphs.maspalomas()
+            d_in = MaxEntropyGraphs.Graphs.indegree(G)
+            d_out = MaxEntropyGraphs.Graphs.outdegree(G)
+            # simple model, directly from graph, different precisions
+            allowedDataTypes = [Float64]
+            for precision in allowedDataTypes
+                @testset "$(precision) precision" begin
+                    model = MaxEntropyGraphs.DBCM(G, precision=precision)
+                    @test_throws ArgumentError Ĝ(model)
+                    @test_throws ArgumentError σˣ(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.set_xᵣ!(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.set_yᵣ!(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.initial_guess(model, method=:strange)
+                    for initial in [:degrees, :degrees_minor, :chung_lu] # :random, :uniform have convergence issues for this graph
+                        @test length(MaxEntropyGraphs.initial_guess(model, method=initial)) == model.status[:d_unique] * 2
+                        for (method, analytical_gradient) in [(:BFGS, true), (:BFGS, false), (:fixedpoint, false), (:fixedpoint, true)]
+                            @testset "initials: $initial, method: $method, analytical_gradient: $analytical_gradient" begin
+                                MaxEntropyGraphs.solve_model!(model, initial=initial, method=method, analytical_gradient=analytical_gradient)
+                                A = MaxEntropyGraphs.Ĝ(model)
+                                # check that constraints are respected
+                                @test reshape(sum(A, dims=2),:,1) ≈ d_out
+                                @test reshape(sum(A, dims=1),:,1) ≈ d_in
+                            end
+                        end
+                    end
+                end
+            end
         end
+
         @testset "DBCM - sampling" begin
-            
+            model = DBCM(MaxEntropyGraphs.maspalomas())
+            # parameters unknown
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=false)
+            @test_throws ArgumentError MaxEntropyGraphs.Ĝ(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σˣ(model)
+            # solve model
+            MaxEntropyGraphs.solve_model!(model)
+            # parameters known, but G not set
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=true)
+            @test MaxEntropyGraphs.Graphs.nv(rand(model)) == MaxEntropyGraphs.Graphs.nv(model.G)
+            MaxEntropyGraphs.set_Ĝ!(model)
+            MaxEntropyGraphs.set_σ!(model)
+            @test eltype(MaxEntropyGraphs.σˣ(model)) == MaxEntropyGraphs.precision(model)
+            @test size(MaxEntropyGraphs.σˣ(model)) == (MaxEntropyGraphs.Graphs.nv(model.G),MaxEntropyGraphs.Graphs.nv(model.G))
+            @test eltype(MaxEntropyGraphs.Ĝ(model)) == MaxEntropyGraphs.precision(model)
+            @test size(MaxEntropyGraphs.Ĝ(model)) == (MaxEntropyGraphs.Graphs.nv(model.G),MaxEntropyGraphs.Graphs.nv(model.G))
+            # sampling
+            S = rand(model, 100)
+            @test length(S) == 100
+            @test all(MaxEntropyGraphs.Graphs.nv.(S) .== MaxEntropyGraphs.Graphs.nv(model.G))
+        end
+
+        @testset "DBCM - degree metrics" begin
+            model = DBCM(MaxEntropyGraphs.maspalomas())
+            # adjacency matric
+            @test iszero(MaxEntropyGraphs.A(model,1,1))
+            @test isa(MaxEntropyGraphs.A(model,1,2), precision(model))
+            # parameters not computed yet
+            @test_throws ArgumentError degree(model, 1)
+            solve_model!(model)
+            # check out of bounds
+            @test_throws ArgumentError degree(model, length(model.d_out) + 1)
+            # check methods
+            @test_throws ArgumentError degree(model, method=:unknown_method)
+            # check that the degree is correct
+            for method in [:reduced, :full]
+                @test isapprox(outdegree(model, method=method), model.d_out)
+                @test isapprox(indegree( model, method=method), model.d_in)
+            end
+            # check precompute
+            @test_throws ArgumentError degree(model, method=:adjacency)
+            set_Ĝ!(model)
+            @test isapprox(outdegree(model, method=:adjacency), model.d_out)
+            @test isapprox(indegree( model, method=:adjacency), model.d_in)
+        end
+
+        @testset "DBCM - (B/A)IC(c)" begin
+            model = DBCM(MaxEntropyGraphs.maspalomas())
+            # parameters not computed yet
+            @test_throws ArgumentError MaxEntropyGraphs.AIC(model)
+            @test_throws ArgumentError MaxEntropyGraphs.AICc(model)
+            @test_throws ArgumentError MaxEntropyGraphs.BIC(model)
+            solve_model!(model)
+            # check warning
+            @test_logs (:warn, "The number of observations is small with respect to the number of parameters (n/k < 40). Consider using the corrected AIC (AICc) instead.") MaxEntropyGraphs.AIC(model)
+            # test types
+            @test isa(MaxEntropyGraphs.AIC(model), precision(model))
+            @test isa(MaxEntropyGraphs.AICc(model), precision(model))
+            @test isa(MaxEntropyGraphs.BIC(model), precision(model))
+        end
+
+        @testset "DBCM - adjacency matrix variance" begin
+            model = DBCM(MaxEntropyGraphs.maspalomas())
+            solve_model!(model)
+            # parameters not computed yet
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum)
+            MaxEntropyGraphs.set_Ĝ!(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum)
+            MaxEntropyGraphs.set_σ!(model)
+            # unknown autodiff method
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum, gradient_method=:unknown_method)
+            # normal functioning
+            for method in [:ForwardDiff, :ReverseDiff, :Zygote]
+                @testset "gradient_method: $(method)" begin
+                    @assert MaxEntropyGraphs.σₓ(model, sum, gradient_method=method) ≈ sqrt(sum(model.σ .^ 2))
+                end
+            end
         end
     end
 
+
+
+end
+
+    #=
     @testset "BiCM" begin
         @testset "BiCM - generation" begin
             
@@ -294,6 +478,6 @@
     
     end
     =#
-end
+
 
 
