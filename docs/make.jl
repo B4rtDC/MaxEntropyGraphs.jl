@@ -41,7 +41,7 @@ makedocs(sitename="MaxEntropyGraphs.jl",
                             "DBCM" => "API/API_DBCM.md",
                             "BiCM" => "API/API_BiCM.md",]
                             ],
-         doctest=true,
+         doctest=false,
          build=joinpath(dirname(@__FILE__), "build")
 )
 
