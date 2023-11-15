@@ -79,15 +79,43 @@ module MaxEntropyGraphs
     # disable during development
     set_preferences!(MaxEntropyGraphs, "precompile_workload" => false; force=true)
     let
+        # UBCM workload
         @setup_workload begin
             G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
             @compile_workload begin
-                # UBCM workload
+                # model building and solving
                 model = UBCM(G)
                 solve_model!(model)
                 solve_model!(model, method=:BFGS)
                 solve_model!(model, method=:BFGS, analytical_gradient=true)
-                # DBCM workload
+                solve_model!(model, method=:LBFGS)
+                solve_model!(model, method=:LBFGS, analytical_gradient=true)
+                solve_model!(model, method=:Newton)
+                solve_model!(model, method=:Newton, analytical_gradient=true)
+                # sampling
+                rand(model,10)
+                # metrics
+                # [TO DO]
+            end
+        end
+
+        # DBCM workload
+        @setup_workload begin
+            G = MaxEntropyGraphs.maspalomas()
+            @compile_workload begin
+                # model building and solving
+                model = DBCM(G)
+                solve_model!(model)
+                solve_model!(model, method=:BFGS)
+                solve_model!(model, method=:BFGS, analytical_gradient=true)
+                solve_model!(model, method=:LBFGS)
+                solve_model!(model, method=:LBFGS, analytical_gradient=true)
+                solve_model!(model, method=:Newton)
+                solve_model!(model, method=:Newton, analytical_gradient=true)
+                # sampling
+                rand(model,10)
+                # metrics
+                # [TO DO]
             end
         end
     end
