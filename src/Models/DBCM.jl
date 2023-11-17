@@ -202,7 +202,7 @@ julia> model_fun(ones(size(model.θᵣ)))
 -252.4627226503138
 ```
 """
-function L_DBCM_reduced(θ::Vector, k_out::Vector, k_in::Vector, F::Vector, nz_out::Vector, nz_in::Vector, n::Int=length(k_out))
+function L_DBCM_reduced(θ::AbstractVector, k_out::Vector, k_in::Vector, F::Vector, nz_out::Vector, nz_in::Vector, n::Int=length(k_out))
     α = @view θ[1:n]
     β = @view θ[n+1:end]
     res = zero(eltype(θ))
