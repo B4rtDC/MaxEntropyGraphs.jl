@@ -709,6 +709,386 @@ for i = 1:13
     end
 end
 
+function M13(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # outgoing edges i -> j
+        for j in Graphs.outneighbors(G, i)
+            # verify recipocrated edge j -> i
+            if j ≠ i && Graphs.has_edge(G, j, i) 
+                # outgoing edges j -> k
+                for k in Graphs.outneighbors(G, j)
+                    # verify recipocrated edge k -> j
+                    if k ≠ j && Graphs.has_edge(G, k, j)
+                        # check edges i -> k and k -> i
+                        if Graphs.has_edge(G, i, k) && Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M12(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # outgoing edges i -> j
+        for j in Graphs.outneighbors(G, i)
+            # verify recipocrated edge j -> i
+            if j ≠ i && Graphs.has_edge(G, j, i) 
+                # outgoing edges j -> k
+                for k in Graphs.outneighbors(G, j)
+                    # verify recipocrated edge k -> j
+                    if k ≠ j && Graphs.has_edge(G, k, j)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M11(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # outgoing edges i -> j
+        for j in Graphs.outneighbors(G, i)
+            # verify recipocrated edge j -> i
+            if j ≠ i && Graphs.has_edge(G, j, i) 
+                # incoming edges k -> j
+                for k in Graphs.inneighbors(G, j)
+                    # verify non-recipocrated edge j -> k
+                    if k ≠ i && k ≠ j && !Graphs.has_edge(G, j, k)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M10(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # outgoing edges i -> j
+        for j in Graphs.outneighbors(G, i)
+            # verify recipocrated edge j -> i
+            if j ≠ i && Graphs.has_edge(G, j, i) 
+                # outgoing edges j -> k
+                for k in Graphs.outneighbors(G, j)
+                    # verify non-recipocrated edge k -> j
+                    if k ≠ i && !Graphs.has_edge(G, k, j)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M9(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # outgoing edges i -> j
+        for j in Graphs.outneighbors(G, i)
+            # verify non-recipocrated edge j -> i
+            if j ≠ i && !Graphs.has_edge(G, j, i) 
+                # outgoing edges j -> k
+                for k in Graphs.outneighbors(G, j)
+                    # verify non-recipocrated edge k -> j
+                    if k ≠ j && !Graphs.has_edge(G, k, j)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M8(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # outgoing edges i -> j
+        for j in Graphs.outneighbors(G, i)
+            # verify recipocrated edge j -> i
+            if j ≠ i && Graphs.has_edge(G, j, i) 
+                # outgoing edges j -> k
+                for k in Graphs.outneighbors(G, j)
+                    # verify recipocrated edge k -> j
+                    if k ≠ i && k ≠ j && Graphs.has_edge(G, k, j)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && !Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M7(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # outgoing edges i -> j
+        for j in Graphs.outneighbors(G, i)
+            # verify non-recipocrated edge j -> i
+            if j ≠ i && !Graphs.has_edge(G, j, i) 
+                # outgoing edges j -> k
+                for k in Graphs.outneighbors(G, j)
+                    # verify recipocrated edge k -> j
+                    if k ≠ i && k ≠ j && Graphs.has_edge(G, k, j)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && !Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M6(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # incoming edges j -> i
+        for j in Graphs.inneighbors(G, i)
+            # verify non-recipocrated edge i -> j
+            if j ≠ i && !Graphs.has_edge(G, i, j) 
+                # outgoing edges j -> k
+                for k in Graphs.outneighbors(G, j)
+                    # verify recipocrated edge k -> j
+                    if k ≠ j && Graphs.has_edge(G, k, j)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M5(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # incoming edges j -> i
+        for j in Graphs.inneighbors(G, i)
+            # verify non-recipocrated edge i -> j
+            if j ≠ i && !Graphs.has_edge(G, i, j) 
+                # outgoing edges j -> k
+                for k in Graphs.outneighbors(G, j)
+                    # verify non-recipocrated edge k -> j
+                    if k ≠ j && !Graphs.has_edge(G, k, j)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M4(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # incoming edges j -> i
+        for (j,k) in combinations(Graphs.inneighbors(G,i), 2) #Graphs.inneighbors(G, i)
+            if !has_edge(G, i, j) && !has_edge(G, i, k) && !has_edge(G, j, k) && !has_edge(G, k, j)
+                res += 1
+            end
+        end
+    end
+
+    # we multiply by two, because by using combinations, we only count half of the wedges
+    return res * 2
+end
+
+function M3(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # outgoing edges i -> j
+        for j in Graphs.inneighbors(G, i)
+            # verify non-recipocrated edge i -> j
+            if j ≠ i && !Graphs.has_edge(G, i, j) 
+                # outgoing edges j -> k
+                for k in Graphs.outneighbors(G, j)
+                    # verify recipocrated edge k -> j
+                    if k ≠ i && k ≠ j && Graphs.has_edge(G, k, j)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && !Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M2(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # outgoing edges i -> j
+        for j in Graphs.inneighbors(G, i)
+            # verify non-recipocrated edge i -> j
+            if j ≠ i && !Graphs.has_edge(G, i, j) 
+                # outgoing edges j -> k
+                for k in Graphs.inneighbors(G, j)
+                    # verify non-recipocrated edge j -> k
+                    if k ≠ i && k ≠ j && !Graphs.has_edge(G, j, k)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && !Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
+function M1(G::T) where T <: AbstractGraph
+    # check if the graph is directed
+    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+
+    # initialise the count
+    res = 0 
+    # iterate
+    for i in Graphs.vertices(G)
+        # outgoing edges i -> j
+        for j in Graphs.inneighbors(G, i)
+            # verify non-recipocrated edge i -> j
+            if j ≠ i && !Graphs.has_edge(G, i, j) 
+                # outgoing edges j -> k
+                for k in Graphs.outneighbors(G, j)
+                    # verify non-recipocrated edge k -> j
+                    if k ≠ i && k ≠ j && !Graphs.has_edge(G, k, j)
+                        # check edges i -> k and k -> i
+                        if !Graphs.has_edge(G, i, k) && !Graphs.has_edge(G, k, i)
+                            res += 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # Each triangle is counted 6 times (once for each permutation of the vertices), but we accept this for coherence with other packages
+    return res
+end
+
 
 ########################################################################################################
 # Bipartite networks motifs and helper functions
