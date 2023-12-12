@@ -709,7 +709,7 @@ for i = 1:13
     end
 end
 
-function M13(G::T) where T <: AbstractGraph
+function M13(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -739,7 +739,7 @@ function M13(G::T) where T <: AbstractGraph
     return res
 end
 
-function M12(G::T) where T <: AbstractGraph
+function M12(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -769,7 +769,7 @@ function M12(G::T) where T <: AbstractGraph
     return res
 end
 
-function M11(G::T) where T <: AbstractGraph
+function M11(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -799,7 +799,7 @@ function M11(G::T) where T <: AbstractGraph
     return res
 end
 
-function M10(G::T) where T <: AbstractGraph
+function M10(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -829,7 +829,7 @@ function M10(G::T) where T <: AbstractGraph
     return res
 end
 
-function M9(G::T) where T <: AbstractGraph
+function M9(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -859,7 +859,7 @@ function M9(G::T) where T <: AbstractGraph
     return res
 end
 
-function M8(G::T) where T <: AbstractGraph
+function M8(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -889,7 +889,7 @@ function M8(G::T) where T <: AbstractGraph
     return res
 end
 
-function M7(G::T) where T <: AbstractGraph
+function M7(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -919,7 +919,7 @@ function M7(G::T) where T <: AbstractGraph
     return res
 end
 
-function M6(G::T) where T <: AbstractGraph
+function M6(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -949,7 +949,7 @@ function M6(G::T) where T <: AbstractGraph
     return res
 end
 
-function M5(G::T) where T <: AbstractGraph
+function M5(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -979,7 +979,7 @@ function M5(G::T) where T <: AbstractGraph
     return res
 end
 
-function M4(G::T) where T <: AbstractGraph
+function M4(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -999,7 +999,7 @@ function M4(G::T) where T <: AbstractGraph
     return res * 2
 end
 
-function M3(G::T) where T <: AbstractGraph
+function M3(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -1029,7 +1029,7 @@ function M3(G::T) where T <: AbstractGraph
     return res
 end
 
-function M2(G::T) where T <: AbstractGraph
+function M2(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
@@ -1059,7 +1059,7 @@ function M2(G::T) where T <: AbstractGraph
     return res
 end
 
-function M1(G::T) where T <: AbstractGraph
+function M1(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
     is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
