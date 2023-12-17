@@ -989,7 +989,7 @@ function M4(G::T) where T <: Graphs.AbstractGraph
     for i in Graphs.vertices(G)
         # incoming edges j -> i
         for (j,k) in combinations(Graphs.inneighbors(G,i), 2) #Graphs.inneighbors(G, i)
-            if !has_edge(G, i, j) && !has_edge(G, i, k) && !has_edge(G, j, k) && !has_edge(G, k, j)
+            if !Graphs.has_edge(G, i, j) && !Graphs.has_edge(G, i, k) && !Graphs.has_edge(G, j, k) && !Graphs.has_edge(G, k, j)
                 res += 1
             end
         end
