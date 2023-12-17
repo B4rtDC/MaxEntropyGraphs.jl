@@ -711,7 +711,7 @@ end
 
 function M13(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -741,7 +741,7 @@ end
 
 function M12(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -771,7 +771,7 @@ end
 
 function M11(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -801,7 +801,7 @@ end
 
 function M10(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -831,7 +831,7 @@ end
 
 function M9(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -861,7 +861,7 @@ end
 
 function M8(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -891,7 +891,7 @@ end
 
 function M7(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -921,7 +921,7 @@ end
 
 function M6(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -951,7 +951,7 @@ end
 
 function M5(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -981,7 +981,7 @@ end
 
 function M4(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -1001,7 +1001,7 @@ end
 
 function M3(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -1031,7 +1031,7 @@ end
 
 function M2(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
@@ -1061,7 +1061,7 @@ end
 
 function M1(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
-    is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
+    Graphs.is_directed(G) ? nothing : throw(ArgumentError("The graph must be directed"))
 
     # initialise the count
     res = 0 
