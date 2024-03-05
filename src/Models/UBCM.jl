@@ -163,7 +163,7 @@ julia> L_UBCM_reduced(θ, K, F)
 -225.3065566905141
 ```
 """
-function L_UBCM_reduced(θ::Vector, K::Vector, F::Vector)
+function L_UBCM_reduced(θ::AbstractVector, K::Vector, F::Vector)
     res = - sum(θ .* K .* F)
     for k in eachindex(K)
         @simd for k′ in eachindex(K)
