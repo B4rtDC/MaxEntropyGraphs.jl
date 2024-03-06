@@ -5,7 +5,7 @@
 ###########################################################################################
 
 @testset "Graph metrics" begin
-    @testset "strength" begin
+    @testset "Strength" begin
         @testset "undirected" begin
             for weighttype in [Float64; Float32; Float16; Int64; Int32; Int16]
                 # undirected setup
@@ -78,6 +78,22 @@
         @test ANND(A) == ANND(G)
         @test ANND(A) == ANND_in(Ad)
         @test ANND(A) == ANND_out(Ad)
+
+        ## working with a model
+        # UBCM
+        model = MaxEntropyGraphs.UBCM(MaxEntropyGraphs.Graphs.smallgraph(:karate))
+        solve_model!(model)
+        @test_throws ArgumentError ANND(model)
+        set_Ĝ!(model)
+        @test ANND(model) == ANND(model.Ĝ)
+        # DBCM
+        model = MaxEntropyGraphs.DBCM(MaxEntropyGraphs.maspalomas())
+        solve_model!(model)
+        @test_throws ArgumentError ANND_in(model)
+        @test_throws ArgumentError ANND_out(model)
+        set_Ĝ!(model)
+        @test ANND_in(model) == ANND_in(model.Ĝ)
+        @test ANND_out(model) == ANND_out(model.Ĝ)
     end
 
     @testset "wedges" begin
@@ -93,8 +109,10 @@
         model = MaxEntropyGraphs.UBCM(G)
         solve_model!(model)
         @test_throws ArgumentError wedges(model)
-        MaxEntropyGraphs.set_Ĝ!(model)
+        set_Ĝ!(model)
         @test wedges(model) == wedges(model.Ĝ)
+        
+        
     end
 
     @testset "triangles" begin
@@ -119,19 +137,50 @@
     end
 
     @testset "squares" begin
-        # setup undirected
+        # setup
         G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+        Gd = MaxEntropyGraphs.maspalomas()
         A = MaxEntropyGraphs.Graphs.adjacency_matrix(G)
         # coherence checks
         @test_throws DimensionMismatch squares(A[:,1:end-1])
-        # equality/equivalence
-        @test MaxEntropyGraphs.squares(G) == MaxEntropyGraphs.squares(A)
+        @test_throws ArgumentError squares(MaxEntropyGraphs.Graphs.adjacency_matrix(Gd))
 
-        # combination with model
+        # equality
+        @test squares(G) == squares(A)
+        
         model = MaxEntropyGraphs.UBCM(G)
-        @test_throws ArgumentError MaxEntropyGraphs.squares(model)
-        MaxEntropyGraphs.solve_model!(model)
-        MaxEntropyGraphs.set_Ĝ!(model)
+        solve_model!(model)
+        @test_throws ArgumentError squares(model)
+        set_Ĝ!(model)
         @test squares(model) == squares(model.Ĝ)
     end
+
+    @testset "3-node directed subgraphs" begin
+        # setup
+        G = MaxEntropyGraphs.maspalomas()
+        GA = MaxEntropyGraphs.Graphs.adjacency_matrix(G)
+        Gu = MaxEntropyGraphs.Graphs.SimpleGraph(G)
+        model = MaxEntropyGraphs.DBCM(G)
+        # solve model
+        solve_model!(model)
+        set_Ĝ!(model)
+        A = MaxEntropyGraphs.Ĝ(model)
+        for motif_name in MaxEntropyGraphs.directed_graph_motif_function_names
+            # on an adjacency_matrix
+            motif_count_matrix = @eval begin $(motif_name)($(A)) end
+            # on a DBCM model
+            motif_count_model = @eval begin $(motif_name)($(model)) end
+            @test motif_count_matrix == motif_count_model
+            # on a graph
+            gcount = @eval begin $(motif_name)($(G)) end
+            acount = @eval begin $(motif_name)($(GA)) end
+            @test isa(gcount, Int)
+            @test_throws ArgumentError @eval begin $(motif_name)($(Gu)) end
+            @test gcount == acount
+        end
+    end    
+end
+
+@testset "bipartite graphs" begin
+    
 end
