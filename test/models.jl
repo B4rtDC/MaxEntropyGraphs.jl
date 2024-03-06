@@ -357,11 +357,178 @@
     end
 
     @testset "BiCM" begin
-    
+        @testset "BiCM - generation" begin
+            allowedDataTypes = [Float64; Float32; Float16]
+            G = MaxEntropyGraphs.corporateclub()
+            membership = MaxEntropyGraphs.Graphs.bipartite_map(G)
+            ⊥nodes, ⊤nodes = findall(membership .== 1), findall(membership .== 2)
+            d⊥ = MaxEntropyGraphs.Graphs.degree(G, ⊥nodes)
+            d⊤ = MaxEntropyGraphs.Graphs.degree(G, ⊤nodes)
+            # simple model, directly from graph, different precisions
+            for precision in allowedDataTypes
+                model = BiCM(G, precision=precision)
+                @test isa(model, BiCM)
+                @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
+                @test typeof(model).parameters[1] == typeof(G)
+                @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision, eltype(model.yᵣ) == precision])
+            end
+            # simple model, directly from degree sequences, different precisions
+            for precision in allowedDataTypes
+                model = BiCM(d⊥=d⊥, d⊤=d⊤, precision=precision)
+                @test isa(model, BiCM)
+                @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
+                @test typeof(model).parameters[1] == Nothing
+                @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision, eltype(model.yᵣ) == precision])
+            end
+            # testing breaking conditions
+            @test_throws MethodError BiCM(1) # wrong input type
+            @test_throws ArgumentError BiCM(MaxEntropyGraphs.Graphs.SimpleGraph(0)) # zero node graph
+            @test_throws ArgumentError BiCM(MaxEntropyGraphs.Graphs.SimpleGraph(1)) # single node graph
+            # directed graph info loss warning message
+            Gd = MaxEntropyGraphs.Graphs.SimpleDiGraph(G)
+            @test_logs (:warn,"The graph is directed, while the BiCM model is undirected, the directional information will be lost") BiCM(Gd, d⊥=MaxEntropyGraphs.Graphs.outdegree(Gd,⊥nodes), d⊤=MaxEntropyGraphs.Graphs.outdegree(Gd,⊤nodes))
+            # weighted graph info loss warning message
+            Gw = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(G)
+            @test_logs (:warn,"The graph is weighted, while the BiCM model is unweighted, the weight information will be lost") BiCM(Gw)
+            
+            # coherence degrees
+            @test_throws ArgumentError BiCM(d⊥=Int[], d⊤=d⊤)
+            @test_throws ArgumentError BiCM(d⊥=d⊥, d⊤=Int[])
+            @test_throws ArgumentError BiCM(d⊥=d⊥[1:1], d⊤=d⊤)
+            @test_throws ArgumentError BiCM(d⊥=d⊥, d⊤=d⊤[1:1])
+            
+            # different lengths
+            @test_throws DimensionMismatch BiCM(G; d⊥=d⊥[1:end-1], d⊤=d⊤)
+            
+        end
+        
+        @testset "BiCM - log-Likelihood" begin
+            G = MaxEntropyGraphs.corporateclub()
+            model = MaxEntropyGraphs.BiCM(G)
+            θ₀ = ones(size(MaxEntropyGraphs.initial_guess(model))) .* Inf
+            @assert MaxEntropyGraphs.L_BiCM_reduced(θ₀, model.d⊥ᵣ, model.d⊤ᵣ, model.f⊥, model.f⊤, model.d⊥ᵣ_nz, model.d⊤ᵣ_nz, model.status[:d⊥_unique] ) ≈ -Inf
+        end
+
+        @testset "BiCM - log-likelihood gradient" begin
+            G = MaxEntropyGraphs.corporateclub()
+            model = MaxEntropyGraphs.BiCM(G)
+            θ₀ = ones(size(MaxEntropyGraphs.initial_guess(model)))
+            # buffers
+            ∇L_buf = zeros(length(θ₀))
+            ∇L_buf_min = zeros(length(θ₀))
+            x_buf = zeros(length(model.xᵣ))
+            y_buf = zeros(length(model.yᵣ))
+            # gradient
+            MaxEntropyGraphs.∇L_BiCM_reduced!(∇L_buf, θ₀, model.d⊥ᵣ, model.d⊤ᵣ, model.f⊥, model.f⊤, model.d⊥ᵣ_nz, model.d⊤ᵣ_nz, x_buf, y_buf, model.status[:d⊥_unique])
+            MaxEntropyGraphs.∇L_BiCM_reduced_minus!(∇L_buf_min, θ₀, model.d⊥ᵣ, model.d⊤ᵣ, model.f⊥, model.f⊤, model.d⊥ᵣ_nz, model.d⊤ᵣ_nz, x_buf, y_buf, model.status[:d⊥_unique])
+            @test ∇L_buf ≈ -∇L_buf_min
+            # AD gradient equivalence
+            ∇L_zyg = MaxEntropyGraphs.Zygote.gradient(θ -> MaxEntropyGraphs.L_BiCM_reduced(θ, model.d⊥ᵣ, model.d⊤ᵣ, model.f⊥, model.f⊤, model.d⊥ᵣ_nz, model.d⊤ᵣ_nz, model.status[:d⊥_unique]), θ₀)[1]
+            @test ∇L_zyg ≈ ∇L_buf
+            @test ∇L_zyg ≈ -∇L_buf_min
+        end
+
+        @testset "BiCM - parameter computation" begin
+            allowedDataTypes = [Float64] # ; Float32; Float16 kept out for ocasional convergence issues
+            G = MaxEntropyGraphs.corporateclub()
+            membership = MaxEntropyGraphs.Graphs.bipartite_map(G)
+            ⊥nodes, ⊤nodes = findall(membership .== 1), findall(membership .== 2)
+            d⊥ = MaxEntropyGraphs.Graphs.degree(G, ⊥nodes)
+            d⊤ = MaxEntropyGraphs.Graphs.degree(G, ⊤nodes)
+            # simple model, directly from graph, different precisions
+            for precision in allowedDataTypes
+                @testset "$(precision) precision" begin
+                    model = BiCM(G, precision=precision)
+                    @test_throws ArgumentError Ĝ(model)
+                    #@test_throws ArgumentError σˣ(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.set_xᵣ!(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.set_yᵣ!(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.initial_guess(model, method=:strange)
+                    for initial in [:degrees, :uniform, :random, :chung_lu]
+                        @testset "initial guess: $initial" begin
+                            @test length(MaxEntropyGraphs.initial_guess(model, method=initial)) == model.status[:d⊥_unique] + model.status[:d⊤_unique]
+                            for (method, analytical_gradient) in [(:BFGS, true), (:BFGS, false), (:fixedpoint, false), (:fixedpoint, true)]
+                                @testset "initials: $initial, method: $method, analytical_gradient: $analytical_gradient" begin
+                                    MaxEntropyGraphs.solve_model!(model, initial=initial, method=method, analytical_gradient=analytical_gradient)
+                                    A = MaxEntropyGraphs.Ĝ(model)
+                                    # check that constraints are respected
+                                    @test reshape(sum(A, dims=2),:,1) ≈ d⊥
+                                    @test reshape(sum(A, dims=1),:,1) ≈ d⊤
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        @testset "BiCM - sampling" begin
+            model = BiCM(MaxEntropyGraphs.corporateclub())
+            # parameters unknown
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=false)
+            @test_throws ArgumentError MaxEntropyGraphs.Ĝ(model)
+            #@test_throws ArgumentError MaxEntropyGraphs.σˣ(model)
+            # solve model
+            MaxEntropyGraphs.solve_model!(model)
+            # parameters known, but G not set
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=true)
+            @test MaxEntropyGraphs.Graphs.nv(rand(model)) == MaxEntropyGraphs.Graphs.nv(model.G)
+            MaxEntropyGraphs.set_Ĝ!(model)
+            #MaxEntropyGraphs.set_σ!(model)
+            #@test eltype(MaxEntropyGraphs.σˣ(model)) == MaxEntropyGraphs.precision(model)
+            #@test size(MaxEntropyGraphs.σˣ(model)) == (MaxEntropyGraphs.Graphs.nv(model.G),MaxEntropyGraphs.Graphs.nv(model.G))
+            @test eltype(MaxEntropyGraphs.Ĝ(model)) == MaxEntropyGraphs.precision(model)
+            @test size(MaxEntropyGraphs.Ĝ(model)) == (length(model.d⊥),length(model.d⊤ ))
+            # sampling
+            S = rand(model, 100)
+            @test length(S) == 100
+            @test all(MaxEntropyGraphs.Graphs.nv.(S) .== MaxEntropyGraphs.Graphs.nv(model.G))
+        end
+
+        @testset "BiCM - degree metrics" begin
+            G = MaxEntropyGraphs.corporateclub()
+            model = BiCM(G)
+            # bi-adjacency matric
+            @test isa(MaxEntropyGraphs.A(model,1,1), precision(model))
+            # parameters not computed yet
+            @test_throws ArgumentError degree(model, 1)
+            solve_model!(model)
+            # check out of bounds
+            @test_throws ArgumentError degree(model, length(model.d⊥) + length(model.d⊤) + 1)
+            # check methods
+            @test_throws ArgumentError degree(model, method=:unknown_method)
+            # check that the degree is correct
+            for method in [:reduced, :full]
+                @test isapprox(degree(model, method=method), MaxEntropyGraphs.Graphs.degree(G))
+            end
+            # check precompute
+            @test_throws ArgumentError degree(model, method=:adjacency)
+            set_Ĝ!(model)
+            @test isapprox(degree(model, method=:adjacency), MaxEntropyGraphs.Graphs.degree(G))
+        end
+
+        @testset "BiCM - (B/A)IC(c)" begin
+            model = BiCM(MaxEntropyGraphs.corporateclub())
+            # parameters not computed yet
+            @test_throws ArgumentError MaxEntropyGraphs.AIC(model)
+            @test_throws ArgumentError MaxEntropyGraphs.AICc(model)
+            @test_throws ArgumentError MaxEntropyGraphs.BIC(model)
+            solve_model!(model)
+            # check warning
+            @test_logs (:warn, "The number of observations is small with respect to the number of parameters (n/k < 40). Consider using the corrected AIC (AICc) instead.") MaxEntropyGraphs.AIC(model)
+            # test types
+            @test isa(MaxEntropyGraphs.AIC(model), precision(model))
+            @test isa(MaxEntropyGraphs.AICc(model), precision(model))
+            @test isa(MaxEntropyGraphs.BIC(model), precision(model))
+
+        end
+
     end
 
     @testset "UECM" begin
-    
+
     end
 end
 
