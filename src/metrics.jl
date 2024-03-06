@@ -407,9 +407,29 @@ function ANND_in(A::T, vs=1:size(A,1); check_dimensions::Bool=true) where {T<:Ab
     return [ANND_in(A,i, check_dimensions=false) for i in vs]
 end
 
+function ANND(m::UBCM)
+    # checks
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
 
+    # compute
+    return ANND(m.Ĝ)
+end
 
+function ANND_in(m::DBCM)
+    # checks
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
 
+    # compute
+    return ANND_in(m.Ĝ, check_dimensions=false)
+end
+
+function ANND_out(m::DBCM)
+    # checks
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
+
+    # compute
+    return ANND_out(m.Ĝ, check_dimensions=false)
+end
 
 
 """
@@ -590,7 +610,7 @@ function squares(A::T; check_dimensions::Bool=true, check_directed::Bool=true) w
         throw(DimensionMismatch("`A` must be a square matrix."))
     end
     if check_directed && !issymmetric(A) 
-        throw(ArgumentError( "The matrix is not symmetrical. Consider using ANND_in or ANND_out instead."))
+        throw(ArgumentError( "The matrix is not symmetrical, ``squares`` is only defined for undirected graphs."))
     end
 
     # compute
