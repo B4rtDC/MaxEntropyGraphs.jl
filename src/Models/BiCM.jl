@@ -146,6 +146,9 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
 
     # coherence checks
     if T <: Graphs.AbstractGraph # Graph specific checks
+        # check if the graph is empty or has only one vertex
+        Graphs.nv(G) == 0 ? throw(ArgumentError("The graph is empty")) : nothing
+        Graphs.nv(G) == 1 ? throw(ArgumentError("The graph has only one vertex")) : nothing
         # check if the graph is bipartite
         Graphs.is_bipartite(G) ? nothing : throw(ArgumentError("The graph is not bipartite"))
         
@@ -154,7 +157,7 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
         end
 
         if T <: SimpleWeightedGraphs.AbstractSimpleWeightedGraph
-            @warn "The graph is weighted, while BiCM model is unweighted, the weight information will be lost"
+            @warn "The graph is weighted, while the BiCM model is unweighted, the weight information will be lost"
         end
 
         # get layer membership
@@ -165,10 +168,7 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
         d⊥ = isnothing(d⊥) ? Graphs.degree(G, ⊥nodes) : d⊥
         d⊤ = isnothing(d⊤) ? Graphs.degree(G, ⊤nodes) : d⊤
 
-
-        Graphs.nv(G) == 0 ? throw(ArgumentError("The graph is empty")) : nothing
-        Graphs.nv(G) == 1 ? throw(ArgumentError("The graph has only one vertex")) : nothing
-        Graphs.nv(G) != length(d⊥) + length(d⊤) ? throw(DimensionMismatch("The number of vertices in the graph ($(Graphs.nv(G))) and the length of the degree sequence ($(length(d))) do not match")) : nothing
+        Graphs.nv(G) != length(d⊥) + length(d⊤) ? throw(DimensionMismatch("The number of vertices in the graph ($(Graphs.nv(G))) and the length of the degree sequences do not match")) : nothing
     end
     # coherence checks specific to the degree sequences
     !isnothing(d⊥) && length(d⊥) == 0 ? throw(ArgumentError("The degree sequences d⊥ is empty")) : nothing
@@ -265,7 +265,7 @@ julia> model_fun(ones(size(model.θᵣ)))
 -237.5980041411147
 ```
 """
-function L_BiCM_reduced(θ::Vector, k⊥::Vector, k⊤::Vector, f⊥::Vector, f⊤::Vector, nz⊥::UnitRange, nz⊤::UnitRange, n⊥ᵣ::Int)
+function L_BiCM_reduced(θ::AbstractVector, k⊥::Vector, k⊤::Vector, f⊥::Vector, f⊤::Vector, nz⊥::UnitRange, nz⊤::UnitRange, n⊥ᵣ::Int)
     # set pre-allocated values
     α = @view θ[1:n⊥ᵣ]
     β = @view θ[n⊥ᵣ+1:end]
@@ -990,7 +990,7 @@ function AICc(m::BiCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # compute AIC components
     k = m.status[:N⊥] + m.status[:N⊤] # number of parameters
-    n = m.status[:N⊥] *  m.status[:N⊤] # number of observations (divided by 2 because of symmetry)
+    n = m.status[:N⊥] *  m.status[:N⊤] # number of observations
     L = L_BiCM_reduced(m) # log-likelihood
 
     return 2*k - 2*L + (2*k*(k+1)) / (n - k - 1)
