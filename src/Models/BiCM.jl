@@ -500,7 +500,6 @@ function BiCM_reduced_iter!(θ::AbstractVector, k⊥::Vector, k⊤::Vector,
         G[n⊥+j] = - log( k⊤[j] / G[n⊥+j] )
     end
 
-
     return G
 end
 
@@ -745,7 +744,7 @@ function solve_model!(m::BiCM;  # common settings
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
                                 AD_method::Symbol=:AutoZygote,
-                                analytical_gradient::Bool=false)
+                                analytical_gradient::Bool=true)
     N = precision(m)
     # initial guess
     θ₀ = initial_guess(m, method=initial)
