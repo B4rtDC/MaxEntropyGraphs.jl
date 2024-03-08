@@ -181,6 +181,149 @@
     end    
 end
 
-@testset "bipartite graphs" begin
-    
+@testset "Bipartite graph metrics" begin
+    @testset "biadjacency matrix" begin
+        # error from graph
+        G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+        @test_throws ArgumentError MaxEntropyGraphs.biadjacency_matrix(G)
+        # testgraph (undirected)
+        A = [0 0 0 0 1 0 0;
+             0 0 0 0 1 1 0;
+             0 0 0 0 0 0 1;
+             0 0 0 0 0 1 1;
+             1 1 0 0 0 0 0;
+             0 1 0 1 0 0 0;
+             0 0 1 1 0 0 0]
+        G = MaxEntropyGraphs.Graphs.SimpleGraph(A)
+        @test MaxEntropyGraphs.Graphs.is_bipartite(G)
+        B = Array(MaxEntropyGraphs.biadjacency_matrix(G))
+        @test B == A[1:4,5:7]
+    end
+
+    @testset "project (ignoring significance)" begin
+        ## setup
+        A = [0 0 0 0 1 0 0;
+             0 0 0 0 1 1 0;
+             0 0 0 0 0 0 1;
+             0 0 0 0 0 1 1;
+             1 1 0 0 0 0 0;
+             0 1 0 1 0 0 0;
+             0 0 1 1 0 0 0];
+        ## graphs
+        G = MaxEntropyGraphs.Graphs.SimpleGraph(A)
+        Ad = copy(A); Ad[1,2] = 1; Ad[2,1] = 1;
+        Gd = MaxEntropyGraphs.Graphs.SimpleGraph(Ad) # not bipartite
+
+        # test
+        @test_throws ArgumentError MaxEntropyGraphs.project(Gd) # not bipartite
+        @test_throws ArgumentError MaxEntropyGraphs.project(G, method=:obscure_methode)
+        @test_throws ArgumentError MaxEntropyGraphs.project(G, layer=:invalid_layer)
+        
+        ## bipartite matrix
+        B = Array(MaxEntropyGraphs.biadjacency_matrix(G))
+        @test_logs (:warn,"The matrix `B` is square, make sure it is a biadjacency matrix.") MaxEntropyGraphs.project(A)
+        @test_throws ArgumentError MaxEntropyGraphs.project(A, method=:obscure_methode)
+        @test_throws ArgumentError MaxEntropyGraphs.project(A, layer=:invalid_layer)
+
+        for layer in [:top, :bottom]
+            @test MaxEntropyGraphs.Graphs.adjacency_matrix(MaxEntropyGraphs.project(G, layer=layer)) == MaxEntropyGraphs.project(A[1:4,5:7], layer=layer)
+        end
+    end
+
+    @testset "V_motifs (global)" begin
+        # setup
+        G = MaxEntropyGraphs.corporateclub()
+        B = MaxEntropyGraphs.biadjacency_matrix(G)
+        # test
+        @test_throws ArgumentError MaxEntropyGraphs.V_motifs(G, layer=:invalid_layer)
+        @test_throws ArgumentError MaxEntropyGraphs.V_motifs(B, layer=:invalid_layer)
+        for layer in [:top, :bottom]
+            @test MaxEntropyGraphs.V_motifs(G, layer=layer) == MaxEntropyGraphs.V_motifs(B, layer=layer)
+        end
+
+        # test with model
+        model = MaxEntropyGraphs.BiCM(G)
+        @test_throws ArgumentError MaxEntropyGraphs.V_motifs(model)
+        MaxEntropyGraphs.solve_model!(model)
+        @test_throws ArgumentError MaxEntropyGraphs.V_motifs(model, precomputed=true)
+        MaxEntropyGraphs.set_Ĝ!(model)
+
+        @test isa(MaxEntropyGraphs.V_motifs(model), precision(model))
+        for layer in [:top, :bottom]
+            @test MaxEntropyGraphs.V_motifs(model, layer=layer, precomputed=true) ≈ MaxEntropyGraphs.V_motifs(model, layer=layer, precomputed=false)
+        end
+    end
+
+    @testset "V_motifs (local)" begin
+        # setup
+        G = MaxEntropyGraphs.corporateclub()
+        B = MaxEntropyGraphs.biadjacency_matrix(G)
+        membership = MaxEntropyGraphs.Graphs.bipartite_map(G)
+
+        ## tests
+        # graph based
+        @test_throws ArgumentError MaxEntropyGraphs.V_motifs(G, findfirst(membership .== 1), findfirst(membership .== 2))
+
+        # matrix based
+        @test_logs (:warn,"The matrix `B` is square, make sure it is a biadjacency matrix.") MaxEntropyGraphs.V_motifs(B*B',1,2)
+        @test_throws ArgumentError MaxEntropyGraphs.V_motifs(B,1,2, layer=:invalid_layer)
+        @test_throws BoundsError MaxEntropyGraphs.V_motifs(B,1,size(B,1)+1, layer=:bottom)
+        @test_throws BoundsError MaxEntropyGraphs.V_motifs(B,size(B,2)+1,1, layer=:top)
+
+        # model based
+        model = MaxEntropyGraphs.BiCM(G)
+        @test_throws ArgumentError MaxEntropyGraphs.V_motifs(model, 1, 2) # parameters not computed
+        MaxEntropyGraphs.solve_model!(model)
+        @test_throws ArgumentError MaxEntropyGraphs.V_motifs(model, 1, 2, precomputed=true) # biadjacency matrix not computed
+        MaxEntropyGraphs.set_Ĝ!(model)
+        for layer in [:top, :bottom]
+            @test isa(MaxEntropyGraphs.V_motifs(model, 1, 2,layer=layer), precision(model))
+            @test MaxEntropyGraphs.V_motifs(model, 1, 2, layer=layer, precomputed=true) ≈ MaxEntropyGraphs.V_motifs(model, 1, 2, layer=layer, precomputed=false)
+        end
+    end
+
+    @testset "V_motif_PB_parameters" begin
+        # setup
+        G = MaxEntropyGraphs.corporateclub()
+        model = MaxEntropyGraphs.BiCM(G)
+
+        ## tests
+        @test_throws ArgumentError MaxEntropyGraphs.V_PB_parameters(model, 1, 2)
+        MaxEntropyGraphs.solve_model!(model)
+        @test_throws ArgumentError MaxEntropyGraphs.V_PB_parameters(model, 1, 2, precomputed=true)
+        @test_throws ArgumentError MaxEntropyGraphs.V_PB_parameters(model, 1, 2, layer=:invalid_layer)
+        for layer in [:bottom, :top]
+            @test eltype(MaxEntropyGraphs.V_PB_parameters(model, 1, 2, layer=layer, precomputed=false)) == precision(model)
+        end
+        MaxEntropyGraphs.set_Ĝ!(model)
+        @test_throws ArgumentError MaxEntropyGraphs.V_PB_parameters(model, 1, 2, precomputed=true, layer=:invalid_layer)
+        for layer in [:bottom, :top]
+            @test MaxEntropyGraphs.V_PB_parameters(model, 1, 2, layer=layer, precomputed=true) ≈ MaxEntropyGraphs.V_PB_parameters(model, 1, 2, layer=layer, precomputed=false)
+        end
+    end
+
+    @testset "V_motif_projection" begin
+        # setup
+        G = MaxEntropyGraphs.corporateclub()
+        model = MaxEntropyGraphs.BiCM(G)
+        @test_throws ArgumentError MaxEntropyGraphs.project(model)
+        MaxEntropyGraphs.solve_model!(model)
+        @test_throws ArgumentError MaxEntropyGraphs.project(model, precomputed=true)
+        MaxEntropyGraphs.set_Ĝ!(model)
+        @test_throws ArgumentError MaxEntropyGraphs.project(model, α=-0.1)
+        @test_throws ArgumentError MaxEntropyGraphs.project(model, layer=:invalid_layer)
+        @test_throws ArgumentError MaxEntropyGraphs.project(model, distribution=:invalid_distribution)
+        MaxEntropyGraphs.solve_model!(model)
+        MaxEntropyGraphs.set_Ĝ!(model)
+
+        for layer in [:bottom, :top]
+            for distribution in [:Poisson, :PoissonBinomial]
+                @test isa(MaxEntropyGraphs.project(model, layer=layer, precomputed=false, distribution=distribution), MaxEntropyGraphs.Graphs.SimpleGraph)
+                @test MaxEntropyGraphs.project(model, layer=layer, precomputed=true, distribution=distribution) == MaxEntropyGraphs.project(model, layer=layer, precomputed=false, distribution=distribution)
+                @test MaxEntropyGraphs.Graphs.nv(MaxEntropyGraphs.project(model, layer=layer, precomputed=false, distribution=distribution)) == (layer == :bottom ? model.status[:N⊥] : model.status[:N⊤])
+                @test  MaxEntropyGraphs.project(model, layer=layer, precomputed=true, distribution=distribution, multithreaded=true) == MaxEntropyGraphs.project(model, layer=layer, precomputed=false, distribution=distribution, multithreaded=false)
+            end
+        end
+    end
+
 end
