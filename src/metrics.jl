@@ -1564,7 +1564,7 @@ end
 
 
 """
-    V_motifs(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=true)
+    V_motifs(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=false)
 
 Count the number of expected V-motif occurences in the BiCM `m` between nodes `i` and `j` of a `layer`.
 

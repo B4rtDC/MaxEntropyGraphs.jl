@@ -1,7 +1,8 @@
 # BiCM
 ## Model description
-An undirected bipartite network can be described by its biadjacency matrix ``B = \left{ b_{i\alpha} \right}_{i,\alpha}`` of size ``N \times M`` whose generic entry ``b_{iα}`` is 1 if node ``i`` belonging to layer ⊥ is linked to node α belonging to layer ⊤ and 0 otherwise.
+An undirected bipartite network can be described by its biadjacency matrix ``B`` of size ``N \times M`` whose generic entry ``b_{iα}`` is 1 if node ``i`` belonging to layer ⊥ is linked to node α belonging to layer ⊤ and 0 otherwise.
 The two sets of nodes (sometimes referred to a layers) are defined as as ⊥ and ⊤. 
+
 The Bipartite Configuration Model (BiCM) is a maximum-entropy null model for undirected bipartite networks. 
 It is based on the idea of fixing the degree sequences for each set of nodes (layers) of the network. 
 The model assumes that the edges are unweighted and that the network is simple, i.e., it has no self-loops or multiple edges between the same pair of nodes [[1](#1)]. 
@@ -10,7 +11,7 @@ The model assumes that the edges are unweighted and that the network is simple, 
 !!! note
     For the computation we use the bi-adjacency matrix, whereas the current implementation of the BiCM uses a `::Graphs.SimpleGraph` to construct the models and assesses its bipartiteness using the functionality available in the `Graphs.jl` package.
 
-The parameter vector is defined as ``\theta = [\gamma ; \beta]``, where ``\gamma`` and ``\beta`` denote the parameters associated with the ⊥ and ⊤ layer respectively. To speed up the computation of the likelihood maximising parameters, 
+The parameter vector is defined as ``\theta = [\gamma ; \beta]``, where ``\gamma`` and ``\beta`` denote the parameters associated with the ⊥ and ⊤ layer respectively. To speed up the computation of the likelihood maximizing parameters, 
 we use the reduced version of the model where we consider the unique values the degrees in each layer [[2](#2)].
 
 | Description                   | Formula |
@@ -20,10 +21,7 @@ we use the reduced version of the model where we consider the unique values the 
 | Factorized graph probability  | `` P(A \| \Theta) = \prod_{i=1}^{N}\prod_{j=1}^{M} p_{i\alpha}^{b_{i\alpha}} (1 - p_{\alpha})^{1-b_{i\alpha}}``  |
 | $\langle p_{i\alpha} \rangle$ | `` p_{i\alpha} = \frac{e^{-\gamma_i - \beta_{\alpha}}}{1+e^{-\gamma_i - \beta_{\alpha}}}`` |
 | Log-likelihood                | `` \mathcal{L}(\Theta) = -\sum_{i \in \bot} \gamma_i k_{i}(A) -  \sum_{\alpha \in \top} \beta_{\alpha} d_{\alpha}(A) - \sum_{i \in \bot}  \sum_{\alpha \in \top} \ln \left( 1 + e^{-\gamma_i - \beta_{\alpha}} \right) ``|
-| $\langle p_{i\alpha}^{2} \rangle$  | `` `` |
-| $\langle p_{i\alpha}a_{t\kappa} \rangle$| `` `` |
-| $\sigma^{*}(X)$               | `` `` |
-| $\sigma^{*}[p_{i\alpha}]$          | `` ``   |
+
 
 
 
@@ -60,10 +58,19 @@ AIC(model)
 ## Counting network motifs
 
 ```julia
-# Compute the number of occurences of M13
-M13(model)
+# Compute the number of expected occurrences of a V-motif between two users
+V_motifs(model, 1, 2, layer=:bottom)
+# Compute the number of occurrences of a V-motif in the original graph
+V_motifs(model.G, model.⊥nodes[1], model.⊥nodes[2])
 ```
 
+## Projecting the bipartite network
+```julia
+# Raw projection of the network
+project(model.G, layer=:bottom)
+# Obtaining the statistically significant links
+project(model, layer=:bottom)
+```
 
 _References_
 

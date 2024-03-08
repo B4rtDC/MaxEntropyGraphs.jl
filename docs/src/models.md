@@ -6,17 +6,17 @@ All models share a common interface:
 * The parameters of a model can be computed with ```solve_model!```.
 * The expected adjacency matrix can be obtained with ```Ĝ```, where applicable the weights can be obtained with ```Ŵ```.
 * A random network can be sampled from the ensemble with ```rand```
-* Information criteria are available to allow for model compairison through the Akaike Information Criterium (```AIC```) and the Bayesian Information Criterion (```BIC```).
+* Information criteria are available to allow for model comparison through the Akaike Information Criterium (```AIC```) and the Bayesian Information Criterion (```BIC```).
 
 
 Please refer to the page of each specific model for more details.
 
 ## Solution methods
-Computing the parameters of a model can be done with different approaches. Either by running an optimisation algorithm on the Loglikelihood of the model (and thus implicitely solving a system of equations for the gradient of the loglikelihood of the model) [[1]](#1) or by using a fixed point approach [[2]](#2). In both cases, we have also included the acceleration method that was proposed in [[2]](#2) for nodes sharing the same (pair of) constraints.
+Computing the parameters of a model can be done with different approaches. Either by running an optimization algorithm on the log-likelihood of the model (and thus implicitly solving a system of equations for the gradient of the log-likelihood of the model) [[1]](#1) or by using a fixed point approach [[2]](#2). In both cases, we have also included the acceleration method that was proposed in [[2]](#2) for nodes sharing the same (pair of) constraints.
 
 !!! note
 
-    Although it is technically possible to run the computation of the likelihood maximising parameters in a precision lower than `Float64`, experiments have shown that this might leads to convergence problems.
+    Although it is technically possible to run the computation of the likelihood maximizing parameters in a precision lower than `Float64`, experiments have shown that this might leads to convergence problems.
 
 
 ## Sampling
@@ -27,13 +27,13 @@ We have extend ```Base.rand``` to accept substypes of `::AbstractMaxEntropyModel
 ## Differences and similarities with the NEMtropy package
 * We use the [JuliaGraphs](https://juliagraphs.org/) ecosystem for everything network related, whereas NEMtropy requires you to work with degree sequences, adjacency matrices or edge lists. These option are also available, either directly (in the case of degree sequences) or indirectly (by passing through the JuliaGraphs ecosystem).
 * To obtain the maximum likelihood parameters of a model we use either:
-    - the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package (this maximises the loglikelihood of the networks ensemble). Working this way uses automated differentiation, but explicit non-allocating gradient functions are also provided for the different models.
+    - the well-established [Optimization.jl](https://github.com/SciML/Optimization.jl) package (this maximizes the log-likelihood of the networks ensemble). Working this way uses automated differentiation, but explicit non-allocating gradient functions are also provided for the different models.
     - [NLsolve.jl](https://github.com/JuliaNLSolvers/NLsolve.jl#anderson-acceleration)'s Anderson acceleration for the fixed point methods proposed in [[4]](#4) (cf. documentation/examples). The iterative methods are non-allocating, so they are orders of magnitude faster than the Python implementation.
 * We have also maintained the different options for the initial values for each method (cf. `initial_guess(::AbstractMaxEntropyModel)`).
 * By making use of the automatic differentiation capabilities of Julia, we can:
     - approximation the gradient of the likelihood function of the graphs
     - compute the gradient of any metric with respect to its adjacency matrix without having to compute these by hand and implement the partial derivative for each possible metric (cf. examples for more details on this).
-* For both the models and the computing functions we make a clear distinction between the likelihood maximising paramers and the variable substitution (e.g. $\theta_i \leftrightarrow x_i = e^{-\theta_i}$ for the UBCM). Doing so makes the code more readable because it is closer to the mathematical formulation.
+* For both the models and the computing functions we make a clear distinction between the likelihood maximizing parameters and the variable substitution (e.g. $\theta_i \leftrightarrow x_i = e^{-\theta_i}$ for the UBCM). Doing so makes the code more readable because it is closer to the mathematical formulation.
 * Sampling from an `<:AbstractMaxEntropyModel` will generate a corresponding subtype of  `<:AbstractGraph` from the [JuliaGraphs](https://juliagraphs.org/) ecosystem. The methods that are available in `Graphs.jl`, `SimpleWeightedGraphs` etc. have been extended for the different maximum entropy models wherever applicable. 
 
 

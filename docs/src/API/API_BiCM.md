@@ -26,5 +26,6 @@ MaxEntropyGraphs.set_Ĝ!(::BiCM)
 MaxEntropyGraphs.precision(::BiCM)
 MaxEntropyGraphs.A(::BiCM,::Int64,::Int64)
 MaxEntropyGraphs.f_BiCM(::BiCM)
+MaxEntropyGraphs.biadjacency_matrix
 MaxEntropyGraphs.project
 ```

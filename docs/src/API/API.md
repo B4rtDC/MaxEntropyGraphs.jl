@@ -70,7 +70,6 @@ MaxEntropyGraphs.M11
 MaxEntropyGraphs.M12
 MaxEntropyGraphs.M13
 MaxEntropyGraphs.V_motifs
-MaxEntropyGraphs.V_p
 MaxEntropyGraphs.V_PB_parameters
 ```
 

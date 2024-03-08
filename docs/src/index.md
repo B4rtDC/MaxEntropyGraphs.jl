@@ -2,7 +2,7 @@
 
 
 # Overview
-The goal of the *MaxEntropyGraphs.jl* package is to group the various maximum-entropy null models for network randomization and make them available to the Julia community in a single package. This work was in part inspired by the [Maximum Entropy Hub](https://meh.imtlucca.it), but unlike the latter, this package works in an integrated way with the exisiting Julia ecosystem for handling graphs, optimization tools and numerical solvers and groups all models in a single framework.
+The goal of the *MaxEntropyGraphs.jl* package is to group the various maximum-entropy null models for network randomization and make them available to the Julia community in a single package. This work was in part inspired by the [Maximum Entropy Hub](https://meh.imtlucca.it), but unlike the latter, this package works in an integrated way with the existing Julia ecosystem for handling graphs, optimization tools and numerical solvers and groups all models in a single framework.
 
 The package provides the following functionalities:
 * Computing the likelihood maximizing parameters for a broad set of network models (cf. `Models` section of the documentation).
@@ -15,7 +15,7 @@ Each network models can be solved in different ways, with a fixed-point method t
 
 Common usage for each model is given in the [Models](./models.md) section. For additional use cases, check the specific model page or the API reference.
 
-*Note:* in allignment with the underlying theoretical framework, the graphs in the ensemble all have exactly the same number of nodes as the original network.
+*Note:* in alignment with the underlying theoretical framework, the graphs in the ensemble all have exactly the same number of nodes as the original network.
 
 # Installation
 Assuming that you already have Julia correctly installed, installation is straightforward. 
@@ -48,13 +48,13 @@ C(G)
 ```
 
 We thus consider an ensemble of graphs $\mathcal{G}$ constrained by $C(G)$, where $C(G)$ is based on an observed network $G^{*}$ with its adjacency matrix $A^{*}$. 
-The constrainst are imposed on average (canonical ensemble), i.e. $\langle C \rangle = C^{*}$, which in terms of the probability of the ensemble leads to the following:
+The constraints are imposed on average (canonical ensemble), i.e. $\langle C \rangle = C^{*}$, which in terms of the probability of the ensemble leads to the following:
 
 ```math
 \langle C \rangle = \sum_{G \in \mathcal{G}} C(G) P(G) = C^{*}
 ```
 
-This optimisation problem can solved by introducing a set of Langrange multipliers $\Theta$ with the same size as the number of constraints, leading to:
+This optimization problem can solved by introducing a set of Langrange multipliers $\Theta$ with the same size as the number of constraints, leading to:
 
 ```math
 P(G | \Theta) = \frac{e^{-H(G,\Theta)}}{Z(\Theta)}
@@ -76,13 +76,13 @@ is the partition function.
 
 
 For a given choice of the constraints $C^{*}$, the maximum-entropy graph ensemble representing the observed network $G^{*}$ is obtained by 
-maximising the log-likelihood $\mathcal{L}$ defined as
+maximizing the log-likelihood $\mathcal{L}$ defined as
 
 ```math
 \mathcal{L}(\Theta) \equiv \ln P(G | \Theta) = -H(G^{*},\Theta) - \ln Z(\Theta)
 ```
 
-The canonical approach is unbiased and mathematically tractable and addintionally, it is also the most appropriate choice if one wants to account for possible errors in the data, since canonical ensembles appropriately describe systems in contact with an external reservoir (source of errors) affecting the value of the constraints
+The canonical approach is unbiased and mathematically tractable and additionally, it is also the most appropriate choice if one wants to account for possible errors in the data, since canonical ensembles appropriately describe systems in contact with an external reservoir (source of errors) affecting the value of the constraints
 
 
 *Note:* An adequate choice of the set of constraints can allow the probability coefficient $P(G)$ te be written in function of the adjacency matrix, so that a probability coefficient $P(A)$ can be assigned to every adjacency matrix in the ensemble. In that case, $\vec{C}(G)$ can also be written in function of the adjacency matrix $\vec{C}(A)$. 

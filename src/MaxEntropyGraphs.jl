@@ -15,7 +15,7 @@ module MaxEntropyGraphs
     import Graphs: degree
     import SimpleWeightedGraphs
 
-    # to solve the optimization problem
+    # to solve the optimization problem(s)
     import Optimization
     import OptimizationOptimJL
     import ForwardDiff, ReverseDiff, Zygote
@@ -45,7 +45,7 @@ module MaxEntropyGraphs
     export AbstractMaxEntropyModel
     ## utils 
     # compressing
-    export np_unique_clone, project
+    # np_unique_clone, 
     # graph metrics
     export ANND, ANND_in, ANND_out
     export wedges, triangles, squares
@@ -55,10 +55,12 @@ module MaxEntropyGraphs
         end
     end
     export V_motifs
+    export project # bipartite graph or BiCM projection
 
     ## common model functions
     export initial_guess, solve_model!, Ĝ, set_Ĝ!, σˣ, set_σ!, set_xᵣ!, set_yᵣ!, precision, σₓ
     export degree, outdegree, indegree
+    export strength, outstrength, instrength
     export AIC, AICc, BIC
     
     ## model specific types and functions
@@ -117,6 +119,32 @@ module MaxEntropyGraphs
                 rand(model,10)
                 # metrics
                 # [TO DO]
+            end
+        end
+
+        # BiCM workload
+        @setup_workload begin
+            G = MaxEntropyGraphs.corporateclub()
+            @compile_workload begin
+                # model building and solving
+                model = BiCM(G)
+                solve_model!(model)
+                solve_model!(model, method=:BFGS)
+                solve_model!(model, method=:BFGS, analytical_gradient=true)
+                solve_model!(model, method=:LBFGS)
+                solve_model!(model, method=:LBFGS, analytical_gradient=true)
+                solve_model!(model, method=:Newton)
+                solve_model!(model, method=:Newton, analytical_gradient=true)
+                # sampling
+                rand(model,10)
+                # metrics
+                for layer in [:bottom, :top]
+                    for precomputed in [true, false]
+                        for adjustment in [:Poisson, :PoissonBinomial]
+                            project(model, layer=layer, precomputed=precomputed, adjustment=adjustment)
+                        end
+                    end
+                end
             end
         end
     end

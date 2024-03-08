@@ -8,7 +8,7 @@ Some examples using built-in function of package are listed below:
 * [Significance of V-motifs and projection in the BiCM](@ref BiCM_Vmotifs_simulation)
 
 ### [Assortativity in the UBCM](@id Assortativity_simulation)
-Let us consider the UBCM applied to the Zachary Karate Club network. We want to analyse if the assortativity of each node (measured by its ANND) is statistically significant from what one would expect under the null model.
+Let us consider the UBCM applied to the Zachary Karate Club network. We want to analyze if the assortativity of each node (measured by its ANND) is statistically significant from what one would expect under the null model.
 
 First, we define the network and the associated UBCM model.
 ```jldoctest UBCM_z_demo; output = false
@@ -33,7 +33,7 @@ nothing
 ```
 
 ### [Motif significance in the DBCM](@id Motif_simulation)
-Let us consider the DBCM applied to the Chesapeake Bay foodweb. We want to analyse if any of the different network motifs is statistically significant of what one would expect uner the null model. We want to know the values of `M1`, ..., `M13`. These are network-wide measures. 
+Let us consider the DBCM applied to the Chesapeake Bay foodweb. We want to analyze if any of the different network motifs is statistically significant of what one would expect under the null model. We want to know the values of `M1`, ..., `M13`. These are network-wide measures. 
 
 First, we define the network and the associated UBCM model.
 ```jldoctest DBCM_simulation_demo; output = false
@@ -84,4 +84,54 @@ nothing
 
 
 ### [Significance of V-motifs and projection in the BiCM](@id BiCM_Vmotifs_simulation)
-placeholder
+Let us consider the BiCM applied to the [corporate club membership network](http://konect.cc/networks/brunson_club-membership/). This bipartite network is composed of 25 persons and 15 social organizations. An edge between a person and a social organization shows that the person is a member. We want to obtain the projection of this network on both the person and the social organization layer. We also want to determine if any of these connections in the projected networks are statistically significant under the BiCM null model. This is done by evaluating if the number of organizations that two users have in common is more than what one would expect under the null model.
+
+First, we define the network and obtain its weighted projection. This tells us how often a specific connection was observed the real network.
+```jldoctest BiCM_projection_demo_sampling; output = false
+using MaxEntropyGraphs
+using Graphs
+using MultipleTesting
+
+# define the network
+G = corporateclub();
+# project the model on its layers
+G_persons, G_organizations = project(G, layer=:bottom, method=:weighted), project(G, layer=:top, method=:weighted);
+
+# output
+
+```
+
+We then define a BiCM, compute its likelihood maximizing parameters, generate a sample and the projections of the sample
+```jldoctest BiCM_projection_demo_sampling; output = false
+# generate a BiCM from the corporate club network
+model = BiCM(G); 
+# compute the maximum likelihood parameters
+solve_model!(model); 
+# sample
+S = rand(model, 100);
+# projected samples
+S_persons, S_organizations = project.(S, layer=:bottom, method=:weighted), project.(S, layer=:bottom, method=:weighted)
+
+# output
+
+```
+
+For each edge in the original network, we can now compare how its weight compares to the distribution of weights in the random sample and determine their empirical p-values.
+```jldoctest BiCM_projection_demo_sampling; output = true
+# determine the empirical pvalues
+p = zeros(length(edges(G_persons)))
+for (i,e) in enumerate(edges(G_persons))
+    e_w   = e.weight
+    e_w_s = map(s -> s.weights[e.src, e.dst], S_persons)
+    p[i] = (sum(e_w_s .> e_w) + 1) / (length(e_w_s) + 1)
+end
+# correct p-values for multiple testing
+p_corrected = adjust(p, BenjaminiHochberg())
+# get significant edges
+filter(x -> x[1] < α, collect(zip(p_corrected, edges(G_persons))))
+
+# output
+Tuple{Float64, SimpleWeightedGraphs.SimpleWeightedEdge{Int64, Int64}}[]
+```
+
+We come to the conclusion that there are no statistically significant edges in the projected network. This is the same conclusions that was obtained by using `project(model)` directly.

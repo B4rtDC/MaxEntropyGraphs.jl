@@ -1,7 +1,7 @@
 # Analytical
 The maximum likelihood method can be used to compute the expected value and the standard deviation of any metric that is based on the adjacency matrix. Depending on the underlying model, some details change, but the principle remains. This formalism allows us to computed z-scores and assess which topological properties are consistent with their randomized value within a statistical error, and which deviate significantly from the null model expectation. In the latter case, the observed property cannot be traced back to the constraints, and therefore requires additional explanations or generating mechanisms besides those required in order to explain the constraints themselves. 
 
-Some topological properties are available in the package default (e.g. `ANND` and different network motifs), but you can define an additional metrics as well. This allows you to obtain both the expected value and the standard deviation of any matrix in a standardised way. In the expression of the variance of a topological property ``X``, we find ``\frac{\partial X}{\partial a_{ij}}``. We use leverage Julia's autodiff capabilities to compute these terms. If desired, you can always compute the gradient of a specific metric by hand and implement it yourself as well. The downside of using this approach is that you need the complete adjacency matrix, so this is not suited for the analysis of very large graphs due to memory constraints. Depending on the size of the problem, different autodiff techniques can give different performance results. You might want to experiment a bit with this for your own use case (some examples are provided as well).  
+Some topological properties are available in the package default (e.g. `ANND` and different network motifs), but you can define an additional metrics as well. This allows you to obtain both the expected value and the standard deviation of any matrix in a standardized way. In the expression of the variance of a topological property ``X``, we find ``\frac{\partial X}{\partial a_{ij}}``. We use leverage Julia's autodiff capabilities to compute these terms. If desired, you can always compute the gradient of a specific metric by hand and implement it yourself as well. The downside of using this approach is that you need the complete adjacency matrix, so this is not suited for the analysis of very large graphs due to memory constraints. Depending on the size of the problem, different autodiff techniques can give different performance results. You might want to experiment a bit with this for your own use case (some examples are provided as well).  
 
 
 ## Expected value
@@ -35,7 +35,7 @@ Some examples using built-in function of package are listed below:
 * [Significance of V-motifs and projection in the BiCM](@ref BiCM_Vmotifs_analytical)
 
 ### [Assortativity in the UBCM](@id Assortativity_analytical)
-Let us consider the UBCM applied to the Zachary Karate Club network. We want to analyse if the assortativity of each node (measured by its ANND) is statistically significant from what one would expect under the null model.
+Let us consider the UBCM applied to the Zachary Karate Club network. We want to analyze if the assortativity of each node (measured by its ANND) is statistically significant from what one would expect under the null model.
 
 First, we define the network and the associated UBCM model.
 ```jldoctest UBCM_z_demo; output = false
@@ -116,7 +116,7 @@ Z_ANND = (ANND_obs - ANND_exp) ./ ANND_std;
 ```
 
 ### [Motif significance in the DBCM](@id Motif_analytical)
-Let us consider the DBCM applied to the Chesapeake Bay foodweb. We want to analyse if any of the different network motifs is statistically significant of what one would expect uner the null model.
+Let us consider the DBCM applied to the Chesapeake Bay foodweb. We want to analyze if any of the different network motifs is statistically significant of what one would expect under the null model.
 
 First, we define the network and the associated UBCM model.
 ```jldoctest DBCM_z_demo; output = false
@@ -174,4 +174,36 @@ motifs_z = (motifs_observed .- motifs_expected) ./ motifs_std
 
 
 ### [Significance of V-motifs and projection in the BiCM](@id BiCM_Vmotifs_analytical)
-placeholder
+Let us consider the BiCM applied to the [corporate club membership network](http://konect.cc/networks/brunson_club-membership/). This bipartite network is composed of 25 persons and 15 social organizations. An edge between a person and a social organization shows that the person is a member. We want to obtain the projection of this network on both the person and the social organization layer. We also want to determine if any of these connections in the projected networks are statistically significant under the BiCM null model. This is done by evaluating if the number of organizations that two users have in common is more than what one would expect under the null model.
+
+First, we define the network and the associated BiCM model.
+```jldoctest BiCM_projection_deme; output = true
+using MaxEntropyGraphs
+using Graphs
+
+# define the network
+G = corporateclub();
+# project the model on its layers
+G_persons, G_organizations = project(G, layer=:bottom), project(G, layer=:top);
+# generate a BiCM from the corporate club network
+model = BiCM(G); 
+# compute the maximum likelihood parameters
+solve_model!(model); 
+# determine the validated projected networks
+G_persons_validated, G_organizations_validated = project(model, layer=:bottom), project(model, layer=:top);
+# check the number of (validated) edges in both networks
+(ne(G_persons),ne(G_persons_validated)),(ne(G_organizations), ne(G_organizations_validated))
+
+# output
+((259, 0), (66, 0))
+
+```
+We can observe that no links were found to be statistically significant, using the default settings, i.e. a significance threshold of ``\alpha=0.05`` and the [Benjamini Hochberg](https://en.wikipedia.org/wiki/False_discovery_rate) procedure from MultiTest to correct for multiple testing. These can by modified if required.
+
+```jldoctest BiCM_projection_deme; output = true
+# using a very high threshold value for significance
+project(model, layer=:bottom, α=0.9)
+
+# output
+{25, 255} undirected simple Int64 graph
+```
