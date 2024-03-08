@@ -20,12 +20,13 @@ module MaxEntropyGraphs
     import OptimizationOptimJL
     import ForwardDiff, ReverseDiff, Zygote
     import NLsolve
-    import LinearAlgebra: issymmetric, diagind, dot
-    import SparseArrays: dropzeros!, issparse
+    import LinearAlgebra: issymmetric, diagind, dot, triu!
+    import SparseArrays: dropzeros!, issparse, findnz
     #import NaNMath # returns a NaN instead of a DomainError for some functions. The solver(s) will use the NaN within the error control routines to reject the out of bounds step.
 
-    import Distributions
+    import Distributions: cdf, Poisson, PoissonBinomial
     import Combinatorics: combinations
+    import MultipleTesting
     #import LoopVectorization: @tturbo, @turbo  # not for now
 
     # actual source code
