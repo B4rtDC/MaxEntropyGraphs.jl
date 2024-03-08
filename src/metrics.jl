@@ -1114,6 +1114,39 @@ end
 # Bipartite networks motifs and helper functions
 ########################################################################################################
 
+"""
+    biadjacency_matrix(G::Graphs.SimpleGraph; skipchecks::Bool=false)
+
+Return the biadjacency matrix of the bipartite graph `G`.
+
+If the graph is not bipartite, an error is thrown.
+If the adjacency matrix can be written as:
+A = [O B; B' O] where O is the null matrix, then the returned biadjacency matrix is B and and B' is the transposed biadjacency matrix.
+
+# Arguments
+- `skipchecks`: if true, skip the check for the graph being bipartite.
+
+# Examples
+```jldoctest biadjacency_matrix
+julia> A = [0 0 0 0 1 0 0;
+0 0 0 0 1 1 0;
+0 0 0 0 0 0 1;
+0 0 0 0 0 1 1;
+1 1 0 0 0 0 0;
+0 1 0 1 0 0 0;
+0 0 1 1 0 0 0];
+
+julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(A);
+
+julia> Array(biadjacency_matrix(A))
+4x3 Matrix{Int64}:
+ 1  0  0
+ 1  1  0
+ 0  0  1
+ 0  1  1
+
+```
+"""
 function biadjacency_matrix(G::Graphs.SimpleGraph; skipchecks::Bool=false)
     if !skipchecks
         Graphs.is_bipartite(G) || throw(ArgumentError("The graph `G` must be bipartite."))  
@@ -1132,7 +1165,7 @@ end
                                     top::Vector=findall(membership .== 2); 
                                     layer::Symbol=:bottom)
 
-Project the bipartite graph `G` onto one of its layers.
+Project the bipartite graph `G` onto one of its layers and return the projected graph.
 
 # Arguments 
 - `membership`: the bipartite mapping of the graphs. This can be computed using `Graphs.bipartite_map(G)`.
@@ -1162,9 +1195,12 @@ julia> project(G, layer=:top)
 function project(G::Graphs.SimpleGraph, membership::Vector=Graphs.bipartite_map(G), 
                                         bottom::Vector=findall(membership .== 1), 
                                         top::Vector=findall(membership .== 2); 
-                                        layer::Symbol=:bottom, method::Symbol=:simple)
-    # check if bipartite
-    Graphs.is_bipartite(G) || throw(ArgumentError("The graph `G` must be bipartite."))  
+                                        layer::Symbol=:bottom, method::Symbol=:simple, skipchecks::Bool=false)
+    
+    if !skipchecks
+        # check if bipartite
+        Graphs.is_bipartite(G) || throw(ArgumentError("The graph `G` must be bipartite."))  
+    end
     # define graph type
     if method == :simple
         Gtype = Graphs.SimpleGraph
@@ -1196,9 +1232,9 @@ end
 
 
 """
-    project(A::T; layer::Symbol=:bottom, method::Symbol=:simple) where {T<:AbstractMatrix}
+    project(B::T; layer::Symbol=:bottom, method::Symbol=:simple) where {T<:AbstractMatrix}
 
-Project the biadjacency matrix `A` onto one of its layers.
+Project the biadjacency matrix `B` onto one of its layers.
 
 # Arguments 
 - `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`. Layer membership is determined by the bipartite map of the graph.
@@ -1208,9 +1244,9 @@ Project the biadjacency matrix `A` onto one of its layers.
 
 # Examples
 ```jldoctest project_bipartite_matrix
-julia> A = [0 0 0 1 1; 0 0 0 1 1; 0 0 0 1 0];
+julia> B = [0 0 0 1 1; 0 0 0 1 1; 0 0 0 1 0];
 
-julia> project(A, layer=:bottom)
+julia> project(B, layer=:bottom)
 3×3 Matrix{Bool}:
  0  1  1
  1  0  1
@@ -1218,7 +1254,7 @@ julia> project(A, layer=:bottom)
 
 ```
 ```jldoctest project_bipartite_matrix
-julia> project(A, layer=:top)
+julia> project(B, layer=:top)
 5×5 Matrix{Bool}:
  0  0  0  0  0
  0  0  0  0  0
@@ -1228,9 +1264,9 @@ julia> project(A, layer=:top)
 
 ```
 ```jldoctest project_bipartite_matrix
-julia> A = [0 0 0 1 1; 0 0 0 1 1; 0 0 0 1 0];
+julia> B = [0 0 0 1 1; 0 0 0 1 1; 0 0 0 1 0];
 
-julia> project(A, layer=:bottom, method=:weighted)
+julia> project(B, layer=:bottom, method=:weighted)
 3×3 Matrix{Int64}:
  0  2  1
  2  0  1
@@ -1238,7 +1274,7 @@ julia> project(A, layer=:bottom, method=:weighted)
 
 ```
 ```jldoctest project_bipartite_matrix
-julia> project(A, layer=:top, method=:weighted)
+julia> project(B, layer=:top, method=:weighted)
 5×5 Matrix{Int64}:
  0  0  0  0  0
  0  0  0  0  0
@@ -1248,13 +1284,13 @@ julia> project(A, layer=:top, method=:weighted)
 
 ```
 """
-function project(A::T; layer::Symbol=:bottom, method::Symbol=:simple) where {T<:AbstractMatrix}
-    if isequal(size(A)...)
-        @warn "The matrix `A` is square, make sure it is a biadjacency matrix."
+function project(B::T; layer::Symbol=:bottom, method::Symbol=:simple) where {T<:AbstractMatrix}
+    if isequal(size(B)...)
+        @warn "The matrix `B` is square, make sure it is a biadjacency matrix."
     end
     # define return type
     if method == :simple
-        returnmethod =  A -> map(x -> !iszero(x), A)
+        returnmethod =  B -> map(x -> !iszero(x), B)
     elseif method ==:weighted
         returnmethod = identity
     else
@@ -1263,9 +1299,9 @@ function project(A::T; layer::Symbol=:bottom, method::Symbol=:simple) where {T<:
 
     # project
     if layer ∈ [:bottom; :⊥]
-        Aproj = A * A'
+        Aproj = B * B'
     elseif layer ∈ [:top; :⊤]
-        Aproj = A' * A
+        Aproj = B' * B
     else
         throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
     end
@@ -1423,7 +1459,7 @@ julia> V_motifs(model, layer=:top), V_motifs(model, layer=:top, precomputed=fals
 """
 function V_motifs(m::BiCM; layer::Symbol=:bottom, precomputed::Bool=true)
     # checks
-    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) of the *biadjecency matrix* must be computed for `m` first, see `set_Ĝ!`"))
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The likelihood maximising parameters must be computed for `m` first, see `solve_model!`"))
 
     if precomputed
         # check
@@ -1450,7 +1486,7 @@ end
 """
     V_motifs(G::Graphs.SimpleGraph, i::Int, j::Int; membership::Vector=Graphs.bipartite_map(G))
 
-Count the number of V-motif occurences in graph `G` between nodes `i` and `j`.
+Count the number of V-motif occurences in graph `G` between nodes `i` and `j` of the graph.
 
 *Notes*: 
 1. the bipartiteness of the graph is not explicitely checked.
@@ -1487,40 +1523,40 @@ end
 
 
 """
-    V_motifs(A::T, i::Int, j::Int; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
+    V_motifs(B::T, i::Int, j::Int; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
 
-Count the number of V-motif occurences in the biadjacency matrix `A` between nodes `i` and `j` of a `layer`.
+Count the number of V-motif occurences in the biadjacency matrix `B` between nodes `i` and `j` of a `layer`.
 
 # Arguments
 - `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`.
-- `skipchecks`: if true, skip the dimension check on `A`
+- `skipchecks`: if true, skip the dimension check on `B`
 
-*Notes*: depending on the layer, the tuple (`i`, `j`) denotes rows (:bottom) or columns (:top) of the biadjacency matrix `A`.
+*Notes*: depending on the layer, the tuple (`i`, `j`) denotes rows (:bottom) or columns (:top) of the biadjacency matrix `B`.
 
 # Examples
 ```jldoctest V_motifs_bipartite_matrix_local
-julia> A = [1 1; 1 1; 1 0];
+julia> B = [1 1; 1 1; 1 0];
 
-julia> V_motifs(A, 1, 2, layer=:bottom)
+julia> V_motifs(B, 1, 2, layer=:bottom)
 2
 
 ```
 ```jldoctest V_motifs_bipartite_matrix_local
-julia> V_motifs(A, 1, 2, layer=:top)
+julia> V_motifs(B, 1, 2, layer=:top)
 2
 
 ```
 """
-function V_motifs(A::T, i::Int, j::Int; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
+function V_motifs(B::T, i::Int, j::Int; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
     # check dimensions
-    if !skipchecks && isequal(size(A)...)
-        @warn "The matrix `A` is square, make sure it is a biadjacency matrix."
+    if !skipchecks && isequal(size(B)...)
+        @warn "The matrix `B` is square, make sure it is a biadjacency matrix."
     end
     # do the count
     if layer ∈ [:bottom; :⊥]
-        return dot(A[i,:], A[j,:])
+        return dot(B[i,:], B[j,:])
     elseif layer ∈ [:top; :⊤]
-        return dot(A[:,i], A[:,j])
+        return dot(B[:,i], B[:,j])
     else
         throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
     end
@@ -1547,16 +1583,19 @@ julia> solve_model!(model);
 julia> set_Ĝ!(model);
 
 julia> V_motifs(model, 16, 13, layer=:bottom), V_motifs(model, 16, 13, layer=:bottom, precomputed=false)
-(3.385652998856113, 3.385652998856112)
+(3.385652998856112, 3.3856529988561115)
 
 ```
 ```jldoctest V_motifs_bicm_local
 julia> V_motifs(model, 5, 1, layer=:top), V_motifs(model, 5, 1, layer=:top, precomputed=false)
-(9.469880242964534, 9.469880242964534)
+(9.46988024296453, 9.469880242964528)
 
 ```
 """
-function V_motifs(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=true)
+function V_motifs(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=false)
+    # checks
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters (m.Θᵣ) must be computed for `m` first, see `solve_model!`"))
+    
     if precomputed
         # checks
         m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) of the *biadjecency matrix* must be computed for `m` first, see `set_Ĝ!`"))
@@ -1565,9 +1604,6 @@ function V_motifs(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::B
         return V_motifs(m.Ĝ, i, j; layer=layer, skipchecks=true)
 
     else
-        # checks
-        m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters (m.Θᵣ) must be computed for `m` first, see `solve_model!`"))
-
         # compute
         res = zero(eltype(m.θᵣ)) 
         if layer ∈ [:bottom; :⊥]
@@ -1592,22 +1628,31 @@ end
 
 
 """
-    V_PB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
+    V_PB_parameters(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=false)
 
 Compute the parameters of the Poisson-Binomial distribution for the number of V-motifs between nodes `i` and `j` for the `BiCM` model `m`.
 
 # Arguments
+- `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`.
 - `precomputed`: if true, the expected values of the biadjacency matrix are used, otherwise the parameters are computed from the model parameters.
 
 *Notes*: 
-1. layer membership is infered from node `i`
-2. depending on the layer, the tuple (`i`, `j`) denotes rows (:bottom) or columns (:top) of the biadjacency matrix `m.Ĝ`.
+1. depending on the layer,  the tuple (`i`, `j`) denotes rows (:bottom) or columns (:top) of the biadjacency matrix `m.Ĝ`.
 
 # Examples
+```jldoctest V_PB_parameters_bicm_local
+julia> model = BiCM(corporateclub());
 
+julia> solve_model!(model);
+
+julia> MaxEntropyGraphs.V_PB_parameters(model, 1, 1; layer=:bottom, precomputed=false);
+
+```
 """
-function V_PB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
-    layer = model.is⊥[i] ? (:bottom) : (:top)
+function V_PB_parameters(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=false)
+    # checks
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters (m.Θᵣ) must be computed for `m` first, see `solve_model!`"))
+
     if precomputed
         # checks
         m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) of the *biadjecency matrix* must be computed for `m` first, see `set_Ĝ!`"))
@@ -1623,16 +1668,6 @@ function V_PB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
     else
         if layer ∈ [:bottom; :⊥]
             # initialize
-            # res = zeros(eltype(m.θᵣ), m.status[:N⊤])
-            # i_red = m.d⊥ᵣ_ind[i]
-            # j_red = m.d⊥ᵣ_ind[j]
-            # for α in eachindex(res) # instead of all, go only over the reduced ones and impute them
-            #     α_red = m.d⊤ᵣ_ind[α]
-            #     res[α] = f_BiCM(m.xᵣ[i_red] * m.yᵣ[α_red]) * f_BiCM(m.xᵣ[j_red] * m.yᵣ[α_red])
-            # end
-
-            # return res
-
             res = zeros(eltype(m.θᵣ), m.status[:d⊤_unique])
             i_red = m.d⊥ᵣ_ind[i]
             j_red = m.d⊥ᵣ_ind[j]
@@ -1643,14 +1678,6 @@ function V_PB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
             return res[m.d⊤ᵣ_ind]
         elseif layer ∈ [:top; :⊤]
             # initialise
-            # res = zeros(eltype(m.θᵣ), m.status[:N⊥])
-            # α_red = m.d⊤ᵣ_ind[i]
-            # β_red = m.d⊤ᵣ_ind[j]
-            # for k in eachindex(res)
-            #     k_red = m.d⊥ᵣ_ind[k]
-            #     res[k] = f_BiCM(m.xᵣ[k_red] * m.yᵣ[α_red]) * f_BiCM(m.xᵣ[k_red] * m.yᵣ[β_red])
-            # end
-
             res = zeros(eltype(m.θᵣ), m.status[:d⊥_unique])
             α_red = m.d⊤ᵣ_ind[i]
             β_red = m.d⊤ᵣ_ind[j]
@@ -1666,36 +1693,97 @@ function V_PB_parameters(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
 end
 
 
-"""
-    V_p(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomputed::Bool=false)
 
-Compute the p-value for the number of V-motifs between nodes `i` and `j` in the original graphs for the `BiCM` model `m` when projected onto the layer `layer`.
-
-See also: [`V_motifs(::BiCM,::Int,::Int)`](@ref)
 """
-function V_p(m::BiCM, i::Int, j::Int; precomputed::Bool=false)
-    ## checks
-    # same layer
-    m.is⊥[i] ≠ m.is⊥[j] && throw(ArgumentError("The nodes `i` and `j` must be in the same layers."))
-    # parameters computed
+    project(m::BiCM;   α::Float64=0.05, layer::Symbol=:bottom, precomputed::Bool=true, 
+                        distribution::Symbol=:Poisson, adjustment::PValueAdjustment=BenjaminiHochberg(),
+                            multithreaded::Bool=false)
+
+Obtain the statistically validated projected graph of the BiCM model `m` onto the layer `layer` using the V-motifs and the significance level `α` combined with the p-value adjustment method `adjustment`.
+
+# Arguments
+- `α`: the significance level.
+- `layer`: the layer can be specified by passing `layer=:bottom` or `layer=:top`.
+- `precomputed`: if true, the expected values of the biadjacency matrix are used, otherwise the parameters are computed from the model parameters.
+- `distribution`: the distribution used to compute the p-values. This can be `:Poisson` or `:PoissonBinomial`.
+- `adjustment`: the method used to adjust the p-values for multiple testing. This can be any of the methods in the `PValueAdjustment` type (see `MultipleTesting.jl`). By default, the Benjamini-Hochberg method is used.
+- `multithreaded`: if true, the p-values are computed using multithreading.
+
+# Examples
+```jldoctest project_bicm
+julia> model = BiCM(corporateclub());
+
+julia> solve_model!(model);
+
+julia> project(model, layer=:bottom)
+{25, 0} undirected simple Int64 graph
+
+```
+```jldoctest project_bicm
+julia> project(model, layer=:top)
+{15, 0} undirected simple Int64 graph
+
+```
+"""
+function project(m::BiCM;   α::Float64=0.05, layer::Symbol=:bottom, precomputed::Bool=false, 
+                            distribution::Symbol=:Poisson, adjustment::MultipleTesting.PValueAdjustment=MultipleTesting.BenjaminiHochberg(),
+                            multithreaded::Bool=false)
+    # checks
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters (m.Θᵣ) must be computed for `m` first, see `solve_model!`"))
-    # using precomputed biadjacency matrix
     if precomputed
-        m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) of the *biadjecency matrix* must be computed for `m` first, see `set_Ĝ!`"))
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed first when using `precomputed=true` see `set_Ĝ!`"))
+    end
+    0. ≤ α ≤ 1. || throw(ArgumentError("The significance level `α` must be between 0 and 1."))
+    if !(layer ∈ [:bottom; :⊥; :top; :⊤])
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+    end
+    if !(distribution ∈ [:Poisson; :PoissonBinomial])
+        throw(ArgumentError("The distribution must be one of [:Poisson, :PoissonBinomial]."))
     end
 
-    # observed value
-    Vij_obs = V_motifs(m.G, i, j ; membership=m.is⊥)
-    
-    # distribution
-    dPB = Distributions.PoissonBinomial(V_PB_parameters(m, m.is⊥[i] ? m.⊥map[i] : m.⊤map[i], m.is⊥[j] ? m.⊥map[j] : m.⊤map[j]; precomputed=precomputed))
+    # compute the observed V-motifs (upper triangular part)
+    V_ij_obs = triu!(project(biadjacency_matrix(m.G), layer=layer, method=:weighted))
+    (row_indices, col_indices) = findnz(V_ij_obs)
 
-    # expected value
-    Vij_exp = Distributions.mean(dPB)
+    # determine the distributions and compute the p-values
+    if multithreaded
+        # initiate p-values
+        pvals = zeros(precision(m), length(V_ij_obs.nzval))
+        # compute p-values
+        Threads.@threads for i in eachindex(pvals)
+            if distribution == :Poisson
+                @inbounds pvals[i] = 1 - cdf(Poisson(V_motifs(m, row_indices[i], col_indices[i], layer=layer, precomputed=precomputed)), V_ij_obs.nzval[i] - 1)
+            elseif distribution == :PoissonBinomial
+                # get pvalues
+                @inbounds pvals[i] = 1 - cdf(PoissonBinomial(V_PB_parameters(m, row_indices[i], col_indices[i], layer=layer, precomputed=precomputed)), V_ij_obs.nzval[i] - 1)
+            end
+        end
+    else
+        if distribution == :Poisson
+            # get pvalues
+            pvals = [1 - cdf(Poisson(V_motifs(m, pair...; layer=layer, precomputed=precomputed)), V_ij_obs[pair...]-1) for pair in zip(row_indices, col_indices)]
+        elseif distribution == :PoissonBinomial
+            # get pvalues
+            pvals = [1 - cdf(PoissonBinomial(V_PB_parameters(m, pair...; layer=layer, precomputed=precomputed)), V_ij_obs[pair...]-1) for pair in zip(row_indices, col_indices)]
+        end
+    end
 
-    # compute p-value
-    pPB = Distributions.ccdf(dPB, Vij_obs)
+    # adjust p-values for multiple testing
+    pvals_adj = MultipleTesting.adjust(pvals, adjustment)
 
-    return Vij_obs, Vij_exp, pPB
+    # get the significant ones
+    sig_idx = pvals_adj .< α
+
+    # make edge iterator
+    edge_iter = (Graphs.SimpleEdge(e[1], e[2]) for e in zip(row_indices[sig_idx], col_indices[sig_idx]))
+
+    # generate return graph
+    G = Graphs.SimpleGraphFromIterator(edge_iter)
+
+    while Graphs.nv(G) < (layer ∈ (:bottom, :⊥) ? m.status[:N⊥] : m.status[:N⊤])
+        Graphs.add_vertex!(G)
+    end
+
+    return G
+
 end
-
