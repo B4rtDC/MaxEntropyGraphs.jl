@@ -1768,6 +1768,10 @@ function project(m::BiCM;   α::Float64=0.05, layer::Symbol=:bottom, precomputed
         end
     end
 
+    # due to the way the cdf is computed, the cdf values can be larger than 1 (up to machine precision),
+    # so we need to retify this, to avoid having negative p-values (up to machine precision e.g. -7.771561172376096e-15)
+    pvals = max.(pvals, 0.)
+
     # adjust p-values for multiple testing
     pvals_adj = MultipleTesting.adjust(pvals, adjustment)
 
