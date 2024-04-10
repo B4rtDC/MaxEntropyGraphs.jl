@@ -1,1 +1,0 @@
-This folder holds the data of the networks under investigation
