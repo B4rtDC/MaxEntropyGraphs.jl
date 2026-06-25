@@ -52,6 +52,11 @@ If you want to use a different definition of degree, you can pass a vector of de
 If you want to generate a model directly from a degree sequence without an underlying graph, you can simply pass the degree sequence as an argument.
 If you want to work from an adjacency matrix, or edge list, you can use the graph constructors from the `JuliaGraphs` ecosystem.
 
+!!! note "Numeric precision"
+    The `precision` keyword (e.g. `Float32`, `Float16`) lowers storage cost, but the solver may
+    fail to converge at low precision, so low precision is intended mainly for storage. Prefer the
+    default `Float64` for solving — `solve_model!` warns when a lower-precision model is solved.
+
 # Examples     
 ```jldoctest
 # generating a model from a graph
@@ -571,19 +576,19 @@ julia> typeof(sample)
 Graphs.SimpleGraphs.SimpleGraph{Int64}
 ```
 """
-function rand(m::UBCM; precomputed::Bool=false)
+function rand(m::UBCM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     if precomputed
         # check if possible to use precomputed Ĝ
         m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
         # generate random graph
-        G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()<m.Ĝ[i,j]]))
+        G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand(rng)<m.Ĝ[i,j]]))
     else
         # check if possible to use parameters
         m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
         # generate x vector
         x = m.xᵣ[m.dᵣ_ind]
         # generate random graph
-        G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()< (x[i]*x[j])/(1 + x[i]*x[j]) ]))
+        G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand(rng)< (x[i]*x[j])/(1 + x[i]*x[j]) ]))
     end
 
     # deal with edge case where no edges are generated for the last node(s) in the graph
@@ -616,12 +621,15 @@ julia> typeof(sample)
 Vector{SimpleGraph{Int64}} (alias for Array{Graphs.SimpleGraphs.SimpleGraph{Int64}, 1})
 ```
 """
-function rand(m::UBCM, n::Int; precomputed::Bool=false)
+function rand(m::UBCM, n::Int; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     # pre-allocate
     res = Vector{Graphs.SimpleGraph{Int}}(undef, n)
+    # per-sample seeds drawn from `rng` so the result is reproducible and independent of the
+    # thread schedule / thread count (each task gets its own Xoshiro stream)
+    seeds = rand(rng, UInt64, n)
     # fill vector using threads
     Threads.@threads for i in 1:n
-        res[i] = rand(m; precomputed=precomputed)
+        res[i] = rand(m; precomputed=precomputed, rng=Xoshiro(seeds[i]))
     end
 
     return res
@@ -677,6 +685,7 @@ function solve_model!(m::UBCM;  # common settings
                                 AD_method::Symbol=:AutoZygote,
                                 analytical_gradient::Bool=false)
     N = precision(m)
+    N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     if method==:fixedpoint

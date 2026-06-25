@@ -653,19 +653,19 @@ Generate a random graph from the BiCM model `m`.
 
 **Note**: The generated graph will also be bipartite and respect the layer membership of the original graph used to define the model.
 """
-function rand(m::BiCM; precomputed::Bool=false)
+function rand(m::BiCM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     if precomputed
         # check if possible to use precomputed Ĝ
         m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
         # generate random graph
-        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand()<m.Ĝ[i,j]]))
+        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand(rng)<m.Ĝ[i,j]]))
     else
         # check if possible to use parameters
         m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
         # initiate x and y
         x = m.xᵣ[m.d⊥ᵣ_ind]
         y = m.yᵣ[m.d⊤ᵣ_ind]
-        G = Graphs.SimpleGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand()< x[i]*y[j]/(1 + x[i]*y[j]) ]))
+        G = Graphs.SimpleGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand(rng)< x[i]*y[j]/(1 + x[i]*y[j]) ]))
     end
 
     # deal with edge case where no edges are generated for the last node(s) in the graph
@@ -688,12 +688,14 @@ end
 
 **Note**: The generated graph will also be bipartite and respect the layer membership of the original graph used to define the model.
 """
-function rand(m::BiCM, n::Int; precomputed::Bool=false)
+function rand(m::BiCM, n::Int; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     # pre-allocate
     res = Vector{Graphs.SimpleGraph{Int}}(undef, n)
+    # per-sample seeds for reproducible, thread-schedule-independent sampling
+    seeds = rand(rng, UInt64, n)
     # fill vector using threads
     Threads.@threads for i in 1:n
-        res[i] = rand(m; precomputed=precomputed)
+        res[i] = rand(m; precomputed=precomputed, rng=Xoshiro(seeds[i]))
     end
 
     return res
@@ -746,6 +748,7 @@ function solve_model!(m::BiCM;  # common settings
                                 AD_method::Symbol=:AutoZygote,
                                 analytical_gradient::Bool=true)
     N = precision(m)
+    N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     # find Inf values

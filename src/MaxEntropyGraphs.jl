@@ -5,6 +5,8 @@ Julia module for working with maximum entropy graphs
 """
 module MaxEntropyGraphs
     import Base: show, rand, showerror, precision
+    # reproducible / thread-safe sampling
+    import Random: AbstractRNG, default_rng, Xoshiro
     # for logmessages
     import Printf: @sprintf
     #import Dates: now, Day, Minute 

@@ -685,13 +685,13 @@ Graphs.SimpleGraphs.SimpleDiGraph{Int64}
 
 ```
 """
-function rand(m::DBCM; precomputed::Bool=false)
+function rand(m::DBCM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     if precomputed
         # check if possible to use precomputed Ĝ
         m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
         # generate random graph
         #G = Graphs.SimpleGraphFromIterator(  Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()<m.Ĝ[i,j]]))
-        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in 1:m.status[:d] if (rand()<m.Ĝ[i,j] && i≠j)  ]))
+        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in 1:m.status[:d] if (rand(rng)<m.Ĝ[i,j] && i≠j)  ]))
     else
         # check if possible to use parameters
         m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
@@ -700,7 +700,7 @@ function rand(m::DBCM; precomputed::Bool=false)
         y = m.yᵣ[m.dᵣ_ind]
         # generate random graph
         # G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()< (x[i]*x[j])/(1 + x[i]*x[j]) ]))
-        G = Graphs.SimpleDiGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in   1:m.status[:d] if (rand() < (x[i]*y[j])/(1 + x[i]*y[j]) && i≠j) ]))
+        G = Graphs.SimpleDiGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in   1:m.status[:d] if (rand(rng) < (x[i]*y[j])/(1 + x[i]*y[j]) && i≠j) ]))
     end
 
     # deal with edge case where no edges are generated for the last node(s) in the graph
@@ -735,12 +735,14 @@ Vector{SimpleDiGraph{Int64}} (alias for Array{Graphs.SimpleGraphs.SimpleDiGraph{
 
 ```
 """
-function rand(m::DBCM, n::Int; precomputed::Bool=false)
+function rand(m::DBCM, n::Int; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     # pre-allocate
     res = Vector{Graphs.SimpleDiGraph{Int}}(undef, n)
+    # per-sample seeds for reproducible, thread-schedule-independent sampling
+    seeds = rand(rng, UInt64, n)
     # fill vector using threads
     Threads.@threads for i in 1:n
-        res[i] = rand(m; precomputed=precomputed)
+        res[i] = rand(m; precomputed=precomputed, rng=Xoshiro(seeds[i]))
     end
 
     return res
@@ -795,6 +797,7 @@ function solve_model!(m::DBCM;  # common settings
                                 AD_method::Symbol=:AutoZygote,
                                 analytical_gradient::Bool=false)
     N = precision(m)
+    N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     # find Inf values
