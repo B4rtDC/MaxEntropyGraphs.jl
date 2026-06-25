@@ -5,6 +5,8 @@ Julia module for working with maximum entropy graphs
 """
 module MaxEntropyGraphs
     import Base: show, rand, showerror, precision
+    # reproducible / thread-safe sampling
+    import Random: AbstractRNG, default_rng, Xoshiro
     # for logmessages
     import Printf: @sprintf
     #import Dates: now, Day, Minute 
@@ -79,9 +81,10 @@ module MaxEntropyGraphs
     ### => 30x to >100x speedup for parameter computation
     using PrecompileTools
     using Preferences
-    # disable during development
-    set_preferences!(MaxEntropyGraphs, "precompile_workload" => false; force=true)
-    let
+    # The (expensive) precompile workload below is gated on a preference so developers can
+    # disable it locally (set `precompile_workload = false` in LocalPreferences.toml) WITHOUT
+    # mutating preferences at load time. Defaults to `true` for fast first-use in production.
+    if @load_preference("precompile_workload", true)
         # UBCM workload
         @setup_workload begin
             G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
@@ -138,10 +141,11 @@ module MaxEntropyGraphs
                 # sampling
                 rand(model,10)
                 # metrics
+                set_Ĝ!(model) # required before the precomputed=true projections below
                 for layer in [:bottom, :top]
                     for precomputed in [true, false]
-                        for adjustment in [:Poisson, :PoissonBinomial]
-                            project(model, layer=layer, precomputed=precomputed, adjustment=adjustment)
+                        for distribution in [:Poisson, :PoissonBinomial]
+                            project(model, layer=layer, precomputed=precomputed, distribution=distribution)
                         end
                     end
                 end

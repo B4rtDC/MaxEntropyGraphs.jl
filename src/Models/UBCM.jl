@@ -7,7 +7,7 @@ Maximum entropy model for the Undirected Binary Configuration Model (UBCM).
 The object holds the maximum likelihood parameters of the model (θ) and optionally the expected adjacency matrix (G), 
 and the variance for the elements of the adjacency matrix (σ). All settings and other metadata are stored in the `status` field.
 """
-mutable struct UBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
+mutable struct UBCM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: AbstractMaxEntropyModel
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleGraph for the computation" # can also be empty
     const G::T 
     "Maximum likelihood parameters for reduced model"
@@ -51,6 +51,11 @@ By default and dependng on the graph type `T`, the definition of degree from `Gr
 If you want to use a different definition of degree, you can pass a vector of degrees as the second argument.
 If you want to generate a model directly from a degree sequence without an underlying graph, you can simply pass the degree sequence as an argument.
 If you want to work from an adjacency matrix, or edge list, you can use the graph constructors from the `JuliaGraphs` ecosystem.
+
+!!! note "Numeric precision"
+    The `precision` keyword (e.g. `Float32`, `Float16`) lowers storage cost, but the solver may
+    fail to converge at low precision, so low precision is intended mainly for storage. Prefer the
+    default `Float64` for solving — `solve_model!` warns when a lower-precision model is solved.
 
 # Examples     
 ```jldoctest
@@ -169,9 +174,9 @@ function L_UBCM_reduced(θ::AbstractVector, K::Vector, F::Vector)
         @simd for k′ in eachindex(K)
             if k′ ≤ k
                 if k == k′
-                    @inbounds res -= F[k] * (F[k] - 1) * log(1 + exp(- θ[k] - θ[k′]) ) * .5 # to avoid counting it twice
+                    @inbounds res -= F[k] * (F[k] - 1) * softplus(- θ[k] - θ[k′]) * .5 # to avoid counting it twice
                 else
-                    @inbounds res -= F[k] * F[k′]      * log(1 + exp(- θ[k] - θ[k′]) )
+                    @inbounds res -= F[k] * F[k′]      * softplus(- θ[k] - θ[k′])
                 end
                 #@inbounds res -= F[k] * (F[k′] - (k==k′ ? 1. : 0.)) * log(1 + exp(- θ[k] - θ[k′]) ) * (k==k′ ? .5 : 1.) 
             end
@@ -268,16 +273,17 @@ function ∇L_UBCM_reduced!(∇L::AbstractVector, θ::AbstractVector, K::Vector,
     end
 
     for i in eachindex(K)
-        ∇L[i] = - F[i] * K[i]
-        for j in eachindex(K)
-            if i == j
-                aux = x[i] ^ 2
-                ∇L[i] += F[i] * (F[i] - 1) * (aux / (1 + aux))
-            else
-                aux = x[i] * x[j]
-                ∇L[i] += F[i] * F[j]       * (aux / (1 + aux))
-            end
+        @inbounds xᵢ = x[i]
+        # branch-free inner sum (SIMD-friendly reduction): Σⱼ F[j]·xᵢxⱼ/(1+xᵢxⱼ)
+        acc = zero(eltype(∇L))
+        @inbounds @simd for j in eachindex(K)
+            aux = xᵢ * x[j]
+            acc += F[j] * (aux / (1 + aux))
         end
+        # the j==i term above used F[i] rather than (F[i]-1); subtract one self term to correct
+        @inbounds auxᵢᵢ = xᵢ * xᵢ
+        acc -= auxᵢᵢ / (1 + auxᵢᵢ)
+        @inbounds ∇L[i] = -F[i] * K[i] + F[i] * acc
     end
 
     return ∇L
@@ -295,17 +301,16 @@ function ∇L_UBCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector, K::V
     @simd for i in eachindex(x) # to avoid the allocation of exp.(-θ)
         @inbounds x[i] = exp(-θ[i])
     end
-    @simd for i in eachindex(K)
-        @inbounds ∇L[i] =  F[i] * K[i]
-        for j in eachindex(K)
-            if i == j
-                aux = x[i] ^ 2
-                @inbounds ∇L[i] -= F[i] * (F[i] - 1) * (aux / (1 + aux))
-            else
-                aux = x[i] * x[j]
-                @inbounds ∇L[i] -= F[i] * F[j]       * (aux / (1 + aux))
-            end
+    for i in eachindex(K)
+        @inbounds xᵢ = x[i]
+        acc = zero(eltype(∇L))
+        @inbounds @simd for j in eachindex(K)
+            aux = xᵢ * x[j]
+            acc += F[j] * (aux / (1 + aux))
         end
+        @inbounds auxᵢᵢ = xᵢ * xᵢ
+        acc -= auxᵢᵢ / (1 + auxᵢᵢ)
+        @inbounds ∇L[i] = F[i] * K[i] - F[i] * acc
     end
 
     return ∇L
@@ -571,19 +576,19 @@ julia> typeof(sample)
 Graphs.SimpleGraphs.SimpleGraph{Int64}
 ```
 """
-function rand(m::UBCM; precomputed::Bool=false)
+function rand(m::UBCM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     if precomputed
         # check if possible to use precomputed Ĝ
         m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
         # generate random graph
-        G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()<m.Ĝ[i,j]]))
+        G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand(rng)<m.Ĝ[i,j]]))
     else
         # check if possible to use parameters
         m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
         # generate x vector
         x = m.xᵣ[m.dᵣ_ind]
         # generate random graph
-        G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()< (x[i]*x[j])/(1 + x[i]*x[j]) ]))
+        G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand(rng)< (x[i]*x[j])/(1 + x[i]*x[j]) ]))
     end
 
     # deal with edge case where no edges are generated for the last node(s) in the graph
@@ -616,12 +621,15 @@ julia> typeof(sample)
 Vector{SimpleGraph{Int64}} (alias for Array{Graphs.SimpleGraphs.SimpleGraph{Int64}, 1})
 ```
 """
-function rand(m::UBCM, n::Int; precomputed::Bool=false)
+function rand(m::UBCM, n::Int; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     # pre-allocate
     res = Vector{Graphs.SimpleGraph{Int}}(undef, n)
+    # per-sample seeds drawn from `rng` so the result is reproducible and independent of the
+    # thread schedule / thread count (each task gets its own Xoshiro stream)
+    seeds = rand(rng, UInt64, n)
     # fill vector using threads
     Threads.@threads for i in 1:n
-        res[i] = rand(m; precomputed=precomputed)
+        res[i] = rand(m; precomputed=precomputed, rng=Xoshiro(seeds[i]))
     end
 
     return res
@@ -677,6 +685,7 @@ function solve_model!(m::UBCM;  # common settings
                                 AD_method::Symbol=:AutoZygote,
                                 analytical_gradient::Bool=false)
     N = precision(m)
+    N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     if method==:fixedpoint
@@ -713,7 +722,7 @@ function solve_model!(m::UBCM;  # common settings
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
             if verbose 
-                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.stats.time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
             end
             m.θᵣ .= sol.u;
             m.status[:params_computed] = true;

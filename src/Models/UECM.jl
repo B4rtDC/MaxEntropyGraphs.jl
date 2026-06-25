@@ -10,7 +10,7 @@ and the variance for the elements of the adjacency matrix (σ).
 
 Note: this requires that the weights only assume (non-negative) integer values.   
 """
-mutable struct UECM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
+mutable struct UECM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: AbstractMaxEntropyModel
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleWeightedGraph for the computation" # can also be empty
     const G::T 
     "Maximum likelihood parameters for reduced model"
@@ -567,7 +567,7 @@ function solve_model!(m::UECM{T,N};  # common settings
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
             if verbose 
-                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))\n$(sol.original)"""
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.stats.time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))\n$(sol.original)"""
             end
             m.θᵣ .= sol.u;
             m.θᵣ[ind_inf] .= N(Inf);

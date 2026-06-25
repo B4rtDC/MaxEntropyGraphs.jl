@@ -9,7 +9,7 @@ Weight are continuous and positive, and the model is undirected.
 This is a two-step process: first we consider the marginal probability of an edge existing between nodes using the UBCM model, 
 then we use this in for the CReM model.
 """
-mutable struct CReM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
+mutable struct CReM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: AbstractMaxEntropyModel
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleGraph for the computation" # can also be empty
     const G::T 
     "Maximum likelihood parameters for CReM model"
@@ -443,7 +443,7 @@ function solve_model!(m::CReM{T,N}; # related to CReM
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
             if verbose 
-                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))\n$(sol.original)"""
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.stats.time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))\n$(sol.original)"""
             end
             m.θ .= sol.u;
             m.status[:params_computed] = true;

@@ -7,7 +7,7 @@ Maximum entropy model for the Undirected Bipartite Configuration Model (BiCM).
 The object holds the maximum likelihood parameters of the model (θ), the expected bi-adjacency matrix (Ĝ), 
 and the variance for the elements of the adjacency matrix (σ).
 """
-mutable struct BiCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
+mutable struct BiCM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: AbstractMaxEntropyModel
     "Graph type, can be any bipartite subtype of AbstractGraph, but will be converted to SimpleGraph for the computation" # can also be empty
     const G::T 
     "Maximum likelihood parameters for reduced model" 
@@ -274,7 +274,7 @@ function L_BiCM_reduced(θ::AbstractVector, k⊥::Vector, k⊤::Vector, f⊥::Ve
     for i in nz⊥
         res -=  f⊥[i]*k⊥[i]*α[i] 
         for j in nz⊤
-            res -= f⊥[i] * f⊤[j] * log(1 + exp(-α[i] - β[j]))
+            res -= f⊥[i] * f⊤[j] * softplus(-α[i] - β[j])
         end
     end
     for j in nz⊤
@@ -367,18 +367,23 @@ function ∇L_BiCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector,
     # reset gradient to zero
     ∇L .= zero(eltype(θ))
     
-    # actual compute
+    # actual compute (bipartite: no diagonal term; factor the outer-constant f·x / f·y out of
+    # the inner reduction so each inner step is a single multiply-add)
     for i in nz⊥
-        ∇L[i] = - f⊥[i] * k⊥[i]
-        for j in nz⊤
-            ∇L[i]    += f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        @inbounds xᵢ = x[i]
+        s = zero(eltype(∇L))
+        @inbounds @simd for j in nz⊤
+            s += f⊤[j] * y[j] / (1 + xᵢ * y[j])
         end
+        @inbounds ∇L[i] = -f⊥[i] * k⊥[i] + f⊥[i] * xᵢ * s
     end
     for j in nz⊤
-        ∇L[n⊥+j] = - f⊤[j] * k⊤[j]
-        for i in nz⊥
-            ∇L[n⊥+j] += f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        @inbounds yⱼ = y[j]
+        s = zero(eltype(∇L))
+        @inbounds @simd for i in nz⊥
+            s += f⊥[i] * x[i] / (1 + x[i] * yⱼ)
         end
+        @inbounds ∇L[n⊥+j] = -f⊤[j] * k⊤[j] + f⊤[j] * yⱼ * s
     end
 
     return ∇L
@@ -412,18 +417,23 @@ function ∇L_BiCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector,
     # reset gradient to zero
     ∇L .= zero(eltype(θ))
 
-    # actual compute
+    # actual compute (bipartite: no diagonal term; factor the outer-constant f·x / f·y out of
+    # the inner reduction so each inner step is a single multiply-add)
     for i in nz⊥
-        ∇L[i] = f⊥[i] * k⊥[i]
-        for j in nz⊤
-            ∇L[i]    -= f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        @inbounds xᵢ = x[i]
+        s = zero(eltype(∇L))
+        @inbounds @simd for j in nz⊤
+            s += f⊤[j] * y[j] / (1 + xᵢ * y[j])
         end
+        @inbounds ∇L[i] = f⊥[i] * k⊥[i] - f⊥[i] * xᵢ * s
     end
     for j in nz⊤
-        ∇L[n⊥+j] = f⊤[j] * k⊤[j]
-        for i in nz⊥
-            ∇L[n⊥+j] -= f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        @inbounds yⱼ = y[j]
+        s = zero(eltype(∇L))
+        @inbounds @simd for i in nz⊥
+            s += f⊥[i] * x[i] / (1 + x[i] * yⱼ)
         end
+        @inbounds ∇L[n⊥+j] = f⊤[j] * k⊤[j] - f⊤[j] * yⱼ * s
     end
 
     return ∇L
@@ -653,19 +663,19 @@ Generate a random graph from the BiCM model `m`.
 
 **Note**: The generated graph will also be bipartite and respect the layer membership of the original graph used to define the model.
 """
-function rand(m::BiCM; precomputed::Bool=false)
+function rand(m::BiCM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     if precomputed
         # check if possible to use precomputed Ĝ
         m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
         # generate random graph
-        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand()<m.Ĝ[i,j]]))
+        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand(rng)<m.Ĝ[i,j]]))
     else
         # check if possible to use parameters
         m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
         # initiate x and y
         x = m.xᵣ[m.d⊥ᵣ_ind]
         y = m.yᵣ[m.d⊤ᵣ_ind]
-        G = Graphs.SimpleGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand()< x[i]*y[j]/(1 + x[i]*y[j]) ]))
+        G = Graphs.SimpleGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand(rng)< x[i]*y[j]/(1 + x[i]*y[j]) ]))
     end
 
     # deal with edge case where no edges are generated for the last node(s) in the graph
@@ -688,12 +698,14 @@ end
 
 **Note**: The generated graph will also be bipartite and respect the layer membership of the original graph used to define the model.
 """
-function rand(m::BiCM, n::Int; precomputed::Bool=false)
+function rand(m::BiCM, n::Int; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     # pre-allocate
     res = Vector{Graphs.SimpleGraph{Int}}(undef, n)
+    # per-sample seeds for reproducible, thread-schedule-independent sampling
+    seeds = rand(rng, UInt64, n)
     # fill vector using threads
     Threads.@threads for i in 1:n
-        res[i] = rand(m; precomputed=precomputed)
+        res[i] = rand(m; precomputed=precomputed, rng=Xoshiro(seeds[i]))
     end
 
     return res
@@ -746,6 +758,7 @@ function solve_model!(m::BiCM;  # common settings
                                 AD_method::Symbol=:AutoZygote,
                                 analytical_gradient::Bool=true)
     N = precision(m)
+    N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     # find Inf values
@@ -792,7 +805,7 @@ function solve_model!(m::BiCM;  # common settings
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
             if verbose 
-                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.stats.time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
             end
             m.θᵣ .= sol.u;
             m.status[:params_computed] = true;

@@ -1,0 +1,24 @@
+# Codecov configuration for MaxEntropyGraphs.jl
+# Coverage is informational while test gaps are being filled (does not fail PRs).
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# Exclude non-logic / embedded-data / placeholder files from the coverage denominator.
+ignore:
+  - "src/smallnetworks.jl"   # large embedded demo-network literals, not logic
+  - "src/Models/RCM.jl"      # empty placeholder
+  - "docs/**/*"
+  - "performance/**/*"
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false

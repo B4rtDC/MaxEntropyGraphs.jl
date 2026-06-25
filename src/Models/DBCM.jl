@@ -7,7 +7,7 @@ Maximum entropy model for the Directed Binary Configuration Model (UBCM).
 The object holds the maximum likelihood parameters of the model (θ) and optionally the expected adjacency matrix (G), 
 and the variance for the elements of the adjacency matrix (σ). All settings and other metadata are stored in the `status` field.
 """
-mutable struct DBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
+mutable struct DBCM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: AbstractMaxEntropyModel
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleDiGraph for the computation" # can also be empty
     const G::T 
     "Vector holding all maximum likelihood parameters for reduced model (α ; β)"
@@ -210,9 +210,9 @@ function L_DBCM_reduced(θ::AbstractVector, k_out::Vector, k_in::Vector, F::Vect
         @inbounds res -= F[i] * k_out[i] * α[i]
         for j ∈ nz_in
             if i ≠ j 
-                @inbounds res -= F[i] * F[j]       * log(1 + exp(-α[i] - β[j]))
+                @inbounds res -= F[i] * F[j]       * softplus(-α[i] - β[j])
             else
-                @inbounds res -= F[i] * (F[i] - 1) * log(1 + exp(-α[i] - β[j]))
+                @inbounds res -= F[i] * (F[i] - 1) * softplus(-α[i] - β[j])
             end
         end
     end
@@ -330,31 +330,23 @@ function ∇L_DBCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector,
     # reset gradient to zero
     ∇L .= zero(eltype(∇L))
     
-    # part related to α
-    @simd for i ∈ nz_out
+    # part related to α (branch-free inner reduction: (i==j) folds in the diagonal correction)
+    for i ∈ nz_out
+        @inbounds xᵢ = x[i]
         fx = zero(eltype(∇L))
-        for j ∈ nz_in
-            if i ≠ j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fx += c * y[j] / (1 + x[i] * y[j])
+        @inbounds @simd for j ∈ nz_in
+            fx += (F[j] - (i == j)) * y[j] / (1 + xᵢ * y[j])
         end
-        @inbounds ∇L[i] = x[i] * fx - F[i] * k_out[i]
+        @inbounds ∇L[i] = xᵢ * F[i] * fx - F[i] * k_out[i]
     end
     # part related to β
-    @simd for j ∈ nz_in
+    for j ∈ nz_in
+        @inbounds yⱼ = y[j]
         fy = zero(eltype(∇L))
-        for i ∈ nz_out
-            if i≠j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fy += c * x[i] / (1 + x[i] * y[j])
+        @inbounds @simd for i ∈ nz_out
+            fy += (F[j] - (i == j)) * F[i] * x[i] / (1 + x[i] * yⱼ)
         end
-        @inbounds ∇L[n+j] = y[j] * fy - F[j] * k_in[j]
+        @inbounds ∇L[n+j] = yⱼ * fy - F[j] * k_in[j]
     end
 
     return ∇L
@@ -384,31 +376,23 @@ function ∇L_DBCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector,
     # reset gradient to zero
     ∇L .= zero(eltype(∇L))
 
-    # part related to α
-    @simd for i ∈ nz_out
+    # part related to α (branch-free inner reduction: (i==j) folds in the diagonal correction)
+    for i ∈ nz_out
+        @inbounds xᵢ = x[i]
         fx = zero(eltype(∇L))
-        for j ∈ nz_in
-            if i ≠ j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fx -= c * y[j] / (1 + x[i] * y[j])
+        @inbounds @simd for j ∈ nz_in
+            fx += (F[j] - (i == j)) * y[j] / (1 + xᵢ * y[j])
         end
-        @inbounds ∇L[i] = x[i] * fx + F[i] * k_out[i]
+        @inbounds ∇L[i] = -xᵢ * F[i] * fx + F[i] * k_out[i]
     end
     # part related to β
-    @simd for j ∈ nz_in
+    for j ∈ nz_in
+        @inbounds yⱼ = y[j]
         fy = zero(eltype(∇L))
-        for i ∈ nz_out
-            if i≠j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fy -= c * x[i] / (1 + x[i] * y[j])
+        @inbounds @simd for i ∈ nz_out
+            fy += (F[j] - (i == j)) * F[i] * x[i] / (1 + x[i] * yⱼ)
         end
-        @inbounds ∇L[n+j] = y[j] * fy + F[j] * k_in[j]
+        @inbounds ∇L[n+j] = -yⱼ * fy + F[j] * k_in[j]
     end
 
     return ∇L
@@ -685,13 +669,13 @@ Graphs.SimpleGraphs.SimpleDiGraph{Int64}
 
 ```
 """
-function rand(m::DBCM; precomputed::Bool=false)
+function rand(m::DBCM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     if precomputed
         # check if possible to use precomputed Ĝ
         m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
         # generate random graph
         #G = Graphs.SimpleGraphFromIterator(  Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()<m.Ĝ[i,j]]))
-        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in 1:m.status[:d] if (rand()<m.Ĝ[i,j] && i≠j)  ]))
+        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in 1:m.status[:d] if (rand(rng)<m.Ĝ[i,j] && i≠j)  ]))
     else
         # check if possible to use parameters
         m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
@@ -700,7 +684,7 @@ function rand(m::DBCM; precomputed::Bool=false)
         y = m.yᵣ[m.dᵣ_ind]
         # generate random graph
         # G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()< (x[i]*x[j])/(1 + x[i]*x[j]) ]))
-        G = Graphs.SimpleDiGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in   1:m.status[:d] if (rand() < (x[i]*y[j])/(1 + x[i]*y[j]) && i≠j) ]))
+        G = Graphs.SimpleDiGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in   1:m.status[:d] if (rand(rng) < (x[i]*y[j])/(1 + x[i]*y[j]) && i≠j) ]))
     end
 
     # deal with edge case where no edges are generated for the last node(s) in the graph
@@ -735,12 +719,14 @@ Vector{SimpleDiGraph{Int64}} (alias for Array{Graphs.SimpleGraphs.SimpleDiGraph{
 
 ```
 """
-function rand(m::DBCM, n::Int; precomputed::Bool=false)
+function rand(m::DBCM, n::Int; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     # pre-allocate
     res = Vector{Graphs.SimpleDiGraph{Int}}(undef, n)
+    # per-sample seeds for reproducible, thread-schedule-independent sampling
+    seeds = rand(rng, UInt64, n)
     # fill vector using threads
     Threads.@threads for i in 1:n
-        res[i] = rand(m; precomputed=precomputed)
+        res[i] = rand(m; precomputed=precomputed, rng=Xoshiro(seeds[i]))
     end
 
     return res
@@ -795,6 +781,7 @@ function solve_model!(m::DBCM;  # common settings
                                 AD_method::Symbol=:AutoZygote,
                                 analytical_gradient::Bool=false)
     N = precision(m)
+    N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     # find Inf values
@@ -841,7 +828,7 @@ function solve_model!(m::DBCM;  # common settings
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
             if verbose 
-                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.stats.time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
             end
             m.θᵣ .= sol.u;
             m.status[:params_computed] = true;

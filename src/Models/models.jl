@@ -34,10 +34,24 @@ Exception thrown when the optimisation method does not converge.
 When using and optimisation method from the `Optimisation.jl` framework, the return code of the optimisation method is stored in the `retcode` field.
 When using the fixed point iteration method, the `retcode` field is set to `nothing`.
 """
-struct ConvergenceError{T} <: Exception where {T<:Optimization.SciMLBase.EnumX.Enum{Int32}}
+struct ConvergenceError <: Exception
     method::Symbol
-    retcode::Union{Nothing, T}
+    retcode::Any  # Optimization.jl return code, or `nothing` for the fixed-point method
 end
 
 Base.showerror(io::IO, e::ConvergenceError) = print(io, """method `$(e.method)` did not converge $(isnothing(e.retcode) ? "" : "(Optimization.jl return code: $(e.retcode))")""")
+
+
+"""
+    softplus(x)
+
+Numerically stable evaluation of `log(1 + exp(x))` (the softplus function).
+
+Computed as `max(x, 0) + log1p(exp(-abs(x)))`, which is mathematically identical to
+`log(1 + exp(x))` but avoids overflow for large positive `x` (hub nodes / strongly
+attached vertices) and precision loss for large negative `x`. This matters in particular
+for low-precision (`Float32`/`Float16`) solves. Its derivative is the logistic sigmoid
+`1 / (1 + exp(-x))`, matching the analytical gradients used by the models.
+"""
+@inline softplus(x::T) where {T<:Real} = max(x, zero(T)) + log1p(exp(-abs(x)))
 
