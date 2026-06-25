@@ -70,7 +70,8 @@ jobs:
           version: ${{ matrix.version }}
       - uses: julia-actions/julia-downgrade-compat@v1
         with:
-          skip: Pkg,TOML,LinearAlgebra,SparseArrays,Printf,Logging
+          # stdlibs are versioned with Julia itself; don't try to downgrade them
+          skip: Pkg,TOML,LinearAlgebra,SparseArrays,Printf,Logging,Random
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1

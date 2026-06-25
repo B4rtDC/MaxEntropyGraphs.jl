@@ -1,5 +1,5 @@
-[![Build status (Github Actions)](https://github.com/B4rtDC/MaxEntropyGraphs.jl/workflows/CI/badge.svg)](https://github.com/B4rtDC/MaxEntropyGraphs.jl/actions)
-[![codecov.io](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl/coverage.svg?branch=main)](http://codecov.io/github/B4rtDC/MaxEntropyGraphs.jl?branch=2023rework)
+[![CI](https://github.com/B4rtDC/MaxEntropyGraphs.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/B4rtDC/MaxEntropyGraphs.jl/actions/workflows/CI.yml)
+[![codecov](https://codecov.io/gh/B4rtDC/MaxEntropyGraphs.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/B4rtDC/MaxEntropyGraphs.jl)
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://B4rtDC.github.io/MaxEntropyGraphs.jl/dev/)
 
 [![DOI](https://zenodo.org/badge/437887003.svg)](https://zenodo.org/badge/latestdoi/437887003)
