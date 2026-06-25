@@ -71,10 +71,13 @@ jobs:
           version: ${{ matrix.version }}
       - uses: julia-actions/julia-downgrade-compat@v1
         with:
-          # stdlibs are versioned with Julia itself; the AD deps (ForwardDiff/Zygote) have their
-          # effective floor dictated by the tightly-coupled SciML stack (Optimization/OptimizationBase),
-          # not by this package, so don't pin them to their independent lowest bound.
-          skip: Pkg,TOML,LinearAlgebra,SparseArrays,Printf,Logging,Random,ForwardDiff,Zygote
+          # Skip (a) stdlibs, which are versioned with Julia itself, and (b) the deps whose effective
+          # floor is dictated by Optimization 4's large *modern* transitive tree rather than by this
+          # package — pinning any of them to its independent lowest version drags in a stale transitive
+          # dependency that cannot coexist with Optimization 4 (verified: exactly these 7 must stay free
+          # for the lowest-bound set to resolve). The job still tests Optimization/OptimizationOptimJL
+          # and the stable utility deps at their floors.
+          skip: Pkg,TOML,LinearAlgebra,SparseArrays,Printf,Logging,Random,Graphs,Distributions,NLsolve,ForwardDiff,ReverseDiff,Zygote,FiniteDiff
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
