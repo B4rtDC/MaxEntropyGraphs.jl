@@ -29,6 +29,24 @@ Conventions:
 
 ## Experiments
 
+### EXP-001  Debranch the UBCM gradient inner loop (Phase 6a)
+- Hypothesis: the `if i==j` branch inside the O(K²) inner loop of `∇L_UBCM_reduced!` blocks SIMD;
+  factoring `F[i]` out and handling the diagonal once should speed it up.
+- Change: inner loop sums `Σⱼ F[j]·g(xᵢxⱼ)` branch-free (g(z)=z/(1+z)), then subtract one self term
+  `g(xᵢ²)` to correct the diagonal `(F[i]-1)` vs `F[i]`; multiply by `F[i]` once. Same for the
+  `_minus!` variant. `src/Models/UBCM.jl`.
+- Correctness: vs the original branchy version, max relative diff ~1e-15 (machine epsilon) on
+  BA graphs; full test suite (Zygote-vs-analytical `≈`) still green.
+- Result (Julia 1.10, BA(n,6), `@elapsed` mean of 300 calls):
+  | n | unique-deg K | old | new | speedup |
+  |---|---|---|---|---|
+  | 2 000   | 71  | 13.6µs | 1.6µs  | 8.6× |
+  | 20 000  | 156 | 78.1µs | 7.1µs  | 11.0× |
+  | 100 000 | 274 | 252µs  | 21.5µs | 11.7× |
+- Decision: KEEP. The analytical gradient is called every solver iteration, so this directly
+  speeds up `solve_model!(analytical_gradient=true)`. Follow-up: apply the same transform to the
+  DBCM/BiCM gradients (different nz-index loop structure).
+
 <!-- Template:
 ### EXP-NNN  <short title>
 - Hypothesis:

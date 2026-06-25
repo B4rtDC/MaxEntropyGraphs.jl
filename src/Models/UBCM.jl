@@ -273,16 +273,17 @@ function ∇L_UBCM_reduced!(∇L::AbstractVector, θ::AbstractVector, K::Vector,
     end
 
     for i in eachindex(K)
-        ∇L[i] = - F[i] * K[i]
-        for j in eachindex(K)
-            if i == j
-                aux = x[i] ^ 2
-                ∇L[i] += F[i] * (F[i] - 1) * (aux / (1 + aux))
-            else
-                aux = x[i] * x[j]
-                ∇L[i] += F[i] * F[j]       * (aux / (1 + aux))
-            end
+        @inbounds xᵢ = x[i]
+        # branch-free inner sum (SIMD-friendly reduction): Σⱼ F[j]·xᵢxⱼ/(1+xᵢxⱼ)
+        acc = zero(eltype(∇L))
+        @inbounds @simd for j in eachindex(K)
+            aux = xᵢ * x[j]
+            acc += F[j] * (aux / (1 + aux))
         end
+        # the j==i term above used F[i] rather than (F[i]-1); subtract one self term to correct
+        @inbounds auxᵢᵢ = xᵢ * xᵢ
+        acc -= auxᵢᵢ / (1 + auxᵢᵢ)
+        @inbounds ∇L[i] = -F[i] * K[i] + F[i] * acc
     end
 
     return ∇L
@@ -300,17 +301,16 @@ function ∇L_UBCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector, K::V
     @simd for i in eachindex(x) # to avoid the allocation of exp.(-θ)
         @inbounds x[i] = exp(-θ[i])
     end
-    @simd for i in eachindex(K)
-        @inbounds ∇L[i] =  F[i] * K[i]
-        for j in eachindex(K)
-            if i == j
-                aux = x[i] ^ 2
-                @inbounds ∇L[i] -= F[i] * (F[i] - 1) * (aux / (1 + aux))
-            else
-                aux = x[i] * x[j]
-                @inbounds ∇L[i] -= F[i] * F[j]       * (aux / (1 + aux))
-            end
+    for i in eachindex(K)
+        @inbounds xᵢ = x[i]
+        acc = zero(eltype(∇L))
+        @inbounds @simd for j in eachindex(K)
+            aux = xᵢ * x[j]
+            acc += F[j] * (aux / (1 + aux))
         end
+        @inbounds auxᵢᵢ = xᵢ * xᵢ
+        acc -= auxᵢᵢ / (1 + auxᵢᵢ)
+        @inbounds ∇L[i] = F[i] * K[i] - F[i] * acc
     end
 
     return ∇L
