@@ -5,6 +5,8 @@ using MaxEntropyGraphs
     include("./utils.jl")
     include("./metrics.jl")
     include("./models.jl")
+    include("./solver.jl")
+    include("./aqua.jl")
 end
 
 
