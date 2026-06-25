@@ -59,6 +59,19 @@ Conventions:
   would need the diagonal self-correction handled outside the inner loop (membership of nz_out∩nz_in),
   and reciprocal-approximation/`@fastmath` could help the division-bound divisions.
 
+### EXP-003  Matrix-free Ĝ audit (Phase 6c)
+- Question: the dense expected-adjacency matrix is O(n²) (~500 GB at n=250k Float64). How much of
+  the package forces materializing it?
+- Finding (code audit + measurement): **metric values and sampling are already matrix-free** — they
+  use the element accessors `A(m,i,j)` / `f_UBCM`/`f_DBCM`/`f_BiCM` over the reduced parameters, never
+  the matrix. Measured at n=8000: `degree(m)` allocates 0.25 MB, one `A(m,i,j)` call allocates 0 bytes
+  (a dense Ĝ would be 512 MB). The dense path is hit ONLY by the opt-in `Ĝ(m)`/`set_Ĝ!`, `σˣ(m)`/
+  `set_σ!`, the `precomputed=true` branches (gated, documented), and the custom-metric error-propagation
+  `σₓ` (UBCM:995 `sqrt(sum((m.σ.*∇X)²))`), which needs the dense `m.σ`.
+- Decision: NO large refactor needed for the common case (documented in `docs/src/GPU.md`). Scoped
+  remaining target: make `σₓ` variance propagation matrix-free (stream σ_ij·∇X_ij), and audit the
+  triangle/square/motif std paths. Left as a focused follow-up (per-function correctness needed).
+
 <!-- Template:
 ### EXP-NNN  <short title>
 - Hypothesis:
