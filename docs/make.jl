@@ -42,6 +42,7 @@ makedocs(sitename="MaxEntropyGraphs.jl",
                             "BiCM" => "API/API_BiCM.md",]
                             ],
          doctest=false,
+         checkdocs=:exports,   # only require exported symbols in the manual (internal helpers like `softplus` are fine)
          build=joinpath(dirname(@__FILE__), "build")
 )
 

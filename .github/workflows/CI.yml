@@ -23,8 +23,9 @@ jobs:
       matrix:
         version:
           - '1.10'   # LTS (minimum supported)
-          - '1.11'   # current stable
-          - 'pre'    # upcoming release / prerelease
+          - '1.11'
+          - '1.12'   # current stable release
+          - 'pre'    # next prerelease (beyond the current stable)
         os:
           - ubuntu-latest
           - macos-latest

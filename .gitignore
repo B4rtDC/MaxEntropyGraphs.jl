@@ -26,8 +26,11 @@ utils/*
 # ignore old src files
 src_old/*
 
-# ignore compiled docs 
+# ignore compiled docs
 docs/build/*
+# docs is a separate environment; it is re-instantiated in CI, don't track its lockfiles
+docs/Manifest.toml
+docs/LocalPreferences.toml
 
 # ignore exmples folders
 examples/*
