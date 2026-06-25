@@ -57,6 +57,9 @@ performance/LocalPreferences.toml
 # local scratch / prototypes / experiments (not part of the package)
 /dev/
 
+# the test environment resolves its own deps; don't track its lockfile
+test/Manifest.toml
+
 # keynote / binary design assets
 *.key
 
