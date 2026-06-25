@@ -79,9 +79,10 @@ module MaxEntropyGraphs
     ### => 30x to >100x speedup for parameter computation
     using PrecompileTools
     using Preferences
-    # disable during development
-    set_preferences!(MaxEntropyGraphs, "precompile_workload" => false; force=true)
-    let
+    # The (expensive) precompile workload below is gated on a preference so developers can
+    # disable it locally (set `precompile_workload = false` in LocalPreferences.toml) WITHOUT
+    # mutating preferences at load time. Defaults to `true` for fast first-use in production.
+    if @load_preference("precompile_workload", true)
         # UBCM workload
         @setup_workload begin
             G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)

@@ -7,7 +7,7 @@ Maximum entropy model for the Undirected Bipartite Configuration Model (BiCM).
 The object holds the maximum likelihood parameters of the model (θ), the expected bi-adjacency matrix (Ĝ), 
 and the variance for the elements of the adjacency matrix (σ).
 """
-mutable struct BiCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
+mutable struct BiCM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: AbstractMaxEntropyModel
     "Graph type, can be any bipartite subtype of AbstractGraph, but will be converted to SimpleGraph for the computation" # can also be empty
     const G::T 
     "Maximum likelihood parameters for reduced model" 
@@ -274,7 +274,7 @@ function L_BiCM_reduced(θ::AbstractVector, k⊥::Vector, k⊤::Vector, f⊥::Ve
     for i in nz⊥
         res -=  f⊥[i]*k⊥[i]*α[i] 
         for j in nz⊤
-            res -= f⊥[i] * f⊤[j] * log(1 + exp(-α[i] - β[j]))
+            res -= f⊥[i] * f⊤[j] * softplus(-α[i] - β[j])
         end
     end
     for j in nz⊤

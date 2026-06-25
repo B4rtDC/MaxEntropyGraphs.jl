@@ -7,7 +7,7 @@ Maximum entropy model for the Undirected Binary Configuration Model (UBCM).
 The object holds the maximum likelihood parameters of the model (θ) and optionally the expected adjacency matrix (G), 
 and the variance for the elements of the adjacency matrix (σ). All settings and other metadata are stored in the `status` field.
 """
-mutable struct UBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
+mutable struct UBCM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: AbstractMaxEntropyModel
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleGraph for the computation" # can also be empty
     const G::T 
     "Maximum likelihood parameters for reduced model"
@@ -169,9 +169,9 @@ function L_UBCM_reduced(θ::AbstractVector, K::Vector, F::Vector)
         @simd for k′ in eachindex(K)
             if k′ ≤ k
                 if k == k′
-                    @inbounds res -= F[k] * (F[k] - 1) * log(1 + exp(- θ[k] - θ[k′]) ) * .5 # to avoid counting it twice
+                    @inbounds res -= F[k] * (F[k] - 1) * softplus(- θ[k] - θ[k′]) * .5 # to avoid counting it twice
                 else
-                    @inbounds res -= F[k] * F[k′]      * log(1 + exp(- θ[k] - θ[k′]) )
+                    @inbounds res -= F[k] * F[k′]      * softplus(- θ[k] - θ[k′])
                 end
                 #@inbounds res -= F[k] * (F[k′] - (k==k′ ? 1. : 0.)) * log(1 + exp(- θ[k] - θ[k′]) ) * (k==k′ ? .5 : 1.) 
             end

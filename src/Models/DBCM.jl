@@ -7,7 +7,7 @@ Maximum entropy model for the Directed Binary Configuration Model (UBCM).
 The object holds the maximum likelihood parameters of the model (θ) and optionally the expected adjacency matrix (G), 
 and the variance for the elements of the adjacency matrix (σ). All settings and other metadata are stored in the `status` field.
 """
-mutable struct DBCM{T,N} <: AbstractMaxEntropyModel where {T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real}
+mutable struct DBCM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: AbstractMaxEntropyModel
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleDiGraph for the computation" # can also be empty
     const G::T 
     "Vector holding all maximum likelihood parameters for reduced model (α ; β)"
@@ -210,9 +210,9 @@ function L_DBCM_reduced(θ::AbstractVector, k_out::Vector, k_in::Vector, F::Vect
         @inbounds res -= F[i] * k_out[i] * α[i]
         for j ∈ nz_in
             if i ≠ j 
-                @inbounds res -= F[i] * F[j]       * log(1 + exp(-α[i] - β[j]))
+                @inbounds res -= F[i] * F[j]       * softplus(-α[i] - β[j])
             else
-                @inbounds res -= F[i] * (F[i] - 1) * log(1 + exp(-α[i] - β[j]))
+                @inbounds res -= F[i] * (F[i] - 1) * softplus(-α[i] - β[j])
             end
         end
     end
