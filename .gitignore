@@ -1,0 +1,64 @@
+
+# ignore NEMtropy files
+NEMtropy/
+
+# ignore local .vscode
+.vscode/*
+
+# ignore local .devcontainer
+.devcontainer/*
+
+# ignore pdfs
+*.pdf
+
+# ignore .gz files (from profiling)
+*.gz
+
+# ignore data folder
+data/*
+
+# ignore old test files
+test/oldtests/*
+
+# ignore utils folder
+utils/*
+
+# ignore old src files
+src_old/*
+
+# ignore compiled docs 
+docs/build/*
+
+# ignore exmples folders
+examples/*
+
+# ignore pycache
+papercode/*
+
+# macOS files
+.DS_Store
+
+# ignore all subfolders of the benchmark folder, but keep the readme file
+performance/benchmarks/*
+performance/data/*
+!performance/benchmarks/README.md
+!performance/data/README.md
+# igore performance pycach
+performance/__pycache__/*
+# performance is a separate environment; don't track its lockfiles
+performance/Manifest.toml
+performance/LocalPreferences.toml
+
+# a registered library ships only Project.toml; the root Manifest/LocalPreferences
+# are environment-specific and must not be tracked
+/Manifest.toml
+/LocalPreferences.toml
+
+# local scratch / prototypes / experiments (not part of the package)
+/dev/
+
+# keynote / binary design assets
+*.key
+
+# profiling output
+*.pb.gz
