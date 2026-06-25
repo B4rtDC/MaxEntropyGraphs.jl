@@ -53,8 +53,19 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
-  # Verify the declared [compat] LOWER bounds are honest: resolve every dependency
-  # to its minimum allowed version and run the suite.
+  # Verify the package still resolves and tests against its declared [compat] LOWER bounds — i.e.
+  # the oldest dependency versions it claims to support (julia-downgrade-compat pins each dep to its
+  # minimum, then we build + test).
+  #
+  # NOTE on the (long) skip list below: this package depends on Optimization 4, which pulls in a
+  # large, *modern* SciML transitive tree (SciMLBase, Symbolics, ADTypes, OptimizationBase, …). As a
+  # result, the OLDEST version of several otherwise-independent deps would drag in a stale transitive
+  # dependency that cannot coexist with that tree (e.g. NLsolve 4.5.0 needs Reexport 0.2 while
+  # Optimization needs Reexport 1.2; ReverseDiff 1.15 predates ForwardDiff 1.x; Distributions 0.25.0
+  # pulls old StatsBase/etc.). Those deps' *effective* floor is dictated by the ecosystem, not by this
+  # package, so pinning them individually is meaningless and unsatisfiable — they are excluded via
+  # `skip`. The job still validates the floors this package genuinely controls (Optimization itself,
+  # OptimizationOptimJL, and the small stable utilities).
   downgrade:
     name: Downgrade compat - Julia ${{ matrix.version }}
     runs-on: ubuntu-latest
@@ -71,12 +82,11 @@ jobs:
           version: ${{ matrix.version }}
       - uses: julia-actions/julia-downgrade-compat@v1
         with:
-          # Skip (a) stdlibs, which are versioned with Julia itself, and (b) the deps whose effective
-          # floor is dictated by Optimization 4's large *modern* transitive tree rather than by this
-          # package — pinning any of them to its independent lowest version drags in a stale transitive
-          # dependency that cannot coexist with Optimization 4 (verified: exactly these 7 must stay free
-          # for the lowest-bound set to resolve). The job still tests Optimization/OptimizationOptimJL
-          # and the stable utility deps at their floors.
+          # Skipped: stdlibs (Pkg/TOML/LinearAlgebra/SparseArrays/Printf/Logging/Random — versioned
+          # with Julia), plus the 7 deps whose lowest version cannot coexist with Optimization 4's
+          # transitive tree (Graphs/Distributions/NLsolve/ForwardDiff/ReverseDiff/Zygote/FiniteDiff;
+          # see the note on this job above). Verified locally that pinning every remaining dep to its
+          # floor resolves and installs.
           skip: Pkg,TOML,LinearAlgebra,SparseArrays,Printf,Logging,Random,Graphs,Distributions,NLsolve,ForwardDiff,ReverseDiff,Zygote,FiniteDiff
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
