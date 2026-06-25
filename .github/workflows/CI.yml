@@ -70,8 +70,10 @@ jobs:
           version: ${{ matrix.version }}
       - uses: julia-actions/julia-downgrade-compat@v1
         with:
-          # stdlibs are versioned with Julia itself; don't try to downgrade them
-          skip: Pkg,TOML,LinearAlgebra,SparseArrays,Printf,Logging,Random
+          # stdlibs are versioned with Julia itself; the AD deps (ForwardDiff/Zygote) have their
+          # effective floor dictated by the tightly-coupled SciML stack (Optimization/OptimizationBase),
+          # not by this package, so don't pin them to their independent lowest bound.
+          skip: Pkg,TOML,LinearAlgebra,SparseArrays,Printf,Logging,Random,ForwardDiff,Zygote
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
