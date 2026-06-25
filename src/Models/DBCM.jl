@@ -330,31 +330,23 @@ function ∇L_DBCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector,
     # reset gradient to zero
     ∇L .= zero(eltype(∇L))
     
-    # part related to α
-    @simd for i ∈ nz_out
+    # part related to α (branch-free inner reduction: (i==j) folds in the diagonal correction)
+    for i ∈ nz_out
+        @inbounds xᵢ = x[i]
         fx = zero(eltype(∇L))
-        for j ∈ nz_in
-            if i ≠ j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fx += c * y[j] / (1 + x[i] * y[j])
+        @inbounds @simd for j ∈ nz_in
+            fx += (F[j] - (i == j)) * y[j] / (1 + xᵢ * y[j])
         end
-        @inbounds ∇L[i] = x[i] * fx - F[i] * k_out[i]
+        @inbounds ∇L[i] = xᵢ * F[i] * fx - F[i] * k_out[i]
     end
     # part related to β
-    @simd for j ∈ nz_in
+    for j ∈ nz_in
+        @inbounds yⱼ = y[j]
         fy = zero(eltype(∇L))
-        for i ∈ nz_out
-            if i≠j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fy += c * x[i] / (1 + x[i] * y[j])
+        @inbounds @simd for i ∈ nz_out
+            fy += (F[j] - (i == j)) * F[i] * x[i] / (1 + x[i] * yⱼ)
         end
-        @inbounds ∇L[n+j] = y[j] * fy - F[j] * k_in[j]
+        @inbounds ∇L[n+j] = yⱼ * fy - F[j] * k_in[j]
     end
 
     return ∇L
@@ -384,31 +376,23 @@ function ∇L_DBCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector,
     # reset gradient to zero
     ∇L .= zero(eltype(∇L))
 
-    # part related to α
-    @simd for i ∈ nz_out
+    # part related to α (branch-free inner reduction: (i==j) folds in the diagonal correction)
+    for i ∈ nz_out
+        @inbounds xᵢ = x[i]
         fx = zero(eltype(∇L))
-        for j ∈ nz_in
-            if i ≠ j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fx -= c * y[j] / (1 + x[i] * y[j])
+        @inbounds @simd for j ∈ nz_in
+            fx += (F[j] - (i == j)) * y[j] / (1 + xᵢ * y[j])
         end
-        @inbounds ∇L[i] = x[i] * fx + F[i] * k_out[i]
+        @inbounds ∇L[i] = -xᵢ * F[i] * fx + F[i] * k_out[i]
     end
     # part related to β
-    @simd for j ∈ nz_in
+    for j ∈ nz_in
+        @inbounds yⱼ = y[j]
         fy = zero(eltype(∇L))
-        for i ∈ nz_out
-            if i≠j
-                @inbounds c = F[i] * F[j]
-            else
-                @inbounds c = F[i] * (F[j] - 1)
-            end
-            @inbounds fy -= c * x[i] / (1 + x[i] * y[j])
+        @inbounds @simd for i ∈ nz_out
+            fy += (F[j] - (i == j)) * F[i] * x[i] / (1 + x[i] * yⱼ)
         end
-        @inbounds ∇L[n+j] = y[j] * fy + F[j] * k_in[j]
+        @inbounds ∇L[n+j] = -yⱼ * fy + F[j] * k_in[j]
     end
 
     return ∇L

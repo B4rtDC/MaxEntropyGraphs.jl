@@ -367,18 +367,23 @@ function ∇L_BiCM_reduced!(  ∇L::AbstractVector, θ::AbstractVector,
     # reset gradient to zero
     ∇L .= zero(eltype(θ))
     
-    # actual compute
+    # actual compute (bipartite: no diagonal term; factor the outer-constant f·x / f·y out of
+    # the inner reduction so each inner step is a single multiply-add)
     for i in nz⊥
-        ∇L[i] = - f⊥[i] * k⊥[i]
-        for j in nz⊤
-            ∇L[i]    += f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        @inbounds xᵢ = x[i]
+        s = zero(eltype(∇L))
+        @inbounds @simd for j in nz⊤
+            s += f⊤[j] * y[j] / (1 + xᵢ * y[j])
         end
+        @inbounds ∇L[i] = -f⊥[i] * k⊥[i] + f⊥[i] * xᵢ * s
     end
     for j in nz⊤
-        ∇L[n⊥+j] = - f⊤[j] * k⊤[j]
-        for i in nz⊥
-            ∇L[n⊥+j] += f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        @inbounds yⱼ = y[j]
+        s = zero(eltype(∇L))
+        @inbounds @simd for i in nz⊥
+            s += f⊥[i] * x[i] / (1 + x[i] * yⱼ)
         end
+        @inbounds ∇L[n⊥+j] = -f⊤[j] * k⊤[j] + f⊤[j] * yⱼ * s
     end
 
     return ∇L
@@ -412,18 +417,23 @@ function ∇L_BiCM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector,
     # reset gradient to zero
     ∇L .= zero(eltype(θ))
 
-    # actual compute
+    # actual compute (bipartite: no diagonal term; factor the outer-constant f·x / f·y out of
+    # the inner reduction so each inner step is a single multiply-add)
     for i in nz⊥
-        ∇L[i] = f⊥[i] * k⊥[i]
-        for j in nz⊤
-            ∇L[i]    -= f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        @inbounds xᵢ = x[i]
+        s = zero(eltype(∇L))
+        @inbounds @simd for j in nz⊤
+            s += f⊤[j] * y[j] / (1 + xᵢ * y[j])
         end
+        @inbounds ∇L[i] = f⊥[i] * k⊥[i] - f⊥[i] * xᵢ * s
     end
     for j in nz⊤
-        ∇L[n⊥+j] = f⊤[j] * k⊤[j]
-        for i in nz⊥
-            ∇L[n⊥+j] -= f⊥[i] * f⊤[j] * x[i]*y[j]/(1 + x[i]*y[j])
+        @inbounds yⱼ = y[j]
+        s = zero(eltype(∇L))
+        @inbounds @simd for i in nz⊥
+            s += f⊥[i] * x[i] / (1 + x[i] * yⱼ)
         end
+        @inbounds ∇L[n⊥+j] = f⊤[j] * k⊤[j] - f⊤[j] * yⱼ * s
     end
 
     return ∇L

@@ -47,6 +47,18 @@ Conventions:
   speeds up `solve_model!(analytical_gradient=true)`. Follow-up: apply the same transform to the
   DBCM/BiCM gradients (different nz-index loop structure).
 
+### EXP-002  Debranch/factor the DBCM + BiCM gradients (follow-up to EXP-001)
+- Change: DBCM — fold the `if i≠j` diagonal correction into arithmetic `(F[j]-(i==j))` (branch-free)
+  and factor `F[i]` out of the α-part inner loop. BiCM — already branch-free (bipartite, no diagonal);
+  factor the outer-constant `f·x` / `f·y` out of the inner reduction. `_minus!` variants mirrored.
+- Correctness: exact vs the original branchy code (max rel diff DBCM 3e-15, BiCM 5e-16); full test
+  suite (Zygote-vs-analytical) green.
+- Result: DBCM ≈1.03× (494 unique pairs), BiCM ≈1.17×. **Marginal** — unlike UBCM these loops are
+  division-bound, and the DBCM `(i==j)` compare still blocks full SIMD vectorization.
+- Decision: KEEP (correct, branch-free, cleaner, not slower). Future: a true SIMD debranch for DBCM
+  would need the diagonal self-correction handled outside the inner loop (membership of nz_out∩nz_in),
+  and reciprocal-approximation/`@fastmath` could help the division-bound divisions.
+
 <!-- Template:
 ### EXP-NNN  <short title>
 - Hypothesis:
