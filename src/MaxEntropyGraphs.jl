@@ -139,10 +139,11 @@ module MaxEntropyGraphs
                 # sampling
                 rand(model,10)
                 # metrics
+                set_Ĝ!(model) # required before the precomputed=true projections below
                 for layer in [:bottom, :top]
                     for precomputed in [true, false]
-                        for adjustment in [:Poisson, :PoissonBinomial]
-                            project(model, layer=layer, precomputed=precomputed, adjustment=adjustment)
+                        for distribution in [:Poisson, :PoissonBinomial]
+                            project(model, layer=layer, precomputed=precomputed, distribution=distribution)
                         end
                     end
                 end

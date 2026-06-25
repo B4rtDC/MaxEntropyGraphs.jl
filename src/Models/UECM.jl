@@ -567,7 +567,7 @@ function solve_model!(m::UECM{T,N};  # common settings
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
             if verbose 
-                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))\n$(sol.original)"""
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.stats.time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))\n$(sol.original)"""
             end
             m.θᵣ .= sol.u;
             m.θᵣ[ind_inf] .= N(Inf);

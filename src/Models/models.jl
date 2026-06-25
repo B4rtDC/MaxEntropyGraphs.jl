@@ -34,14 +34,10 @@ Exception thrown when the optimisation method does not converge.
 When using and optimisation method from the `Optimisation.jl` framework, the return code of the optimisation method is stored in the `retcode` field.
 When using the fixed point iteration method, the `retcode` field is set to `nothing`.
 """
-struct ConvergenceError{T} <: Exception
+struct ConvergenceError <: Exception
     method::Symbol
-    retcode::Union{Nothing, T}
+    retcode::Any  # Optimization.jl return code, or `nothing` for the fixed-point method
 end
-
-# The fixed-point path has no SciMLBase return code, so allow construction with `nothing`
-# (the typed path infers `T` from the supplied return code automatically).
-ConvergenceError(method::Symbol, ::Nothing) = ConvergenceError{Union{}}(method, nothing)
 
 Base.showerror(io::IO, e::ConvergenceError) = print(io, """method `$(e.method)` did not converge $(isnothing(e.retcode) ? "" : "(Optimization.jl return code: $(e.retcode))")""")
 

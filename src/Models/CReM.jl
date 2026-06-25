@@ -443,7 +443,7 @@ function solve_model!(m::CReM{T,N}; # related to CReM
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
             if verbose 
-                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.solve_time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))\n$(sol.original)"""
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.stats.time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))\n$(sol.original)"""
             end
             m.θ .= sol.u;
             m.status[:params_computed] = true;
