@@ -1,7 +1,7 @@
 name = "MaxEntropyGraphs"
 uuid = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"
-authors = ["Bart De Clerck <declerck.bart@pm.me>"]
 version = "0.5.0"
+authors = ["Bart De Clerck <declerck.bart@pm.me>"]
 
 [deps]
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
@@ -25,7 +25,6 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
-julia = "1.10"
 Combinatorics = "1.0"
 Distributions = "0.25"
 FiniteDiff = "2"
@@ -35,7 +34,7 @@ LinearAlgebra = "1"
 Logging = "1"
 MultipleTesting = "0.6"
 NLsolve = "4.5"
-Optimization = "4"
+Optimization = "4, 5"
 OptimizationOptimJL = "0.4"
 PrecompileTools = "1.2"
 Preferences = "1.4"
@@ -45,3 +44,4 @@ ReverseDiff = "1.15"
 SimpleWeightedGraphs = "1.4"
 SparseArrays = "1"
 Zygote = "0.7"
+julia = "1.10"
