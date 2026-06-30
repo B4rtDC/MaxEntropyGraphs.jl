@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+title: "MaxEntropyGraphs.jl"
+abstract: >-
+  A Julia package that groups maximum-entropy null models for network
+  randomization in a single framework, integrated with the Julia graph
+  ecosystem. It computes likelihood-maximizing parameters, samples randomized
+  graphs from the ensemble, and analytically computes ensemble statistics via
+  automatic differentiation.
+type: software
+authors:
+  - family-names: "De Clerck"
+    given-names: "Bart"
+    orcid: "https://orcid.org/0000-0002-9718-260X" 
+version: "0.5.0"
+license: MIT
+repository-code: "https://github.com/B4rtDC/MaxEntropyGraphs.jl"
+url: "https://b4rtdc.github.io/MaxEntropyGraphs.jl/dev/"
+# doi: "10.5281/zenodo.XXXXXXX"        # TODO: set to the v0.5.0 Zenodo DOI once minted
+date-released: "2026-06-25"
+keywords:
+  - Julia
+  - network science
+  - complex networks
+  - maximum entropy
+  - null models
+  - graph randomization

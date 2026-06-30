@@ -90,17 +90,15 @@ The canonical approach is unbiased and mathematically tractable and additionally
 
 
 # Citing MaxEntropyGraphs
-When using this package for your scientific research please consider citing:
+When using this package for your scientific research please consider citing it; the canonical metadata is in [`CITATION.cff`](https://github.com/B4rtDC/MaxEntropyGraphs.jl/blob/main/CITATION.cff).
 ```
-@software{bart_de_clerck_2023_8314610,
-  author       = {Bart De Clerck},
-  title        = {B4rtDC/MaxEntropyGraphs.jl: v0.3.2},
-  month        = sep,
-  year         = 2023,
+@software{de_clerck_maxentropygraphs,
+  author       = {De Clerck, Bart},
+  title        = {{MaxEntropyGraphs.jl}},
+  year         = {2026},
   publisher    = {Zenodo},
-  version      = {v0.3.2},
-  doi          = {10.5281/zenodo.8314610},
-  url          = {https://doi.org/10.5281/zenodo.8314610}
+  version      = {v0.5.0},
+  url          = {https://github.com/B4rtDC/MaxEntropyGraphs.jl}
 }
 ```
 

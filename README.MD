@@ -58,17 +58,15 @@ Lower BIC or AIC values indicate a better model fit, considering the trade-off b
 
 
 ## Citing
-When using this package for your scientific research please consider citing:
+When using this package in your scientific research, please cite it. The canonical citation metadata lives in [`CITATION.cff`](CITATION.cff). A BibTeX entry for the software release:
 ```
-@software{bart_de_clerck_2023_8314610,
-  author       = {Bart De Clerck},
-  title        = {B4rtDC/MaxEntropyGraphs.jl: v0.3.2},
-  month        = sep,
-  year         = 2023,
+@software{de_clerck_maxentropygraphs,
+  author       = {De Clerck, Bart},
+  title        = {{MaxEntropyGraphs.jl}},
+  year         = {2026},
   publisher    = {Zenodo},
-  version      = {v0.3.2},
-  doi          = {10.5281/zenodo.8314610},
-  url          = {https://doi.org/10.5281/zenodo.8314610}
+  version      = {v0.5.0},
+  url          = {https://github.com/B4rtDC/MaxEntropyGraphs.jl}
 }
 ```
 
@@ -90,8 +88,7 @@ _References_
 	Scientific reports 5, no. 1 (2015): 1-18.
     https://doi.org/10.1038/srep10595
 * <a id="4">[4]</a>
-    Nicolò Vallarano, Matteo Bruno, Emiliano Marchese, Giuseppe Trapani, Fabio Saracco, Giulio Cimini, Mario Zanon & Tiziano Squartini 
-    Saracco, Fabio, Riccardo Di Clemente, Andrea Gabrielli, and Tiziano Squartini.
-	"Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints." 
-	Scientific reports 11 (2021).
+    Vallarano, Nicolò, Matteo Bruno, Emiliano Marchese, Giuseppe Trapani, Fabio Saracco, Giulio Cimini, Mario Zanon, and Tiziano Squartini.
+    "Fast and scalable likelihood maximization for Exponential Random Graph Models with local constraints."
+    Scientific Reports 11 (2021): 15227.
     https://doi.org/10.1038/s41598-021-93830-4
