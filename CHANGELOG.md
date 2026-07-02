@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.5.1
+
+Solver fixes and robustness.
+
+### Fixed
+- `maxiters` is now forwarded to the gradient-based optimisers (BFGS/LBFGS/Newton); it was previously
+  accepted by `solve_model!` but silently ignored for those methods.
+- Made the BiCM automatic-differentiation gradient path robust to the current
+  Zygote/DifferentiationInterface stack: the differentiated objective no longer captures the model's
+  `status` dictionary (which triggered a `BoundsError` in the AD `dict_getindex` pullback).
+
+### Added
+- `g_tol` keyword for `solve_model!` (maps to Optim's gradient tolerance `g_abstol`), so a solve can
+  stop before over-converging.
+
 ## v0.5.0
 
 Modernization, correctness and performance release.

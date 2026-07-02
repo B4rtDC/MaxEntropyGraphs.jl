@@ -747,6 +747,7 @@ Compute the likelihood maximising parameters of the DBCM model `m`.
 - `ftol::Real`: function tolerance for convergence with the fixedpoint method (defaults to 1e-8).
 - `abstol::Union{Number, Nothing}`: absolute function tolerance for convergence with the other methods (defaults to `nothing`).
 - `reltol::Union{Number, Nothing}`: relative function tolerance for convergence with the other methods (defaults to `nothing`).
+- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`); set e.g. `1e-5` to stop before over-converging (defaults to `nothing`, i.e. Optim's tight default).
 - `AD_method::Symbol`: autodiff method to use, can be any of :$(join(keys(MaxEntropyGraphs.AD_methods), ", :", " and :")). Performance depends on the size of the problem (defaults to `:AutoZygote`),
 - `analytical_gradient::Bool`: set the use the analytical gradient instead of the one generated with autodiff (defaults to `false`)
 
@@ -778,6 +779,7 @@ function solve_model!(m::DBCM;  # common settings
                                 # optimisation.jl specific settings (optimisation methods)
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
+                                g_tol::Union{Number, Nothing}=nothing,
                                 AD_method::Symbol=:AutoZygote,
                                 analytical_gradient::Bool=false)
     N = precision(m)
@@ -824,7 +826,13 @@ function solve_model!(m::DBCM;  # common settings
                                                                                          grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
         prob = Optimization.OptimizationProblem(f, θ₀);
         # obtain solution
-        sol = method ∈ keys(optimization_methods)   ? Optimization.solve(prob, optimization_methods[method], abstol=abstol, reltol=reltol)                                                : throw(ArgumentError("The method $(method) is not supported (yet)"))
+        method ∈ keys(optimization_methods) || throw(ArgumentError("The method $(method) is not supported (yet)"))
+        # `maxiters` was previously not forwarded (silently ignored for the optimisation methods);
+        # `g_tol` (when set) maps to Optim's gradient tolerance so the solve can stop before
+        # over-converging (the default is Optim's tight g_abstol ≈ 1e-8).
+        solve_kwargs = isnothing(g_tol) ? (; maxiters = maxiters, abstol = abstol, reltol = reltol) :
+                                          (; maxiters = maxiters, abstol = abstol, reltol = reltol, g_abstol = g_tol)
+        sol = Optimization.solve(prob, optimization_methods[method]; solve_kwargs...)
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
             if verbose 

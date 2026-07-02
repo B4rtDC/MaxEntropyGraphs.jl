@@ -53,3 +53,15 @@ end
     catch
     end
 end
+
+# `maxiters` is now forwarded to the gradient-based optimisers (it used to be silently ignored),
+# and `g_tol` exposes Optim's gradient tolerance so the solve can stop before over-converging.
+@testset "maxiters and g_tol kwargs" begin
+    G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+    # A tiny iteration cap now actually takes effect -> BFGS cannot converge -> ConvergenceError.
+    @test_throws MaxEntropyGraphs.ConvergenceError solve_model!(UBCM(G), method = :BFGS, maxiters = 1)
+    # A looser gradient tolerance still yields a valid solution that respects the degree constraints.
+    m = UBCM(G)
+    solve_model!(m, method = :BFGS, analytical_gradient = true, g_tol = 1e-5)
+    @test isapprox(vec(sum(MaxEntropyGraphs.Ĝ(m), dims = 2)), m.d, rtol = 1e-3)
+end
