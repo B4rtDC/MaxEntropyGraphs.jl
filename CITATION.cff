@@ -16,7 +16,7 @@ version: "0.5.1"
 license: MIT
 repository-code: "https://github.com/B4rtDC/MaxEntropyGraphs.jl"
 url: "https://b4rtdc.github.io/MaxEntropyGraphs.jl/dev/"
-# doi: "10.5281/zenodo.XXXXXXX"        # TODO: set to the v0.5.1 Zenodo DOI once minted
+doi: "10.5281/zenodo.8314609"          # Zenodo concept DOI (all versions; always resolves to the latest release)
 date-released: "2026-07-02"
 keywords:
   - Julia

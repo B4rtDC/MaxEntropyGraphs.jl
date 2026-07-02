@@ -66,6 +66,7 @@ When using this package in your scientific research, please cite it. The canonic
   year         = {2026},
   publisher    = {Zenodo},
   version      = {v0.5.1},
+  doi          = {10.5281/zenodo.8314609},
   url          = {https://github.com/B4rtDC/MaxEntropyGraphs.jl}
 }
 ```
