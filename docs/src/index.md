@@ -97,7 +97,7 @@ When using this package for your scientific research please consider citing it; 
   title        = {{MaxEntropyGraphs.jl}},
   year         = {2026},
   publisher    = {Zenodo},
-  version      = {v0.5.0},
+  version      = {v0.5.1},
   url          = {https://github.com/B4rtDC/MaxEntropyGraphs.jl}
 }
 ```
