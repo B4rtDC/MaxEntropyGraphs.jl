@@ -22,8 +22,8 @@ module MaxEntropyGraphs
     import OptimizationOptimJL
     import ForwardDiff, ReverseDiff, Zygote
     import NLsolve
-    import LinearAlgebra: issymmetric, diagind, dot, triu!
-    import SparseArrays: dropzeros!, issparse, findnz
+    import LinearAlgebra: issymmetric, diagind, dot, triu!, mul!, BLAS
+    import SparseArrays: dropzeros!, issparse, findnz, SparseMatrixCSC
     #import NaNMath # returns a NaN instead of a DomainError for some functions. The solver(s) will use the NaN within the error control routines to reject the out of bounds step.
 
     import Distributions: cdf, Poisson, PoissonBinomial
@@ -57,6 +57,7 @@ module MaxEntropyGraphs
         end
     end
     export V_motifs
+    export motifs # batched directed 3-node motif spectrum
     export project # bipartite graph or BiCM projection
 
     ## common model functions

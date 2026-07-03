@@ -327,3 +327,177 @@ end
     end
 
 end
+
+###########################################################################################
+# Accelerated-metrics validation: pin the reformulated kernels against reference (pre-
+# acceleration) implementations across sizes and element types, and check autodiff (σₓ path).
+###########################################################################################
+
+# --- reference (naive, pre-acceleration) implementations ---
+function ref_triangles(A)
+    res = zero(eltype(A))
+    for i in axes(A,1), j in axes(A,1), k in axes(A,1)
+        (i != j && j != k && k != i) && (res += A[i,j]*A[j,k]*A[k,i])
+    end
+    return res/6
+end
+function ref_squares(A)
+    res = zero(eltype(A)); o = one(eltype(A))
+    for i in axes(A,1), j in axes(A,1)
+        j == i && continue
+        for k in axes(A,1)
+            (k==i||k==j) && continue
+            for l in axes(A,1)
+                (l==i||l==j||l==k) && continue
+                res += A[i,j]*A[j,k]*A[k,l]*A[l,i]*(o-A[i,k])*(o-A[l,j])
+            end
+        end
+    end
+    return res/8
+end
+function ref_ANND(A)
+    N = size(A,1); out = zeros(Float64, N)
+    for i in 1:N
+        di = sum(@view A[:,i])
+        out[i] = iszero(di) ? 0.0 : mapreduce(x -> A[i,x]*sum(@view A[:,x]), +, 1:N)/di
+    end
+    return out
+end
+ref_arr(A,i,j)   = A[i,j]*(one(eltype(A))-A[j,i])
+ref_bak(A,i,j)   = (one(eltype(A))-A[i,j])*A[j,i]
+ref_rec(A,i,j)   = A[i,j]*A[j,i]
+ref_abs(A,i,j)   = (one(eltype(A))-A[i,j])*(one(eltype(A))-A[j,i])
+const REF_MOTIF_TRIPLES = [ (ref_bak,ref_arr,ref_abs),(ref_bak,ref_bak,ref_abs),(ref_bak,ref_rec,ref_abs),
+    (ref_bak,ref_abs,ref_arr),(ref_bak,ref_arr,ref_arr),(ref_bak,ref_rec,ref_arr),(ref_arr,ref_rec,ref_abs),
+    (ref_rec,ref_rec,ref_abs),(ref_arr,ref_arr,ref_arr),(ref_rec,ref_arr,ref_arr),(ref_rec,ref_bak,ref_arr),
+    (ref_rec,ref_rec,ref_arr),(ref_rec,ref_rec,ref_rec) ]
+function ref_motif(A, f1, f2, f3)
+    res = zero(eltype(A))
+    for i in axes(A,1), j in axes(A,1), k in axes(A,1)
+        (i != j && j != k && k != i) && (res += f1(A,i,j)*f2(A,j,k)*f3(A,k,i))
+    end
+    return res
+end
+function ref_Vmotifs(A, layer)
+    res = zero(eltype(A))
+    if layer == :bottom
+        for i in axes(A,1), j in axes(A,1); j>i && (res += MaxEntropyGraphs.dot(@view(A[i,:]), @view(A[j,:]))); end
+    else
+        for i in axes(A,2), j in axes(A,2); j>i && (res += MaxEntropyGraphs.dot(@view(A[:,i]), @view(A[:,j]))); end
+    end
+    return res
+end
+# central finite-difference gradient at selected linear/Cartesian indices (dependency-free)
+function ref_fd_grad(f, A, idxs; h=1e-6)
+    [ (Ap = copy(A); Ap[ij] += h; Am = copy(A); Am[ij] -= h; (f(Ap) - f(Am)) / (2h)) for ij in idxs ]
+end
+
+const ALL_MOTIFS = (M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13)
+
+@testset "metrics acceleration" begin
+    @testset "integer exactness on fixtures" begin
+        G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+        A = MaxEntropyGraphs.Graphs.adjacency_matrix(G)
+        @test triangles(A) == triangles(G) == ref_triangles(A)
+        @test squares(A)   == squares(G)   == ref_squares(A)
+        @test ANND(A)      == ANND(G)      == ref_ANND(A)
+
+        Gd = MaxEntropyGraphs.maspalomas(); GA = MaxEntropyGraphs.Graphs.adjacency_matrix(Gd)
+        for (idx, Mk) in enumerate(ALL_MOTIFS)
+            @test Mk(GA) == Mk(Gd)
+            @test Mk(GA) == ref_motif(GA, REF_MOTIF_TRIPLES[idx]...)
+        end
+        @test motifs(GA) == [Mk(GA) for Mk in ALL_MOTIFS]
+
+        Gb = MaxEntropyGraphs.corporateclub(); B = MaxEntropyGraphs.biadjacency_matrix(Gb)
+        for layer in (:bottom, :top)
+            @test V_motifs(B, layer=layer) == V_motifs(Gb, layer=layer) == ref_Vmotifs(B, layer)
+        end
+    end
+
+    @testset "float exactness vs reference (random real matrices in [0,1])" begin
+        rng = MaxEntropyGraphs.Xoshiro(1234)
+        for N in (12, 30, 45)
+            M = rand(rng, N, N); S = (M .+ M') ./ 2; S[MaxEntropyGraphs.diagind(S)] .= 0.0
+            @test triangles(S) ≈ ref_triangles(S) rtol=1e-10
+            @test squares(S)   ≈ ref_squares(S)   rtol=1e-10
+            @test ANND(S)      ≈ ref_ANND(S)      rtol=1e-10
+            D = rand(rng, N, N); D[MaxEntropyGraphs.diagind(D)] .= 0.0     # directed, zero diagonal
+            for (idx, Mk) in enumerate(ALL_MOTIFS)
+                @test Mk(D) ≈ ref_motif(D, REF_MOTIF_TRIPLES[idx]...) rtol=1e-10
+            end
+            @test motifs(D) ≈ [Mk(D) for Mk in ALL_MOTIFS] rtol=1e-10
+            Br = rand(rng, N, N+3)
+            for layer in (:bottom, :top)
+                @test V_motifs(Br, layer=layer, skipchecks=true) ≈ ref_Vmotifs(Br, layer) rtol=1e-10
+            end
+        end
+    end
+
+    @testset "larger sparse graphs (integer exact / sparse squares fast-path)" begin
+        rng = MaxEntropyGraphs.Xoshiro(7)
+        for N in (100, 250)
+            G = MaxEntropyGraphs.Graphs.barabasi_albert(N, 4, seed=161)
+            A = MaxEntropyGraphs.Graphs.adjacency_matrix(G)
+            @test triangles(A) == triangles(G)
+            @test squares(A)   == squares(G)        # exercises the sparse (graph) fast-path
+            @test ANND(A)      == ANND(G)
+        end
+        # directed motif exactness vs reference on a mid-size dense directed matrix
+        Dg = MaxEntropyGraphs.Graphs.erdos_renyi(60, 0.2, is_directed=true, seed=3)
+        DA = Matrix(MaxEntropyGraphs.Graphs.adjacency_matrix(Dg))
+        for (idx, Mk) in enumerate(ALL_MOTIFS)
+            @test Mk(DA) == ref_motif(DA, REF_MOTIF_TRIPLES[idx]...)
+        end
+    end
+
+    @testset "return types preserved" begin
+        Gb = MaxEntropyGraphs.corporateclub(); B = MaxEntropyGraphs.biadjacency_matrix(Gb)
+        @test V_motifs(B, layer=:bottom) isa Integer            # Int-in -> Int-out
+        @test V_motifs(Float64.(B), layer=:bottom) isa Float64
+        G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+        @test eltype(ANND(MaxEntropyGraphs.Graphs.adjacency_matrix(G))) == Float64
+    end
+
+    @testset "strength(G, i) single-node fix" begin
+        G = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedDiGraph(Int, Float64)
+        for _ in 1:4; MaxEntropyGraphs.Graphs.add_vertex!(G); end
+        MaxEntropyGraphs.Graphs.add_edge!(G, 1, 2, 1.0); MaxEntropyGraphs.Graphs.add_edge!(G, 2, 3, 2.0)
+        MaxEntropyGraphs.Graphs.add_edge!(G, 3, 4, 3.0); MaxEntropyGraphs.Graphs.add_edge!(G, 4, 1, 4.0)
+        for i in 1:4, dir in (:in, :out, :both)
+            si = MaxEntropyGraphs.strength(G, i; dir=dir)
+            @test si isa Real                                   # a scalar, not the whole vector (old bug)
+            @test si == MaxEntropyGraphs.strength(G; dir=dir)[i]
+        end
+    end
+
+    @testset "autodiff consistency (σₓ path)" begin
+        # UBCM (undirected) — triangles, squares, ANND-sum
+        mu = MaxEntropyGraphs.UBCM(MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate))
+        solve_model!(mu); set_Ĝ!(mu); set_σ!(mu)
+        Au = mu.Ĝ
+        idxs = [CartesianIndex(1,2), CartesianIndex(3,7), CartesianIndex(10,20)]
+        Xtri  = A -> triangles(A; check_dimensions=false, check_directed=false)
+        Xsq   = A -> squares(A; check_dimensions=false, check_directed=false)
+        Xannd = A -> sum(ANND(A; check_dimensions=false, check_directed=false))
+        for (X, tol) in ((Xtri, 1e-5), (Xsq, 1e-4), (Xannd, 1e-5))
+            g_rd = MaxEntropyGraphs.ReverseDiff.gradient(X, Au)
+            @test [g_rd[ij] for ij in idxs] ≈ ref_fd_grad(X, Au, idxs) rtol=tol
+        end
+        # σₓ end-to-end runs across all three backends for a matmul-based metric
+        for gm in (:ReverseDiff, :ForwardDiff, :Zygote)
+            s = MaxEntropyGraphs.σₓ(mu, Xtri; gradient_method=gm)
+            @test isfinite(s) && s > 0
+        end
+
+        # DBCM (directed) — a few motifs incl. one with a correction term (M1) and the pure-trace ones (M9,M13)
+        md = MaxEntropyGraphs.DBCM(MaxEntropyGraphs.maspalomas())
+        solve_model!(md); set_Ĝ!(md)
+        Ad = md.Ĝ
+        didxs = [CartesianIndex(1,2), CartesianIndex(5,9), CartesianIndex(12,3)]
+        for Mk in (M1, M9, M13)
+            g_rd = MaxEntropyGraphs.ReverseDiff.gradient(Mk, Ad)
+            @test [g_rd[ij] for ij in didxs] ≈ ref_fd_grad(Mk, Ad, didxs) rtol=1e-4
+        end
+    end
+end
