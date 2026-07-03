@@ -1,0 +1,581 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[colorlinks=true,linkcolor=blue!55!black,citecolor=blue!55!black,urlcolor=blue!55!black]{hyperref}
+
+\emergencystretch=3em  % relax justification to avoid stubborn overfull lines in text
+
+% ---- listing style (generic, no language-specific parser needed) ----
+\definecolor{codebg}{gray}{0.97}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codebg},
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=single,
+  framesep=4pt,
+  rulecolor=\color{gray!40},
+  showstringspaces=false,
+  literate={≠}{{$\neq$}}1 {⁻}{{$^-$}}1 {Ĝ}{{$\hat G$}}1 {σ}{{$\sigma$}}1 {θ}{{$\theta$}}1 {⊥}{{$\perp$}}1 {⊤}{{$\top$}}1
+}
+
+\theoremstyle{plain}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{remark}{Remark}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\tr}{\operatorname{tr}}
+\newcommand{\diag}{\operatorname{diag}}
+\newcommand{\Ghat}{\hat{G}}
+\newcommand{\had}{\odot} % Hadamard product
+
+\title{\textbf{Acceleration of Network Metrics in \texttt{MaxEntropyGraphs.jl}}\\[2pt]
+\large Algorithmic reformulations, mathematical equivalence, autodiff and memory considerations}
+\author{Implementation note}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We document the acceleration of the graph-metric kernels in \texttt{src/metrics.jl} of
+\texttt{MaxEntropyGraphs.jl}. The metrics are evaluated both \emph{analytically} on a dense expected
+(bi)adjacency probability matrix $\Ghat$ and \emph{empirically} on many sampled graphs. We reformulate the
+average nearest-neighbour degree (ANND), the triangle count, the thirteen directed three-node motifs, the
+count of ``pure'' squares, and the bipartite $V$-motif count. For each we give the exact mathematical
+identity underlying the reformulation, a proof of computational equivalence to the original loop
+(valid for \emph{real-valued} matrices, not merely $0/1$ matrices), the resulting complexity and
+peak-memory behaviour, and the constraints imposed by the two cross-cutting requirements of the package:
+(i) the kernels lie on the reverse-/forward-mode automatic-differentiation (AD) path used to compute metric
+variances, and (ii) they are frequently mapped over many graphs inside an already thread-parallel outer
+loop, so per-call memory must not scale with the thread count. We close with the validation methodology
+(bit-exact integer counts, \texttt{isapprox} float expectations, finite-difference gradient checks) and
+empirical timing/memory results.
+\end{abstract}
+
+\tableofcontents
+
+% =====================================================================================================
+\section{Context and constraints}
+\label{sec:context}
+
+\texttt{MaxEntropyGraphs.jl} fits maximum-entropy null models (UBCM, DBCM, BiCM) to networks and uses them
+to assess the statistical significance of topological quantities. A fitted model exposes a dense
+\emph{expected adjacency matrix} $\Ghat\in\R^{N\times N}$ (for the bipartite BiCM, an expected biadjacency
+matrix $\Ghat\in\R^{n_\perp\times n_\top}$), whose entries are edge probabilities in $[0,1]$. For UBCM/DBCM
+$\Ghat$ is real-valued with a \emph{zero diagonal}; for UBCM it is additionally symmetric.
+
+There are two ways a metric $X$ is consumed:
+\begin{enumerate}
+  \item \textbf{Analytical route.} Evaluate $X$ directly on $\Ghat$, giving $X(\langle G\rangle)$, an
+  approximation of $\mathbb{E}[X]$. The associated variance is obtained by the delta method,
+  $\sigma_X = \sqrt{\sum_{ij}(\sigma_{ij}\,\partial X/\partial \Ghat_{ij})^2}$, where the gradient
+  $\nabla_{\Ghat} X$ is computed by AD (default ReverseDiff, also ForwardDiff and Zygote).
+  \item \textbf{Sampling route.} Draw many realisations $G_s\sim$ model and evaluate $X(G_s)$ on each,
+  then form Monte-Carlo means, standard deviations and $z$-scores.
+\end{enumerate}
+
+Three properties of this usage shape every reformulation below.
+
+\paragraph{(C1) Parallelism is at the outer level.} The batch samplers \texttt{rand(m,n)} and the
+significance sweeps map a metric over $n$ graphs with \texttt{Threads.@threads}. Introducing inner
+threading in a metric would nest inside an already-saturated pool. \emph{We therefore add no inner
+threading}; speed-ups come from lower asymptotic complexity, from BLAS, and from removing branch overhead.
+
+\paragraph{(C2) Memory must not scale with the thread count.} If a kernel materialises an $N\times N$
+intermediate, then under $T$ threads the transient footprint is $T\cdot O(N^2)$. For $N=10^4$ a single dense
+$N\times N$ \texttt{Float64} matrix is already $800$\,MB. \emph{We prefer closed forms and column-streaming
+formulations whose \emph{peak} extra memory is $O(N)$}, reserving materialised products for cases where they
+are unavoidable and then bounding and reusing them.
+
+\paragraph{(C3) AD-safety.} Because $X$ is differentiated with respect to $\Ghat$, the matrix methods must
+remain differentiable. ForwardDiff and ReverseDiff substitute a custom element type
+(\texttt{Dual}, \texttt{TrackedReal}) and re-dispatch; Zygote is source-to-source and differentiates the
+method chosen for the \emph{concrete} \texttt{Float64} matrix. In particular, in-place mutation
+(\texttt{mul!}) breaks Zygote even though ReverseDiff/ForwardDiff tolerate it, because the latter never
+reach the mutating concrete method. All reformulations below are written non-mutating on the paths Zygote
+can reach.
+
+\begin{remark}[Design pattern]
+Each metric public method performs input checks and then dispatches to an internal kernel. Where a
+memory-frugal concrete-float variant is worthwhile, it is a specialisation on
+\texttt{AbstractMatrix\{<:BLAS.BlasFloat\}}; \texttt{Dual}/\texttt{TrackedReal} element types are $<:$\,\texttt{Real}
+but \emph{not} $<:$\,\texttt{BlasFloat}, so AD inputs fall through to the generic (allocating, non-mutating)
+kernel automatically. The model methods (\texttt{triangles(m::UBCM)}, etc.) merely forward to the matrix
+method on $\Ghat$ and are unchanged.
+\end{remark}
+
+% =====================================================================================================
+\section{Notation}
+\label{sec:notation}
+$A\in\R^{N\times N}$ denotes an adjacency or expected-adjacency matrix with $A_{ii}=0$. $J$ is the all-ones
+matrix, $\had$ the Hadamard (entrywise) product, $\|\cdot\|_F$ the Frobenius norm, $\mathbf 1$ the all-ones
+vector. Row/column sums (degrees) are $k^{\text{col}}_i=\sum_j A_{ji}=(\mathbf 1^\top A)_i$ and
+$k^{\text{row}}_i=\sum_j A_{ij}=(A\mathbf 1)_i$; for symmetric $A$ they coincide and we write $k_i$. For a
+biadjacency matrix $B\in\R^{n_\perp\times n_\top}$ we write column sums $s=B^\top\mathbf 1$ and row sums
+$r=B\mathbf 1$.
+
+% =====================================================================================================
+\section{ANND: from $O(N^3)$ to $O(N^2)$}
+\label{sec:annd}
+
+\begin{definition}
+For a node $i$ with degree $k_i>0$, the average nearest-neighbour degree is
+$\mathrm{ANND}_i(A)=\frac{1}{k_i}\sum_{j} A_{ij}\,k_j$, and $\mathrm{ANND}_i=0$ if $k_i=0$.
+\end{definition}
+
+The original vector method called a per-node routine that recomputed \emph{all} column sums inside a
+\texttt{mapreduce}; over $N$ nodes this is $O(N^3)$.
+
+\begin{proposition}[Equivalence]\label{prop:annd}
+Let $k=\mathbf 1^\top A$ (column sums). Then for every node $i$ with $k_i>0$,
+\[
+\mathrm{ANND}_i(A) \;=\; \frac{(A k)_i}{k_i}.
+\]
+\end{proposition}
+\begin{proof}
+$(Ak)_i=\sum_j A_{ij}k_j$ by definition of matrix--vector product, which is exactly the numerator of
+$\mathrm{ANND}_i$; dividing by $k_i$ gives the claim. The in/out variants use $k=\mathbf 1^\top A$
+(in-degrees) and $k=A\mathbf 1$ (out-degrees) respectively.
+\end{proof}
+
+Thus the whole vector is one matrix--vector product plus an elementwise divide with a zero-degree guard:
+\begin{lstlisting}
+k = vec(sum(A, dims=1))          # column sums (degrees), computed ONCE
+num = A * k                      # single gemv, O(N^2) time, O(N) memory
+return [iszero(k[i]) ? zero(...) : num[i]/k[i] for i in vs]
+\end{lstlisting}
+This lowers the cost from $O(N^3)$ to $O(N^2)$ and the extra memory to $O(N)$. Integer exactness is immediate:
+for an integer/Boolean $A$, $Ak$ is exact integer arithmetic (order-independent), so the result is
+bit-identical to the graph-based computation. On the AD path all degrees are strictly positive, so the guard
+branch is never taken; the guard uses \emph{instance}-level \texttt{zero}/\texttt{oneunit}, avoiding
+type-level calls that are undefined for some tracked element types.
+
+% =====================================================================================================
+\section{Triangles: $\tr(A^3)/6$ with $O(N)$ peak memory}
+\label{sec:triangles}
+
+\begin{definition}
+The number of (expected) triangles is
+$T(A)=\tfrac16\sum_{i,j,k\ \text{distinct}} A_{ij}A_{jk}A_{ki}$.
+\end{definition}
+
+\begin{proposition}[Equivalence]\label{prop:tri}
+If $A_{ii}=0$ for all $i$, then $T(A)=\tfrac16\tr(A^3)$.
+\end{proposition}
+\begin{proof}
+$\tr(A^3)=\sum_{i,j,k}A_{ij}A_{jk}A_{ki}$ sums over \emph{all} index triples. Consider a term with a
+coincidence. If $i=j$ then the factor $A_{ij}=A_{ii}=0$; if $j=k$ then $A_{jk}=A_{jj}=0$; if $k=i$ then
+$A_{ki}=A_{ii}=0$. Hence every term with a repeated index vanishes and
+$\tr(A^3)=\sum_{i,j,k\ \text{distinct}}A_{ij}A_{jk}A_{ki}$. Dividing by $6$ gives $T(A)$.
+\end{proof}
+
+Note the proof uses \emph{only} the zero diagonal, so it holds for arbitrary real $A$ (in particular for
+$\Ghat$), not merely for $0/1$ matrices. Two evaluation forms are used.
+
+\paragraph{Generic / AD path.} For symmetric $A$, $\tr(A^3)=\sum_{i,k}A_{ik}(A^2)_{ik}=\langle A,A^2\rangle$
+(Frobenius inner product), because $A_{ik}=A_{ki}$. Hence $T=\langle A,A A\rangle/6$, i.e.
+\texttt{dot(A, A*A)/6}. This is a single BLAS-3 \texttt{gemm} for \texttt{Float64} and is differentiable for
+\texttt{Dual}/\texttt{TrackedReal}; it is the form ForwardDiff/ReverseDiff/Zygote traverse. It allocates one
+$N\times N$ temporary.
+
+\paragraph{Memory-frugal concrete path (default for \texttt{BlasFloat}).} Streaming the diagonal of $A^3$
+column by column,
+\[
+\tr(A^3)=\sum_i (A^3)_{ii}=\sum_i \big\langle A_{i,:}\,,\ A\,A_{:,i}\big\rangle ,
+\]
+which uses one \texttt{gemv} per column and a single length-$N$ vector, so the \emph{peak} extra memory is
+$O(N)$ instead of $O(N^2)$. This is the choice that keeps the batch/threaded workload (C2) from multiplying
+an $N\times N$ temporary by the thread count. It is written with non-mutating \texttt{A*A[:,i]} (not
+\texttt{mul!}) so Zygote --- which differentiates the concrete-\texttt{Float64} method --- remains valid; the
+row/column split $\langle A_{i,:},AA_{:,i}\rangle=(A^3)_{ii}$ is correct without symmetry.
+
+\begin{remark}[Speed/memory trade-off]
+The streaming form is BLAS-2 and yields a $\sim$5--6$\times$ speed-up over the original branchy triple loop
+(Table~\ref{tab:bench}). The generic \texttt{dot(A,A*A)} form is BLAS-3 and faster still, at the cost of an
+$O(N^2)$ peak temporary. We default to the memory-frugal form; switching is a one-line change.
+\end{remark}
+
+\begin{corollary}[Gradient sanity]
+$\nabla_A \tr(A^3)=3(A^2)^\top$, hence $\nabla_A T=\tfrac12 (A^2)^\top=\tfrac12 A^2$ for symmetric $A$. This
+analytic gradient is reproduced by all three AD backends (validated by finite differences,
+\S\ref{sec:validation}).
+\end{corollary}
+
+% =====================================================================================================
+\section{Directed three-node motifs: an inclusion--exclusion matrix form}
+\label{sec:motifs}
+
+Each of the thirteen connected directed three-node motifs is a sum over ordered distinct triples of a product
+of three \emph{dyadic indicators} of the pair states ``$i\!\to\!j$ only'', ``$j\!\to\!i$ only'',
+``reciprocated'', ``absent'':
+\begin{gather*}
+a_{\to}(i,j)=A_{ij}(1-A_{ji}),\qquad
+a_{\leftarrow}(i,j)=(1-A_{ij})A_{ji},\\
+a_{\leftrightarrow}(i,j)=A_{ij}A_{ji},\qquad
+a_{\varnothing}(i,j)=(1-A_{ij})(1-A_{ji}).
+\end{gather*}
+A motif with dyad functions $(f_1,f_2,f_3)$ is
+\begin{equation}\label{eq:motif}
+M=\sum_{i,j,k\ \text{distinct}} f_1(i,j)\,f_2(j,k)\,f_3(k,i).
+\end{equation}
+Here $J$ is the all-ones matrix; recall $A_{ii}=0$.
+The original implementation evaluated \eqref{eq:motif} with a branchy $O(N^3)$ triple loop, once per motif.
+
+\paragraph{Indicator matrices.} Define, entrywise over all $(i,j)$,
+\begin{gather*}
+P=A\had(J-A^\top)\ (a_{\to}),\qquad
+Q=P^\top\ (a_{\leftarrow}),\\
+R=A\had A^\top\ (a_{\leftrightarrow}),\qquad
+Z=(J-A)\had(J-A^\top)\ (a_{\varnothing}).
+\end{gather*}
+Because $A_{ii}=0$, the diagonals satisfy $\diag(P)=\diag(Q)=\diag(R)=0$ and $\diag(Z)=\mathbf 1$
+(since $(1-A_{ii})^2=1$). These four matrices are built once from $A$ and $A^\top$ (with $Q=P^\top$ a lazy
+transpose, no allocation) and reused across all thirteen motifs.
+
+\begin{proposition}[Distinct-index inclusion--exclusion]\label{prop:motif}
+For matrices $F_1,F_2,F_3\in\R^{N\times N}$,
+\begin{multline*}
+\sum_{i,j,k\ \text{distinct}} (F_1)_{ij}(F_2)_{jk}(F_3)_{ki}
+=\tr(F_1F_2F_3)
+-\sum_a (F_1)_{aa}(F_2F_3)_{aa}\\
+-\sum_a (F_2)_{aa}(F_3F_1)_{aa}
+-\sum_a (F_3)_{aa}(F_1F_2)_{aa}
++2\sum_a (F_1)_{aa}(F_2)_{aa}(F_3)_{aa}.
+\end{multline*}
+\end{proposition}
+\begin{proof}
+Write $T=\sum_{i,j,k}(F_1)_{ij}(F_2)_{jk}(F_3)_{ki}=\tr(F_1F_2F_3)$ (the unrestricted sum). The distinct-index
+sum removes the union of the three coincidence events $E_{ij}\!:i=j$, $E_{jk}\!:j=k$, $E_{ki}\!:k=i$. By
+inclusion--exclusion,
+$\Sigma_{\text{distinct}}=T-\big(\Sigma_{E_{ij}}+\Sigma_{E_{jk}}+\Sigma_{E_{ki}}\big)+\big(\text{pairwise
+intersections}\big)-\Sigma_{E_{ij}\cap E_{jk}\cap E_{ki}}$. Any two of the events force $i=j=k$, so each
+pairwise intersection equals $\Sigma_{i=j=k}$ and so does the triple intersection; there are three pairwise
+terms, giving $+3\Sigma_{iii}-\Sigma_{iii}=+2\Sigma_{iii}$. Finally,
+$\Sigma_{E_{ij}}=\sum_{i,k}(F_1)_{ii}(F_2)_{ik}(F_3)_{ki}=\sum_a (F_1)_{aa}(F_2F_3)_{aa}$, and analogously for
+the other two events and the triple coincidence.
+\end{proof}
+
+\begin{corollary}\label{cor:motif}
+Since only $Z$ has a nonzero diagonal (all ones) and no motif contains two $a_\varnothing$ factors, the triple
+term vanishes and at most one correction survives, equal to a single trace of the two \emph{other} factors:
+\[
+M=\tr(F_1F_2F_3)-
+\begin{cases}
+\tr(F_2F_3) & \text{if } F_1=Z,\\
+\tr(F_3F_1) & \text{if } F_2=Z,\\
+\tr(F_1F_2) & \text{if } F_3=Z,\\
+0 & \text{if no factor is } Z.
+\end{cases}
+\]
+\end{corollary}
+
+Using $\tr(XY)=\langle X,Y^\top\rangle$ and $\tr(XYW)=\langle XY,W^\top\rangle$, together with
+$Q=P^\top$, $R^\top=R$, $Z^\top=Z$, each motif reduces to one \texttt{gemm} and inner products.
+Table~\ref{tab:motifs} lists all thirteen (matching the dyad triples hard-coded in the source).
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{clll}
+\toprule
+$M$ & dyads $(f_1,f_2,f_3)$ & matrices $(F_1,F_2,F_3)$ & closed form \\
+\midrule
+$M_{1}$  & $(a_\leftarrow,a_\to,a_\varnothing)$        & $(Q,P,Z)$ & $\langle QP,Z\rangle-\langle Q,Q\rangle$ \\
+$M_{2}$  & $(a_\leftarrow,a_\leftarrow,a_\varnothing)$ & $(Q,Q,Z)$ & $\langle QQ,Z\rangle-\langle Q,P\rangle$ \\
+$M_{3}$  & $(a_\leftarrow,a_\leftrightarrow,a_\varnothing)$ & $(Q,R,Z)$ & $\langle QR,Z\rangle-\langle Q,R\rangle$ \\
+$M_{4}$  & $(a_\leftarrow,a_\varnothing,a_\to)$        & $(Q,Z,P)$ & $\langle QZ,Q\rangle-\langle P,P\rangle$ \\
+$M_{5}$  & $(a_\leftarrow,a_\to,a_\to)$                & $(Q,P,P)$ & $\langle QP,P^\top\rangle$ \\
+$M_{6}$  & $(a_\leftarrow,a_\leftrightarrow,a_\to)$    & $(Q,R,P)$ & $\langle QR,P^\top\rangle$ \\
+$M_{7}$  & $(a_\to,a_\leftrightarrow,a_\varnothing)$   & $(P,R,Z)$ & $\langle PR,Z\rangle-\langle P,R\rangle$ \\
+$M_{8}$  & $(a_\leftrightarrow,a_\leftrightarrow,a_\varnothing)$ & $(R,R,Z)$ & $\langle RR,Z\rangle-\langle R,R\rangle$ \\
+$M_{9}$  & $(a_\to,a_\to,a_\to)$                       & $(P,P,P)$ & $\langle PP,P^\top\rangle=\tr(P^3)$ \\
+$M_{10}$ & $(a_\leftrightarrow,a_\to,a_\to)$           & $(R,P,P)$ & $\langle RP,P^\top\rangle$ \\
+$M_{11}$ & $(a_\leftrightarrow,a_\leftarrow,a_\to)$    & $(R,Q,P)$ & $\langle RQ,P^\top\rangle$ \\
+$M_{12}$ & $(a_\leftrightarrow,a_\leftrightarrow,a_\to)$ & $(R,R,P)$ & $\langle RR,P^\top\rangle$ \\
+$M_{13}$ & $(a_\leftrightarrow,a_\leftrightarrow,a_\leftrightarrow)$ & $(R,R,R)$ & $\langle RR,R\rangle=\tr(R^3)$ \\
+\bottomrule
+\end{tabular}
+\caption{The thirteen directed motifs and their closed forms
+($\langle X,Y\rangle=\sum_{ab}X_{ab}Y_{ab}$).
+$M_{13}=\tr(R^3)$ counts each reciprocated triangle $6$ times, matching the graph-based convention.}
+\label{tab:motifs}
+\end{table}
+
+Each motif costs one $O(N^3)$ \texttt{gemm} instead of a branchy $O(N^3)$ loop; the batched \texttt{motifs(A)}
+builds $P,R,Z$ once and returns the whole spectrum. Peak memory is bounded by a small constant number of
+$N\times N$ matrices (the base matrices plus one product), which is $O(N^2)$ but does \emph{not} grow with
+the number of motifs.
+
+\begin{remark}[Sparse inputs]
+$J-A^\top$ densifies a sparse $A$, so the matrix form targets the dense $\Ghat$. Sparse realised graphs use
+the neighbour-based graph methods $M_k(G)$, which are retained unchanged.
+\end{remark}
+
+% =====================================================================================================
+\section{Squares: an $8\times$ symmetry reduction and why $o(N^4)$ is out of reach}
+\label{sec:squares}
+
+\begin{definition}
+The number of ``pure'' squares (chordless $4$-cycles) is
+\begin{equation}\label{eq:squares}
+S(A)=\frac18\sum_{i,j,k,l\ \text{distinct}} A_{ij}A_{jk}A_{kl}A_{li}\,(1-A_{ik})(1-A_{lj}),
+\end{equation}
+i.e.\ a $4$-cycle $i\!-\!j\!-\!k\!-\!l\!-\!i$ with both diagonals $\{i,k\}$ and $\{j,l\}$ absent.
+\end{definition}
+
+\subsection{Dihedral symmetry and exact orbit reduction}
+
+Write the summand of \eqref{eq:squares} as $g(i,j,k,l)=A_{ij}A_{jk}A_{kl}A_{li}(1-A_{ik})(1-A_{lj})$.
+
+\begin{lemma}[Invariance]\label{lem:dihedral}
+For symmetric $A$, $g$ is invariant under the dihedral group $D_4$ (order $8$) acting on the positions of the
+labelled $4$-cycle, generated by the rotation $\rho:(i,j,k,l)\mapsto(j,k,l,i)$ and the reflection
+$\tau:(i,j,k,l)\mapsto(i,l,k,j)$.
+\end{lemma}
+\begin{proof}
+The backbone $\{A_{ij},A_{jk},A_{kl},A_{li}\}$ is the edge set of the cycle and is preserved (as a multiset)
+by both generators. Under $\rho$ the chord factors become $(1-A_{jl})(1-A_{ik})$; under $\tau$ they become
+$(1-A_{ik})(1-A_{jl})$; using $A_{lj}=A_{jl}$ (symmetry) these equal $(1-A_{ik})(1-A_{lj})$. Hence $g$ is
+unchanged.
+\end{proof}
+
+\begin{proposition}[Exact orbit sum]\label{prop:squares}
+For distinct indices the $D_4$-orbit of $(i,j,k,l)$ has exactly $8$ elements, and
+\[
+S(A)=\sum_{\substack{i<j<l,\ k>i\\ k\notin\{j,l\}}} A_{ij}A_{jk}A_{kl}A_{li}\,(1-A_{ik})(1-A_{lj}).
+\]
+That is, summing one canonical representative per orbit and dropping the $1/8$ yields the exact value.
+\end{proposition}
+\begin{proof}
+On distinct labels no non-identity element of $D_4$ fixes a tuple, so orbits have size $8$; by
+Lemma~\ref{lem:dihedral} $g$ is constant on each orbit, hence $\sum_{\text{distinct}}g=8\sum_{\text{orbits}}g$
+and $S=\tfrac18\sum_{\text{distinct}}g=\sum_{\text{orbits}}g$. It remains to see that the index constraints
+select one representative per orbit. Fix the orbit and let $i$ be the minimum of the four labels; the two
+cycle-neighbours of $i$ are the entries in positions $2,4$ and the diagonally opposite label $k$ is in
+position $3$. Exactly two orbit elements place the minimum in position $1$ --- they are related by $\tau$
+(which swaps positions $2,4$) --- and requiring the position-$2$ label to be smaller than the position-$4$
+label ($j<l$) selects one. For a fixed $4$-set with minimum $i$, the three orbits correspond to the three
+choices of the opposite label $k\in\{$the other three$\}$; the loop ranges $k>i$, $k\notin\{j,l\}$ over
+exactly those choices. Thus the summation visits each orbit's canonical representative once.
+\end{proof}
+
+The kernel therefore performs $\approx N^4/8$ iterations, hoists the $k$-independent factors
+$A_{ij}A_{li}(1-A_{lj})$ out of the inner loop, and accumulates into a scalar (no allocation):
+\begin{lstlisting}
+res = zero(eltype(A)); o = one(eltype(A))
+for i in 1:n, j in i+1:n
+    Aij = A[i,j]
+    for l in j+1:n
+        base = Aij * A[l,i] * (o - A[l,j])   # invariant over k
+        iszero(base) && continue             # prunes only EXACT zeros (0/1 inputs)
+        for k in i+1:n
+            (k == j || k == l) && continue
+            res += base * A[j,k] * A[k,l] * (o - A[i,k])
+        end
+    end
+end
+return res                                   # note: no /8
+\end{lstlisting}
+This is exact for real $A$ (it is Proposition~\ref{prop:squares} evaluated term by term), integer-exact for
+$0/1$ inputs, and differentiable: the only control flow depends on indices or on \emph{exact} zeros, and on
+the AD path $\Ghat\in(0,1)$ so \texttt{iszero(base)} is never true and no gradient contribution is dropped.
+
+\subsection{Why there is no sub-$O(N^4)$ closed form}
+Expanding $(1-A_{ik})(1-A_{lj})=1-A_{ik}-A_{lj}+A_{ik}A_{lj}$ gives $8S=S_0-2S_1+S_3$ (with $S_1=S_2$ by
+symmetry), where $S_0$ counts $4$-cycles (backbone only), $S_1$ adds one chord, and
+\[
+S_3=\sum_{\text{distinct}} A_{ij}A_{jk}A_{kl}A_{li}A_{ik}A_{lj}=\hom(K_4,A)=24\cdot\#K_4 ,
+\]
+the homomorphism count of the \emph{complete} graph $K_4$ (all six pairs present). $S_0$ and $S_1$ admit
+$O(N^3)$ closed forms in traces of powers of $A$ (e.g.\ $S_0=\|A^2\|_F^2-2\|p\|^2+\|A\had A\|_F^2$ with
+$p_i=\sum_j A_{ij}^2$). $S_3$, however, is a treewidth-$3$ pattern: its evaluation does not reduce to a
+polynomial in traces of powers of $A$ and is $\Omega(N^4)$ for dense $A$ by elementary means (fast
+matrix-multiplication gives only $O(N^{\omega+1})$). Hence the pure-square count is intrinsically $\sim N^4$
+for a dense $\Ghat$; the gain here is the exact $8\times$ constant-factor reduction plus branch elimination.
+
+\subsection{Sparse fast path}
+For a sparse $0/1$ adjacency matrix the dense kernel's scalar indexing is $O(\log)$ per access. We instead
+dispatch \texttt{squares(A::SparseMatrixCSC\{<:Union\{Bool,Integer\}\})} to the neighbour-enumeration graph
+algorithm (equivalent by the tested identity $\texttt{squares(G)}=\texttt{squares(adjacency\_matrix(G))}$),
+which makes $N\gtrsim 10^4$ tractable where the dense $O(N^4)$ evaluation is not.
+
+% =====================================================================================================
+\section{Bipartite $V$-motifs: a marginal-sum closed form}
+\label{sec:vmotifs}
+
+\begin{definition}
+For a biadjacency matrix $B$, the bottom-layer $V$-motif count is the number of shared-neighbour pairs
+$V=\sum_{i<j}\langle B_{i,:},B_{j,:}\rangle=\sum_{i<j}(BB^\top)_{ij}$ (rows are bottom-layer nodes); the
+top-layer count uses columns.
+\end{definition}
+
+The original method summed the pairwise dot products explicitly, an $O(N^2 M)$ computation reconstructing the
+strict upper triangle of the Gram matrix.
+
+\begin{proposition}[Equivalence]\label{prop:vmot}
+With column sums $s=B^\top\mathbf 1$,
+\[
+V_\perp=\sum_{i<j}(BB^\top)_{ij}=\tfrac12\big(\|s\|^2-\|B\|_F^2\big),
+\]
+and the top-layer count is $\tfrac12(\|r\|^2-\|B\|_F^2)$ with row sums $r=B\mathbf 1$.
+\end{proposition}
+\begin{proof}
+Let $\Sigma=\sum_{i,j}(BB^\top)_{ij}=\mathbf 1^\top BB^\top\mathbf 1=\|B^\top\mathbf 1\|^2=\|s\|^2$, and
+$\tr(BB^\top)=\sum_i\|B_{i,:}\|^2=\|B\|_F^2$. Since $BB^\top$ is symmetric,
+$\sum_{i<j}(BB^\top)_{ij}=\tfrac12(\Sigma-\tr(BB^\top))=\tfrac12(\|s\|^2-\|B\|_F^2)$.
+\end{proof}
+
+This never materialises $BB^\top$; it needs only the marginal sums and $\|B\|_F^2$, giving $O(NM)$ time and
+$O(N+M)$ memory. Integer exactness follows because
+$\|s\|^2-\|B\|_F^2=\sum_{i\neq j}(BB^\top)_{ij}=2\sum_{i<j}(BB^\top)_{ij}$ is even; the implementation uses
+integer division $\div 2$ for integer element types (preserving the \texttt{Int} return type) and $/2$ for
+floating/tracked types. The empirical speed-up is the largest of any metric here (Table~\ref{tab:bench}),
+reaching $\sim$$2.5\times10^3$ at $N=10^3$, because both the asymptotic factor and the constant improve.
+
+% =====================================================================================================
+\section{Autodiff considerations}
+\label{sec:ad}
+
+The variance routine $\sigma_X$ differentiates $X$ with respect to $\Ghat$. The interaction with dispatch is
+subtle and dictated the concrete forms above:
+\begin{itemize}
+  \item \textbf{ForwardDiff / ReverseDiff} replace \texttt{Float64} by \texttt{Dual}/\texttt{TrackedReal}.
+  These are $<:$\,\texttt{Real} but not $<:$\,\texttt{BlasFloat}, so they reach the \emph{generic}
+  non-mutating kernels (\texttt{dot(A,A*A)}, the matrix motif forms, the scalar squares loop, the ANND
+  comprehension), all of which are differentiable.
+  \item \textbf{Zygote} is source-to-source and differentiates the method selected for the \emph{concrete}
+  \texttt{Matrix\{Float64\}}. This is why the memory-frugal triangles path must avoid \texttt{mul!}: an
+  in-place write has no adjoint and aborts Zygote, whereas the non-mutating \texttt{A*A[:,i]} form
+  differentiates cleanly. (ReverseDiff/ForwardDiff never reach this method, so a \texttt{mul!} version would
+  have passed their tests while silently breaking Zygote --- exactly the regression the AD test-suite now
+  guards against.)
+\end{itemize}
+All matrix metrics were checked to (i) run under \texttt{:ReverseDiff}, \texttt{:ForwardDiff} and
+\texttt{:Zygote}, and (ii) match central finite differences (\S\ref{sec:validation}). For \texttt{squares},
+whose evaluation is $O(N^4)$ over an $N^2$-dimensional input, reverse mode (a single tape pass) is the
+recommended backend.
+
+% =====================================================================================================
+\section{Memory analysis}
+\label{sec:memory}
+
+Table~\ref{tab:memory} summarises the peak transient memory of each metric per call. The distinction between
+\emph{peak} (simultaneously live) and \emph{churn} (total allocated, garbage-collected) matters under the
+outer thread-parallel loop (C2): only peak is multiplied by the thread count. The triangles streaming form,
+the ANND \texttt{gemv}, and the $V$-motif closed form all keep peak at $O(N)$; the motif spectrum keeps peak
+at a bounded number of $N\times N$ matrices regardless of how many motifs are requested; the squares kernel
+allocates nothing.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+metric & original time & new time & new peak memory \\
+\midrule
+ANND                 & $O(N^3)$ & $O(N^2)$          & $O(N)$ \\
+triangles (concrete) & $O(N^3)$ & $O(N^3)$ (BLAS-2) & $O(N)$ \\
+triangles (generic/AD) & $O(N^3)$ & $O(N^3)$ (BLAS-3) & $O(N^2)$ \\
+motifs (all 13)      & $13\cdot O(N^3)$ & $13\cdot O(N^3)$ (BLAS-3) & $O(N^2)$ (bounded, shared) \\
+squares (dense)      & $O(N^4)$ & $O(N^4)/8$        & $O(1)$ \\
+squares (sparse)     & $O(N^4)$ & neighbour enum.\  & --- \\
+$V$-motifs           & $O(N^2M)$ & $O(NM)$          & $O(N+M)$ \\
+\bottomrule
+\end{tabular}
+\caption{Complexity and peak extra memory. Peak (not churn) is what scales with the thread count.}
+\label{tab:memory}
+\end{table}
+
+% =====================================================================================================
+\section{Computational equivalence and validation}
+\label{sec:validation}
+
+Correctness is asserted at two tiers, mirroring how the package tests other quantities.
+
+\paragraph{Integer counts --- bit-exact.} On $0/1$ graph and matrix inputs the accelerated kernels must equal
+the graph-based counts and a reference (pre-acceleration) implementation \emph{exactly} (\texttt{==}). This
+holds because all the reformulations reduce to integer arithmetic whose value is independent of summation
+order (matrix products, inner products, the symmetric squares kernel). The test-suite checks
+$\texttt{triangles}$, $\texttt{squares}$, all thirteen $M_k$, $\texttt{motifs}$ and $\texttt{V\_motifs}$ on the
+built-in fixtures (karate/UBCM, \texttt{maspalomas}/DBCM, \texttt{corporateclub}/BiCM) and on
+Barab\'asi--Albert / Erd\H{o}s--R\'enyi graphs, including the sparse squares fast path.
+
+\paragraph{Float expectations --- \texttt{isapprox}.} On real matrices (random symmetric/directed matrices in
+$[0,1]$ and the fitted $\Ghat$) the reformulations change the summation order, so they are validated against
+the reference loops with a tight relative tolerance ($10^{-10}$). The affected documentation
+\texttt{jldoctest} outputs were updated to rounded, platform-robust values.
+
+\paragraph{Autodiff --- finite differences.} For fitted UBCM and DBCM models the reverse-mode gradient of
+each metric with respect to $\Ghat$ is compared to a central finite-difference gradient at several entries
+(relative tolerance $\sim10^{-4}$), and $\sigma_X$ is exercised end-to-end under all three backends.
+
+The full package test-suite (759 tests) passes, including the new
+\texttt{"metrics acceleration"} test-set.
+
+% =====================================================================================================
+\section{Empirical results}
+\label{sec:empirical}
+
+Table~\ref{tab:bench} reports head-to-head timings (Julia 1.12, single BLAS thread, to reflect the
+batch/threaded-over-graphs usage) produced by \texttt{performance/metrics\_benchmarks.jl}. The
+complexity-reducing metrics (ANND, $V$-motifs) show a speed-up that \emph{grows} with $N$ --- the signature of
+a genuine asymptotic improvement --- while the constant-factor metrics (triangles, motifs, dense squares)
+show stable multiplicative gains.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\begin{tabular}{llrrr}
+\toprule
+metric & regime & $N$ & speed-up vs.\ original & new peak/behaviour \\
+\midrule
+ANND                & $O(N^3)\!\to\!O(N^2)$ & $100/400/1000$ & $25\times/82\times/192\times$ & $O(N)$; $0.14$\,s at $N{=}10^4$ \\
+$V$-motifs          & $O(N^2M)\!\to\!O(NM)$ & $100/400/1000$ & $155\times/856\times/2482\times$ & $O(N{+}M)$; $0.026$\,s at $N{=}10^4$ \\
+motifs (all 13)     & constant factor       & $50/150$        & $18\times/22\times$          & bounded shared $N\times N$ \\
+squares (dense)     & constant factor       & $25/50/100/150$ & $\approx 12\text{--}13\times$ & $0$ extra bytes \\
+triangles           & constant factor       & $100/400$       & $\approx 5\text{--}6\times$   & $O(N)$ peak \\
+squares (sparse)    & new capability        & up to $5\!\times\!10^4$ & tractable ($11.6$\,s) & dense $O(N^4)$ infeasible \\
+\bottomrule
+\end{tabular}
+\caption{Head-to-head timing (Julia 1.12, single-thread BLAS). The reusable harness supports a wider,
+per-metric-adaptive size sweep and a second pass at the BLAS-library default thread count.}
+\label{tab:bench}
+\end{table}
+
+% =====================================================================================================
+\section{Incidental correctness fixes}
+\label{sec:fixes}
+Two latent issues surfaced during the work and were fixed in the same change:
+\begin{itemize}
+  \item \texttt{strength(G, i, T; dir)} previously computed and returned the \emph{entire} strength vector,
+  ignoring the node argument \texttt{i}. It now returns node $i$'s scalar strength by indexing the
+  appropriate marginal of the weight matrix.
+  \item \texttt{ANND(m::UBCM)} re-ran an $O(N^2)$ \texttt{issymmetric} check on the by-construction symmetric
+  $\Ghat$; the redundant check is now skipped.
+\end{itemize}
+
+% =====================================================================================================
+\section{Summary}
+\label{sec:summary}
+The acceleration rests on classical linear-algebra identities specialised to the zero-diagonal,
+possibly-real matrices produced by maximum-entropy models: $\tr(A^3)/6$ for triangles, a distinct-index
+inclusion--exclusion over Hadamard-built dyad matrices for the directed motifs, a marginal-sum Gram identity
+for $V$-motifs, a single \texttt{gemv} for ANND, and an exact dihedral orbit reduction for squares (which is
+provably not sub-$O(N^4)$ for dense inputs). Every reformulation is proved equivalent to the original for
+real matrices, preserves bit-exact integer counts, remains differentiable across all three AD backends, and
+was engineered to keep \emph{peak} memory from scaling with the outer thread count. The measured gains range
+from stable constant factors ($5$--$22\times$) to growing asymptotic improvements
+($192\times$ for ANND and $2482\times$ for $V$-motifs at $N=10^3$), with the pure-square computation made
+tractable at $N=5\times10^4$ through the sparse fast path.
+\end{document}

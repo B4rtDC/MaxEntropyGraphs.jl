@@ -4,6 +4,12 @@
 #
 # Note: the function working on matrices need to be defined without contraining the types too much
 #       otherwise there will be a problem when using the autodiff package.
+#
+# Readability note: several matrix-based metrics (triangles, the directed motifs M1..M13, squares, V_motifs)
+# are implemented as linear-algebra identities rather than the graph-intuitive neighbour loops. They are
+# provably equal to the naive counts but that equivalence is NOT obvious from the code. The derivations and
+# proofs (valid for real-valued matrices, not just 0/1) live in `performance/metrics_acceleration.tex`; the
+# `ref_*` implementations in `test/metrics.jl` are the naive versions they are checked against.
 # ----------------------------------------------------------------------------------------------------------------------
 
 """
@@ -645,6 +651,7 @@ end
 # zeros, and on the σₓ path Ĝ ∈ (0,1) so no term is ever pruned (no gradient contribution is dropped).
 # NOTE: no sub-O(N⁴) closed form exists (the count contains a K4-homomorphism term), so this is a constant-
 # factor speedup; large *sparse* 0/1 graphs are handled by the neighbour-enumeration fast path below.
+# Dihedral (D₄) orbit-reduction proof: performance/metrics_acceleration.tex §6.1.
 function _squares(A::AbstractMatrix)
     n = size(A, 1)
     o = one(eltype(A))
@@ -736,6 +743,7 @@ const directed_graph_motif_function_names = [Symbol("M$(i)") for i = 1:13]
 # Σ_{i≠j≠k} F1_ij F2_jk F3_ki = tr(F1 F2 F3) − (a single correction trace at the a̲ factor, if any); no motif
 # has two a̲ factors, so exactly one correction (or none) applies. These forms are BLAS-backed for Float64 and
 # differentiable (ReverseDiff/ForwardDiff/Zygote), serving both the value path and the σₓ gradient path.
+# Proof of equivalence to the naive triple loop: performance/metrics_acceleration.tex §5 (and Table 1 there).
 function _motif_base_matrices(A::AbstractMatrix)
     At = transpose(A)
     o  = one(eltype(A))
