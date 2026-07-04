@@ -501,3 +501,82 @@ const ALL_MOTIFS = (M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13)
         end
     end
 end
+###########################################################################################
+# Additional metric coverage: single-node methods, zero-degree branches, and error paths
+# that are not exercised by the main test-sets (some were orphaned when the ANND vector
+# methods were switched to a single gemv). Same fixtures/patterns as above.
+###########################################################################################
+@testset "metric coverage (edge cases & single-node methods)" begin
+    G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate)
+    A = MaxEntropyGraphs.Graphs.adjacency_matrix(G)
+
+    @testset "strength single-node: undirected + invalid direction" begin
+        Gw = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(Int, Float64)
+        for _ in 1:3; MaxEntropyGraphs.Graphs.add_vertex!(Gw); end
+        MaxEntropyGraphs.Graphs.add_edge!(Gw, 1, 2, 2.0); MaxEntropyGraphs.Graphs.add_edge!(Gw, 2, 3, 4.0)
+        for i in 1:3
+            @test MaxEntropyGraphs.strength(Gw, i) == MaxEntropyGraphs.strength(Gw)[i]   # undirected single-node path
+        end
+        Gd = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedDiGraph(Int, Float64)
+        for _ in 1:3; MaxEntropyGraphs.Graphs.add_vertex!(Gd); end
+        MaxEntropyGraphs.Graphs.add_edge!(Gd, 1, 2, 1.0)
+        @test_throws DomainError MaxEntropyGraphs.strength(Gd, 1, dir=:invalid_dir)
+    end
+
+    @testset "ANND single-node matrix methods" begin
+        # non-zero degree: single-node == vector element == graph
+        @test ANND(A, 1) == ANND(A)[1]
+        @test ANND(A, 1) == ANND(G, 1)
+        Gd = MaxEntropyGraphs.maspalomas(); Ad = MaxEntropyGraphs.Graphs.adjacency_matrix(Gd)
+        @test ANND_out(Ad, 1) == ANND_out(Ad)[1]
+        @test ANND_in(Ad, 1)  == ANND_in(Ad)[1]
+        # zero-degree node -> the `iszero` branch of each single-node method returns 0.0
+        Az = zeros(Int, 3, 3); Az[1,2] = Az[2,1] = 1     # node 3 isolated, symmetric
+        @test ANND(Az, 3)     == zero(Float64)
+        @test ANND_out(Az, 3) == zero(Float64)
+        @test ANND_in(Az, 3)  == zero(Float64)
+    end
+
+    @testset "ANND graph single-node zero-degree branch" begin
+        Gd = MaxEntropyGraphs.Graphs.SimpleDiGraph(3); MaxEntropyGraphs.Graphs.add_edge!(Gd, 1, 2)
+        @test ANND_out(Gd, 3) == zero(Float64)    # zero out-degree
+        @test ANND_in(Gd, 3)  == zero(Float64)    # zero in-degree
+    end
+
+    @testset "wedges non-symmetric matrix error" begin
+        Ad = MaxEntropyGraphs.Graphs.adjacency_matrix(MaxEntropyGraphs.maspalomas())
+        @test_throws ArgumentError wedges(Ad)
+    end
+
+    @testset "M13 fully-reciprocated triangle (graph method)" begin
+        Gr = MaxEntropyGraphs.Graphs.SimpleDiGraph(3)
+        for (a, b) in ((1,2),(2,1),(2,3),(3,2),(1,3),(3,1))
+            MaxEntropyGraphs.Graphs.add_edge!(Gr, a, b)
+        end
+        @test M13(Gr) == 6                                   # one reciprocated triangle, counted 6×
+        @test M13(Gr) == M13(Matrix(MaxEntropyGraphs.Graphs.adjacency_matrix(Gr)))
+    end
+
+    @testset "project(::SimpleGraph, method=:weighted)" begin
+        Ab = [0 0 0 0 1 0 0; 0 0 0 0 1 1 0; 0 0 0 0 0 0 1; 0 0 0 0 0 1 1;
+              1 1 0 0 0 0 0; 0 1 0 1 0 0 0; 0 0 1 1 0 0 0]
+        Gb = MaxEntropyGraphs.Graphs.SimpleGraph(Ab)
+        @test isa(MaxEntropyGraphs.project(Gb, layer=:bottom, method=:weighted),
+                  MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph)
+    end
+
+    @testset "V_motifs global square-matrix warning" begin
+        @test_logs (:warn, "The matrix `A` is square, make sure it is a biadjacency matrix.") MaxEntropyGraphs.V_motifs(A)
+    end
+
+    @testset "V_motifs(G, i, j) local graph path" begin
+        Gv = MaxEntropyGraphs.Graphs.SimpleGraph(5)
+        for (a, b) in ((1,4),(1,5),(2,4),(2,5),(3,4)); MaxEntropyGraphs.Graphs.add_edge!(Gv, a, b); end
+        @test MaxEntropyGraphs.V_motifs(Gv, 1, 2) == 2
+    end
+
+    @testset "V_motifs(m::BiCM, i, j) invalid layer (precomputed=false)" begin
+        model = MaxEntropyGraphs.BiCM(MaxEntropyGraphs.corporateclub()); solve_model!(model)
+        @test_throws ArgumentError MaxEntropyGraphs.V_motifs(model, 1, 2, layer=:invalid_layer, precomputed=false)
+    end
+end
