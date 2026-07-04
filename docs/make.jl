@@ -30,7 +30,8 @@ makedocs(sitename="MaxEntropyGraphs.jl",
             "Models" => Any["models.md",
                             "UBCM" => "models/UBCM.md",
                             "DBCM" =>  "models/DBCM.md",
-                            "BiCM" =>  "models/BiCM.md"
+                            "BiCM" =>  "models/BiCM.md",
+                            "UECM" =>  "models/UECM.md"
                             ],
             "Metrics" => Any["metrics.md",
                              "Analytical" => "exact.md", 
@@ -39,7 +40,8 @@ makedocs(sitename="MaxEntropyGraphs.jl",
             "API" => Any[   "Shared" =>"API/API.md",
                             "UBCM" => "API/API_UBCM.md",
                             "DBCM" => "API/API_DBCM.md",
-                            "BiCM" => "API/API_BiCM.md",]
+                            "BiCM" => "API/API_BiCM.md",
+                            "UECM" => "API/API_UECM.md",]
                             ],
          doctest=false,
          checkdocs=:exports,   # only require exported symbols in the manual (internal helpers like `softplus` are fine)
