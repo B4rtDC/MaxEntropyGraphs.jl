@@ -4,6 +4,12 @@
 #
 # Note: the function working on matrices need to be defined without contraining the types too much
 #       otherwise there will be a problem when using the autodiff package.
+#
+# Readability note: several matrix-based metrics (triangles, the directed motifs M1..M13, squares, V_motifs)
+# are implemented as linear-algebra identities rather than the graph-intuitive neighbour loops. They are
+# provably equal to the naive counts but that equivalence is NOT obvious from the code. The derivations and
+# proofs (valid for real-valued matrices, not just 0/1) live in `performance/metrics_acceleration.tex`; the
+# `ref_*` implementations in `test/metrics.jl` are the naive versions they are checked against.
 # ----------------------------------------------------------------------------------------------------------------------
 
 """
@@ -51,21 +57,23 @@ outstrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, T::DataType=Sim
 Construct the strength of node `i` for the graph `G`, filled with element type `T` and considering edge direction `dir ∈ [:in, :out, :both]` (default is `:out`).
 """
 function strength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, i::N, T::DataType=SimpleWeightedGraphs.weighttype(G); dir::Symbol=:out) where N<:Integer
+    # single-node strength: index only node `i`'s marginal instead of building the whole strength vector
+    # (SimpleWeightedGraphs stores weights[dst, src], so column `i` = out-strength and row `i` = in-strength)
     if Graphs.is_directed(G)
         if dir == :out
-            d = vec(sum(G.weights; dims=1))
+            d = sum(@view G.weights[:, i])
         elseif dir == :in
-            d = vec(sum(G.weights; dims=2))
+            d = sum(@view G.weights[i, :])
         elseif dir == :both
-            d = vec(sum(G.weights; dims=1)) + vec(sum(G.weights; dims=2))
+            d = sum(@view G.weights[:, i]) + sum(@view G.weights[i, :])
         else
             throw(DomainError(dir, "invalid argument, only accept :in, :out and :both"))
         end
     else
-        d = vec(sum(G.weights; dims=1))
+        d = sum(@view G.weights[:, i])
     end
-    
-    return T.(d)
+
+    return T(d)
 end
 
 
@@ -186,6 +194,13 @@ end
 
 
 
+# Elementwise ANND ratio `num[i]/deg[i]` following the convention that a zero-degree node maps to zero.
+# Non-mutating and using instance-based `zero`/`oneunit` (not type-level) so it stays exact for integer
+# matrices and differentiable (ForwardDiff/ReverseDiff/Zygote) on the `σₓ` autodiff path; for a solved model
+# all degrees are > 0, so the guard branch is never taken there.
+_annd_ratio(num::AbstractVector, deg::AbstractVector, vs) = [_ratio_or_zero(num[i], deg[i]) for i in vs]
+_ratio_or_zero(n, d) = iszero(d) ? zero(n) / oneunit(d) : n / d
+
 """
     ANND(A::T, i::Int; check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
 
@@ -305,15 +320,16 @@ See also: `ANND_in`, `ANND_out`, [`Graphs.degree`](https://juliagraphs.org/Graph
 """
 function ANND(A::T, vs=1:size(A,1); check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
     # checks
-    if check_dimensions && !isequal(size(A)...) 
+    if check_dimensions && !isequal(size(A)...)
         throw(DimensionMismatch("`A` must be a square matrix."))
     end
-    if check_directed && !issymmetric(A) 
+    if check_directed && !issymmetric(A)
         throw(ArgumentError( "The matrix is not symmetrical. Consider using ANND_in or ANND_out instead."))
     end
 
-    # compute
-    return [ANND(A,i, check_dimensions=false, check_directed=false) for i in vs]
+    # compute: ANND_i = (Σ_j A[i,j] k_j) / k_i with k = column sums (degrees) -> a single gemv (O(N²))
+    k = vec(sum(A, dims=1))
+    return _annd_ratio(A * k, k, vs)
 end
 
 
@@ -354,12 +370,13 @@ end
 
 function ANND_out(A::T, vs=1:size(A,1); check_dimensions::Bool=true) where {T<:AbstractMatrix}
     # checks
-    if check_dimensions && !isequal(size(A)...) 
+    if check_dimensions && !isequal(size(A)...)
         throw(DimensionMismatch("`A` must be a square matrix."))
     end
 
-    # compute
-    return [ANND_out(A,i, check_dimensions=false) for i in vs]
+    # compute: ANND_out uses out-degrees (row sums) both in numerator and denominator -> a single gemv
+    k = vec(sum(A, dims=2))
+    return _annd_ratio(A * k, k, vs)
 end
 
 
@@ -399,20 +416,21 @@ end
 
 function ANND_in(A::T, vs=1:size(A,1); check_dimensions::Bool=true) where {T<:AbstractMatrix}
     # checks
-    if check_dimensions && !isequal(size(A)...) 
+    if check_dimensions && !isequal(size(A)...)
         throw(DimensionMismatch("`A` must be a square matrix."))
     end
 
-    # compute
-    return [ANND_in(A,i, check_dimensions=false) for i in vs]
+    # compute: ANND_in uses in-degrees (column sums) both in numerator and denominator -> a single gemv
+    k = vec(sum(A, dims=1))
+    return _annd_ratio(A * k, k, vs)
 end
 
 function ANND(m::UBCM)
     # checks
     m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
 
-    # compute
-    return ANND(m.Ĝ)
+    # compute (m.Ĝ is square & symmetric by construction, so skip the redundant O(N²) checks)
+    return ANND(m.Ĝ, check_dimensions=false, check_directed=false)
 end
 
 function ANND_in(m::DBCM)
@@ -511,8 +529,8 @@ julia> solve_model!(model);
 
 julia> set_Ĝ!(model);
 
-julia> (triangles(G), triangles(MaxEntropyGraphs.Graphs.adjacency_matrix(G)), triangles(model))
-(45, 45.0, 52.849301363026846)
+julia> (triangles(G), triangles(MaxEntropyGraphs.Graphs.adjacency_matrix(G)), round(triangles(model), digits=6))
+(45, 45.0, 52.849301)
 ```
 """
 function triangles end 
@@ -521,25 +539,33 @@ triangles(G::Graphs.SimpleGraph) = sum(Graphs.triangles(G)) ÷ 3
 
 function triangles(A::T; check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
     # checks
-    if check_dimensions && !isequal(size(A)...) 
+    if check_dimensions && !isequal(size(A)...)
         throw(DimensionMismatch("`A` must be a square matrix."))
     end
-    if check_directed && !issymmetric(A) 
+    if check_directed && !issymmetric(A)
         throw(ArgumentError( "The matrix is not symmetrical. Consider using `M13` instead."))
     end
 
-    # compute
-    res = zero(eltype(A))
-    for i = axes(A,1)
-        for j = axes(A,1)
-            @simd for k = axes(A,1)
-                if i ≠ j && j ≠ k && k ≠ i
-                    res += A[i,j] * A[j,k] * A[k,i]
-                end
-            end
-        end
-    end
+    return _triangles(A)
+end
 
+# Number of (expected) triangles = tr(A³)/6. For a zero-diagonal matrix every index coincidence in
+# tr(A³)=Σ_{i,j,k} A_ij A_jk A_ki forces a diagonal factor A_ii = 0, so this equals the distinct-index
+# sum exactly. `dot(A, A*A)` = Σ_{i,k} A_ik (A²)_ik = tr(A³) (A symmetric). This generic form is BLAS-backed
+# for `Matrix{Float64}` and differentiable (ReverseDiff/ForwardDiff/Zygote) for tracked/Dual eltypes — it is
+# the autodiff path used by `σₓ`.
+_triangles(A::AbstractMatrix) = dot(A, A * A) / 6
+
+# Memory-frugal path for concrete BLAS floats: stream tr(A³) = Σ_i A[i,:]·(A·A[:,i]) column by column, so the
+# peak extra memory is O(N) (one gemv result) instead of the O(N²) of a materialised A*A — this is what keeps
+# the batch/threaded-over-graphs workload from multiplying an N×N temporary by the thread count. The gemv is
+# non-mutating (no `mul!`) so Zygote — which differentiates the concrete method directly — stays happy; the
+# form is also correct without symmetry. (ReverseDiff/ForwardDiff use tracked eltypes and take the generic path.)
+function _triangles(A::AbstractMatrix{T}) where {T<:BLAS.BlasFloat}
+    res = zero(T)
+    @inbounds for i in axes(A, 2)
+        res += dot(A[i, :], A * A[:, i])
+    end
     return res / 6
 end
 
@@ -577,8 +603,8 @@ julia> solve_model!(model);
 
 julia> set_Ĝ!(model);
 
-julia> (squares(G), squares(MaxEntropyGraphs.Graphs.adjacency_matrix(G)), squares(model))
-(36.0, 36.0, 45.644736823949344)
+julia> (squares(G), squares(MaxEntropyGraphs.Graphs.adjacency_matrix(G)), round(squares(model), digits=6))
+(36.0, 36.0, 45.644737)
 ```
 """
 function squares end
@@ -606,33 +632,49 @@ end
 
 function squares(A::T; check_dimensions::Bool=true, check_directed::Bool=true) where {T<:AbstractMatrix}
     # checks
-    if check_dimensions && !isequal(size(A)...) 
+    if check_dimensions && !isequal(size(A)...)
         throw(DimensionMismatch("`A` must be a square matrix."))
     end
-    if check_directed && !issymmetric(A) 
+    if check_directed && !issymmetric(A)
         throw(ArgumentError( "The matrix is not symmetrical, ``squares`` is only defined for undirected graphs."))
     end
 
-    # compute
+    return _squares(A)
+end
+
+# Number of (expected) "pure" squares (4-cycles with both chords absent):
+#   (1/8) Σ_{distinct i,j,k,l} A_ij A_jk A_kl A_li (1-A_ik)(1-A_lj).
+# The summand is invariant under the labelled 4-cycle's 8-fold (dihedral D₄) symmetry, so we sum exactly one
+# representative per orbit — i as the minimum index, its two cycle-neighbours j<l, and the opposite corner k —
+# and drop the 1/8. This is ~8× fewer iterations than the naive quadruple loop, uses O(1) extra memory, is
+# integer-exact for 0/1 matrices, and stays differentiable: the branches depend only on indices or on *exact*
+# zeros, and on the σₓ path Ĝ ∈ (0,1) so no term is ever pruned (no gradient contribution is dropped).
+# NOTE: no sub-O(N⁴) closed form exists (the count contains a K4-homomorphism term), so this is a constant-
+# factor speedup; large *sparse* 0/1 graphs are handled by the neighbour-enumeration fast path below.
+# Dihedral (D₄) orbit-reduction proof: performance/metrics_acceleration.tex §6.1.
+function _squares(A::AbstractMatrix)
+    n = size(A, 1)
+    o = one(eltype(A))
     res = zero(eltype(A))
-    for i = axes(A,1)
-        for j = axes(A,1)
-            if j≠i
-                for k = axes(A,1)
-                    if k≠i && k≠j
-                        @simd for l in axes(A,1)
-                            if l≠i && l≠j && l≠k
-                                res += A[i,j] * A[j,k] * A[k,l] * A[l,i] * (one(eltype(A)) - A[i,k]) * (one(eltype(A)) -  A[l,j])
-                            end
-                        end
-                    end
+    @inbounds for i in 1:n
+        for j in (i+1):n
+            Aij = A[i, j]
+            for l in (j+1):n
+                base = Aij * A[l, i] * (o - A[l, j])   # factors independent of k
+                iszero(base) && continue
+                for k in (i+1):n
+                    (k == j || k == l) && continue
+                    res += base * A[j, k] * A[k, l] * (o - A[i, k])
                 end
             end
         end
     end
-
-    return res / 8
+    return res
 end
+
+# Sparse 0/1 fast path: the dense kernel's scalar indexing is O(log) per access on a sparse matrix, so instead
+# reuse the neighbour-enumeration graph algorithm (equivalent: squares(G) == squares(adjacency_matrix(G))).
+_squares(A::SparseMatrixCSC{<:Union{Bool,Integer}}) = squares(Graphs.SimpleGraph(A))
 
 # does this need additional checks/allow for on-the-fly computation?
 function squares(m::UBCM)
@@ -691,9 +733,44 @@ const directed_graph_motif_functions = [ (a⭠, a⭢, a̲);
                     (a⭤, a⭤, a⭤);
                     ]
 const directed_graph_motif_function_names = [Symbol("M$(i)") for i = 1:13]
+
+# ---- fast matrix reformulation of the directed 3-node motif counts --------------------------------------
+# A motif count is Σ_{i≠j≠k} f₁(i,j)·f₂(j,k)·f₃(k,i) with fₓ ∈ {a⭢, a⭠, a⭤, a̲}. Elementwise these indicators
+# are entries of four matrices built from A and its transpose:
+#   P = A .* (1 .- Aᵀ)      (a⭢, i→j only)          Q = transpose(P)          (a⭠, j→i only)
+#   R = A .* Aᵀ            (a⭤, reciprocated)       Z = (1 .- A) .* (1 .- Aᵀ)  (a̲, absent)
+# A has zero diagonal, so only Z has a nonzero (unit) diagonal. The distinct-index inclusion–exclusion gives
+# Σ_{i≠j≠k} F1_ij F2_jk F3_ki = tr(F1 F2 F3) − (a single correction trace at the a̲ factor, if any); no motif
+# has two a̲ factors, so exactly one correction (or none) applies. These forms are BLAS-backed for Float64 and
+# differentiable (ReverseDiff/ForwardDiff/Zygote), serving both the value path and the σₓ gradient path.
+# Proof of equivalence to the naive triple loop: performance/metrics_acceleration.tex §5 (and Table 1 there).
+function _motif_base_matrices(A::AbstractMatrix)
+    At = transpose(A)
+    o  = one(eltype(A))
+    P  = A .* (o .- At)
+    R  = A .* At
+    Z  = (o .- A) .* (o .- At)
+    return P, R, Z
+end
+
+# tr(F1 F2 F3) minus the diagonal correction. `zpos` ∈ (0,1,2,3) is the position of the a̲ (absent-link)
+# factor whose diagonal is 1; 0 means none. tr(XY) = dot(X, transpose(Y)); tr(XYW) = dot(X*Y, transpose(W)).
+function _motif_count(F1, F2, F3, zpos::Int)
+    main = dot(F1 * F2, transpose(F3))
+    zpos == 1 && return main - dot(F2, transpose(F3))   # − tr(F2 F3)
+    zpos == 2 && return main - dot(F3, transpose(F1))   # − tr(F3 F1)
+    zpos == 3 && return main - dot(F1, transpose(F2))   # − tr(F1 F2)
+    return main
+end
+
+const _motif_label = IdDict(a⭢ => :P, a⭠ => :Q, a⭤ => :R, a̲ => :Z)
+_motif_select(lbl::Symbol, P, Q, R, Z) = lbl === :P ? P : lbl === :Q ? Q : lbl === :R ? R : Z
+
 # use metaprogramming to generate the functions for the 13 directed 3-node motifs for a directed graph
 for i = 1:13
     fname = directed_graph_motif_function_names[i]
+    (l1, l2, l3) = map(f -> _motif_label[f], directed_graph_motif_functions[i])
+    zp = something(findfirst(==(:Z), (l1, l2, l3)), 0)
     @eval begin
         # method based on matrix
         """
@@ -702,17 +779,9 @@ for i = 1:13
         Count the occurence of motif $($fname) (Σ_{i≠j≠k} $(directed_graph_motif_functions[$i][1])(i,j) $(directed_graph_motif_functions[$i][2])(j,k) $(directed_graph_motif_functions[$i][3])(k,i) ) from the adjacency matrix.
         """
         function $(fname)(A::T)  where T<:AbstractArray
-            res = zero(eltype(A))
-            for i = axes(A,1)
-                for j = axes(A,1)
-                    @simd for k = axes(A,1)
-                        if i ≠ j && j ≠ k && k ≠ i
-                            res += $(directed_graph_motif_functions[i][1])(A,i,j) * $(directed_graph_motif_functions[i][2])(A,j,k) *   $(directed_graph_motif_functions[i][3])(A,k,i)
-                        end
-                    end
-                end
-            end
-            return res
+            P, R, Z = _motif_base_matrices(A)
+            Q = transpose(P)
+            return _motif_count($(l1), $(l2), $(l3), $(zp))
         end
 
         # method for DBCM > refer to underlying matrix
@@ -727,6 +796,45 @@ for i = 1:13
             return $(fname)(m.Ĝ)
         end
     end
+end
+
+# (label₁, label₂, label₃, zpos) for each motif, used by the batched `motifs` spectrum below
+const _motif_specs = Tuple(begin
+    (l1, l2, l3) = map(f -> _motif_label[f], directed_graph_motif_functions[i])
+    (l1, l2, l3, something(findfirst(==(:Z), (l1, l2, l3)), 0))
+end for i in 1:13)
+
+"""
+    motifs(A::AbstractMatrix)
+    motifs(m::DBCM)
+
+Count all 13 directed 3-node motifs at once, returning the vector `[M1, M2, …, M13]`.
+
+The four base matrices (`P, Q, R, Z`) are built once and shared across the whole spectrum, so this is faster
+than calling `M1`…`M13` individually (which each rebuild them). Results are identical to the individual methods.
+
+# Examples
+```jldoctest motifs_doc
+julia> model = DBCM(MaxEntropyGraphs.maspalomas());
+
+julia> solve_model!(model); set_Ĝ!(model);
+
+julia> motifs(model) == [Mᵢ(model) for Mᵢ in (M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13)]
+true
+```
+"""
+function motifs(A::AbstractMatrix)
+    P, R, Z = _motif_base_matrices(A)
+    Q = transpose(P)
+    return [_motif_count(_motif_select(s[1], P, Q, R, Z),
+                         _motif_select(s[2], P, Q, R, Z),
+                         _motif_select(s[3], P, Q, R, Z), s[4]) for s in _motif_specs]
+end
+
+function motifs(m::DBCM)
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before counting motifs, see `set_Ĝ!`"))
+
+    return motifs(m.Ĝ)
 end
 
 function M13(G::T) where T <: Graphs.AbstractGraph
@@ -1377,6 +1485,14 @@ function V_motifs(G::Graphs.SimpleGraph; membership::Vector=Graphs.bipartite_map
 end
 
 
+# Σ_{i<j} (A Aᵀ)_{ij} (the strict upper triangle of the Gram matrix), computed from the marginal sums `s`
+# without ever materialising A*Aᵀ: (‖s‖² − Σ_row‖·‖²)/2 = (dot(s,s) − sum(abs2, A))/2. The numerator is always
+# even, so integer inputs stay exact and Int-typed (`÷2`); float/tracked inputs use `/2` and remain differentiable.
+function _half_gram_offdiag(s::AbstractVector, A::AbstractMatrix)
+    num = dot(s, s) - sum(abs2, A)
+    return eltype(A) <: Integer ? num ÷ 2 : num / 2
+end
+
 """
     V_motifs(A::T; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
 
@@ -1405,29 +1521,14 @@ function V_motifs(A::T; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<
     if !skipchecks && isequal(size(A)...)
         @warn "The matrix `A` is square, make sure it is a biadjacency matrix."
     end
-    res = zero(eltype(A))
-    # determine 
+    # closed form per layer: sum the strict upper triangle of the Gram matrix from marginal sums only
     if layer ∈ [:bottom; :⊥]
-        for i in axes(A, 1)
-            for j in axes(A, 1)
-                if j > i
-                    res += @views dot(A[i,:], A[j,:]) # possible perfomance gain with custom dot function
-                end
-            end
-        end
+        return _half_gram_offdiag(vec(sum(A, dims=1)), A)   # rows share bottom-layer neighbours (columns)
     elseif layer ∈ [:top; :⊤]
-        for i in axes(A, 2)
-            for j in axes(A, 2)
-                if j > i
-                    res += @views dot(A[:,i], A[:,j]) # possible perfomance gain with custom dot function
-                end
-            end
-        end
+        return _half_gram_offdiag(vec(sum(A, dims=2)), A)   # columns share top-layer neighbours (rows)
     else
         throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
     end
-    
-    return res
 end
 
 
@@ -1448,13 +1549,13 @@ julia> solve_model!(model);
 
 julia> set_Ĝ!(model);
 
-julia> V_motifs(model, layer=:bottom), V_motifs(model, layer=:bottom, precomputed=false)
-(449.2569925909879, 449.2569925909879)
+julia> round.((V_motifs(model, layer=:bottom), V_motifs(model, layer=:bottom, precomputed=false)), digits=4)
+(449.257, 449.257)
 
 ```
 ```jldoctest V_motifs_bicm
-julia> V_motifs(model, layer=:top), V_motifs(model, layer=:top, precomputed=false)
-(180.2569926636081, 180.2569926636081)
+julia> round.((V_motifs(model, layer=:top), V_motifs(model, layer=:top, precomputed=false)), digits=4)
+(180.257, 180.257)
 ```
 """
 function V_motifs(m::BiCM; layer::Symbol=:bottom, precomputed::Bool=true)
