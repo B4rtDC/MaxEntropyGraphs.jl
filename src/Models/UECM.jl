@@ -2,17 +2,18 @@
 """
     UECM
 
-Maximum entropy model for the Undirected Enhanced Configuration Model (UECM). 
-    
-The object holds the maximum likelihood parameters of the model (θ = [α;β]), the expected adjacency matrix (G), 
+Maximum entropy model for the Undirected Enhanced Configuration Model (UECM).
+
+The object holds the maximum likelihood parameters of the model (θ = [α; β]), the expected adjacency matrix (Ĝ),
 and the variance for the elements of the adjacency matrix (σ).
 
+The UECM constrains both the degree sequence and the (integer) strength sequence of an undirected weighted network.
 
-Note: this requires that the weights only assume (non-negative) integer values.   
+Note: this requires that the weights only assume (non-negative) integer values.
 """
 mutable struct UECM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: AbstractMaxEntropyModel
     "Graph type, can be any subtype of AbstractGraph, but will be converted to SimpleWeightedGraph for the computation" # can also be empty
-    const G::T 
+    const G::T
     "Maximum likelihood parameters for reduced model"
     const θᵣ::Vector{N}
     "Exponentiated maximum likelihood parameters for reduced model ( xᵢ = exp(-αᵢ) )"
@@ -36,7 +37,7 @@ mutable struct UECM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: Abstrac
     "Non-zero constraints"
     const nz::Vector{Int}
     "Expected adjacency matrix" # not always computed/required
-    Ĝ::Union{Nothing, Matrix{N}}
+    Ĝ::Union{Nothing, Matrix{N}}
     "Variance of the expected adjacency matrix" # not always computed/required
     σ::Union{Nothing, Matrix{N}}
     "Status indicators: parameters computed, expected adjacency matrix computed, variance computed, etc."
@@ -47,44 +48,53 @@ end
 
 Base.show(io::IO, m::UECM{T,N}) where {T,N} = print(io, """UECM{$(T), $(N)} ($(m.status[:N]) vertices, $(m.status[:d_unique]) unique {degree,strength} pairs, $(@sprintf("%.2f", m.status[:cᵣ])) compression ratio)""")
 
-"""Return the reduced number of nodes in the UBCM network"""
+"""Return the reduced number of {degree, strength} pairs in the UECM network"""
 Base.length(m::UECM) = length(m.dᵣ)
 
 
 
 """
-    UECM(G::T; d::Vector, s::Vector, precision::N=Float64, kwargs...) where {T<:Graphs.AbstractGraph, N<:Real}
+    UECM(G::T; d::Vector, s::Vector, precision::Type{<:AbstractFloat}=Float64, kwargs...) where {T}
 
-Constructor function for the `UECM` type. 
-    
-By default and dependng on the graph type `T`, the definition of degree and strength from ``Graphs.jl`` and ``SimpleWeigthedGraphs`` is applied. 
+Constructor function for the `UECM` type.
+
+By default and depending on the graph type `T`, the definition of degree from ``Graphs.jl`` and strength from ``SimpleWeightedGraphs`` is applied.
 If you want to use a different definition of degree or strength, you can pass the vectors as keyword arguments.
 
-If you want to generate a model directly from a degree and strength sequence without an underlying graph  you can simply pass them as keyword arguments.
-If you want to work from an adjacency matrix, or edge list, you can use the graph constructors from the ``JuliaGraphs`` ecosystem.
+If you want to generate a model directly from a degree and strength sequence without an underlying graph you can simply pass them as keyword arguments (`d` and `s`).
+If you want to work from an adjacency/weight matrix, or edge list, you can use the (weighted) graph constructors from the ``JuliaGraphs`` ecosystem.
 
-# Examples     
-```jldoctest
-# generating a model from a graph
+The strength sequence must be integer-valued (the UECM is defined for non-negative integer weights).
 
+# Examples
+```jldoctest UECM_creation
+# generating a model from a weighted graph (here: the symmetrised rhesus macaques network)
+julia> G = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques());
 
-# generating a model directly from a degree sequence
+julia> model = UECM(G)
+UECM{SimpleWeightedGraphs.SimpleWeightedGraph{Int64, Float64}, Float64} (16 vertices, 16 unique {degree,strength} pairs, 1.00 compression ratio)
 
+```
+```jldoctest UECM_creation
+# generating a model directly from a degree and strength sequence
+julia> model = UECM(d=[1, 2, 2, 1], s=[3, 5, 4, 2])
+UECM{Nothing, Float64} (4 vertices, 4 unique {degree,strength} pairs, 1.00 compression ratio)
 
-# generating a model directly from a degree sequence with a different precision
+```
+```jldoctest UECM_creation
+# generating a model with a different precision
+julia> model = UECM(d=[1, 2, 2, 1], s=[3, 5, 4, 2], precision=Float32);
 
-
-# generating a model from an adjacency matrix
-
-
-# generating a model from an edge list
+julia> MaxEntropyGraphs.precision(model)
+Float32
 
 ```
 
-See also [`Graphs.degree`](@ref), [`SimpleWeightedGraphs.strength`](@ref).
+The degree is taken from `Graphs.degree` and the strength from `MaxEntropyGraphs.strength` (the
+`SimpleWeightedGraphs` weighted-degree).
 """
 function UECM(G::T; d::Vector=Graphs.degree(G), s::Vector=strength(G), precision::Type{<:AbstractFloat}=Float64, kwargs...) where {T}
-    T <: Union{Graphs.AbstractGraph, Nothing} ? nothing : throw(TypeError("G must be a subtype of AbstractGraph or Nothing"))
+    T <: Union{Graphs.AbstractGraph, Nothing} ? nothing : throw(TypeError(:UECM, "G must be a subtype of AbstractGraph or Nothing", Union{Graphs.AbstractGraph, Nothing}, T))
     # coherence checks
     if T <: Graphs.AbstractGraph # Graph specific checks
         if Graphs.is_directed(G)
@@ -96,7 +106,7 @@ function UECM(G::T; d::Vector=Graphs.degree(G), s::Vector=strength(G), precision
 
         Graphs.nv(G) != length(d) ? throw(DimensionMismatch("The number of vertices in the graph ($(Graphs.nv(G))) and the length of the degree sequence ($(length(d))) do not match")) : nothing
         Graphs.nv(G) != length(s) ? throw(DimensionMismatch("The number of vertices in the graph ($(Graphs.nv(G))) and the length of the strength sequence ($(length(s))) do not match")) : nothing
-        length(d) != length(s) ? throw(DimensionMismatch("The dimensions of the degree ($(length(s))) and the strength sequence ($(length(s))) do not match")) : nothing
+        length(d) != length(s) ? throw(DimensionMismatch("The dimensions of the degree ($(length(d))) and the strength sequence ($(length(s))) do not match")) : nothing
     end
 
     # coherence checks specific to the degree/strength sequence
@@ -111,13 +121,14 @@ function UECM(G::T; d::Vector=Graphs.degree(G), s::Vector=strength(G), precision
     any(!isinteger, s) ? throw(DomainError("Some of the strength values are not integers, this is not allowed")) : nothing
     length(d) == 0 ? throw(ArgumentError("The degree sequence is empty")) : nothing
     length(d) == 1 ? throw(ArgumentError("The degree sequence has only one degree")) : nothing
+    length(d) != length(s) ? throw(DimensionMismatch("The dimensions of the degree ($(length(d))) and the strength sequence ($(length(s))) do not match")) : nothing
     maximum(d) >= length(d) ? throw(DomainError("The maximum degree in the graph is greater or equal to the number of vertices, this is not allowed")) : nothing
 
     # field generation
     dsᵣ, d_ind , dᵣ_ind, f = np_unique_clone(collect(zip(d, s)), sorted=true)
     dᵣ = Int.([d[1] for d in dsᵣ])
     sᵣ = Int.([d[2] for d in dsᵣ])
-    θᵣ = Vector{precision}(undef, 2*length(dᵣ)) 
+    θᵣ = Vector{precision}(undef, 2*length(dᵣ))
     xᵣ = Vector{precision}(undef, length(dᵣ))
     yᵣ = Vector{precision}(undef, length(dᵣ))
     nz = findall(!iszero, dᵣ)
@@ -125,18 +136,43 @@ function UECM(G::T; d::Vector=Graphs.degree(G), s::Vector=strength(G), precision
                     :G_computed=>false,             # is the expected adjacency matrix computed and stored?
                     :σ_computed=>false,             # is the standard deviation computed and stored?
                     :cᵣ => length(dᵣ)/length(d),    # compression ratio of the reduced model
-                    :d_unique => length(dᵣ),        # number of unique degrees in the reduced model
-                    :N => length(d)                 # number of vertices in the original graph 
+                    :d_unique => length(dᵣ),        # number of unique {degree,strength} pairs in the reduced model
+                    :N => length(d)                 # number of vertices in the original graph
                 )
-    
-    return UECM{T,precision}(G, θᵣ, xᵣ, yᵣ, d, dᵣ, s, sᵣ, f, d_ind, dᵣ_ind, nz, nothing, nothing, status, nothing)
+
+    return UECM{T,precision}(G, θᵣ, xᵣ, yᵣ, Int.(d), dᵣ, Int.(s), sᵣ, f, d_ind, dᵣ_ind, nz, nothing, nothing, status, nothing)
 end
 
 UECM(;d::Vector, s::Vector, precision::Type{<:AbstractFloat}=Float64, kwargs...) = UECM(nothing, d=d, s=s, precision=precision, kwargs...)
 
 
 
-function L_UECM_reduced(θ::Vector, d::Vector, s::Vector, F::Vector, n::Int=length(d))
+"""
+    L_UECM_reduced(θ::Vector, d::Vector, s::Vector, F::Vector, n::Int=length(d))
+
+Compute the log-likelihood of the reduced UECM model using the exponential formulation in order to maintain convexity.
+
+# Arguments
+- `θ`: the maximum likelihood parameters of the model (`θ = [α; β]`)
+- `d`: the reduced degree sequence
+- `s`: the reduced strength sequence
+- `F`: the frequency of each `(degree, strength)` pair
+- `n`: the number of unique `(degree, strength)` pairs (defaults to `length(d)`)
+
+The function is numerically stabilised (`expm1`/`log1p`) so that the `1 - exp(-βᵢ-βⱼ)` denominator does not
+suffer from catastrophic cancellation, and stays automatic-differentiation friendly.
+
+# Examples
+```jldoctest
+julia> θ = [1.0, 2.0, 3.0, 4.0, 1.5, 2.5];
+
+julia> d = [1, 2, 1]; s = [2, 3, 1]; F = [1, 1, 1];
+
+julia> L_UECM_reduced(θ, d, s, F);
+
+```
+"""
+function L_UECM_reduced(θ::AbstractVector, d::Vector, s::Vector, F::Vector, n::Int=length(d))
     # split the parameters
     α = @view θ[1:n]
     β = @view θ[n+1:end]
@@ -144,143 +180,195 @@ function L_UECM_reduced(θ::Vector, d::Vector, s::Vector, F::Vector, n::Int=leng
     res = zero(eltype(θ))
     # compute
     for i in eachindex(d)
-        res -= F[i] *  (d[i] * α[i] + β[i] * s[i])
-        for j in 1:i
-            contrib = log_nan( 1 + exp(-α[i] - α[j]) * exp(-β[i] - β[j]) / (1 - exp(-β[i] - β[j])) ) # for optimisation we use lognan (cf utils.jl)
-            if i == j
-                res -=  F[i] * (F[j] - 1) * contrib * 0.5 # to avoid double counting
-            else
-                res -=  F[i] * F[j] * contrib
-            end
+        @inbounds αᵢ = α[i]; βᵢ = β[i]; Fᵢ = F[i]
+        @inbounds res -= Fᵢ * (d[i] * αᵢ + βᵢ * s[i])
+        # off-diagonal pairs (j < i): weight Fᵢ·F[j]
+        acc = zero(eltype(θ))
+        @inbounds for j in 1:i-1
+            c1    = exp(-αᵢ - α[j])
+            c2    = exp(-βᵢ - β[j])
+            om_c2 = -expm1(-(βᵢ + β[j]))                # == 1 - c2, computed without cancellation
+            # the UECM is only defined for yᵢyⱼ < 1 (i.e. om_c2 > 0). Returning NaN for the whole
+            # out-of-domain region (om_c2 ≤ 0) makes the line search reject those steps, instead of
+            # letting the optimiser escape to β → -∞ where the objective is spuriously unbounded.
+            acc  += F[j] * (om_c2 > zero(om_c2) ? log1p(c1 * c2 / om_c2) : oftype(c1, NaN))
+        end
+        res -= Fᵢ * acc
+        # diagonal self-pairs (within class i): Fᵢ·(Fᵢ-1)/2 pairs
+        @inbounds begin
+            c1    = exp(-2αᵢ)
+            c2    = exp(-2βᵢ)
+            om_c2 = -expm1(-2βᵢ)
+            contrib = om_c2 > zero(om_c2) ? log1p(c1 * c2 / om_c2) : oftype(c1, NaN)
+            res  -= Fᵢ * (Fᵢ - 1) * contrib * 0.5
         end
     end
 
     return res
 end
 
+"""
+    L_UECM_reduced(m::UECM)
 
+Return the log-likelihood of the UECM model `m` based on the computed maximum likelihood parameters.
+
+See also [`L_UECM_reduced(::AbstractVector, ::Vector, ::Vector, ::Vector)`](@ref)
+"""
+function L_UECM_reduced(m::UECM)
+    if m.status[:params_computed]
+        return L_UECM_reduced(m.θᵣ, m.dᵣ, m.sᵣ, m.f, m.status[:d_unique])
+    else
+        throw(ArgumentError("The parameters have not been computed yet"))
+    end
+end
+
+
+"""
+    ∇L_UECM_reduced!(∇L::AbstractVector, θ::AbstractVector, d::Vector, s::Vector, F::Vector, x::AbstractVector, y::AbstractVector, n=length(θ)÷2)
+
+Compute the gradient of the log-likelihood of the reduced UECM model in a non-allocating manner.
+The pre-allocated buffers `x` (`xᵢ = exp(-αᵢ)`) and `y` (`yᵢ = exp(-βᵢ)`) and the gradient `∇L` are updated in place.
+
+The inner loop is branch-free (the diagonal correction is folded into the multiplier `F[j] - (i==j)`) so that it
+vectorises (`@simd`).
+
+See also [`∇L_UECM_reduced_minus!`](@ref).
+"""
 function ∇L_UECM_reduced!(∇L::AbstractVector, θ::AbstractVector, d::Vector, s::Vector, F::Vector, x::AbstractVector, y::AbstractVector, n=length(θ)÷2)
     α = @view θ[1:n]
     β = @view θ[n+1:end]
-    for i in eachindex(α) # to avoid the allocation of exp.(-θ)
+    @inbounds @simd for i in eachindex(α) # to avoid the allocation of exp.(-θ)
         x[i] = exp(-α[i])
         y[i] = exp(-β[i])
     end
 
-    # reset gradient
-    ∇L .= zero(eltype(θ))
-    # compute gradient
     for i in eachindex(α)
-        # ∂L/∂αᵢ
-        ∇L[i]   -= F[i] * d[i]
-        # ∂L/∂βᵢ
-        ∇L[i+n] -= F[i] * s[i]
-        for j in eachindex(α)
-            c1 = x[i] * x[j]
-            c2 = y[i] * y[j]
-            if i == j
-                # ∂L/∂αᵢ
-                ∇L[i]     += (c1 * c2) / (1 + c1 * c2 - c2)            * F[i] * (F[j] - 1)
-                # ∂L/∂βᵢ
-                ∇L[i + n] += (c1 * c2) / ((1- c2) * (1 +c1 * c2 - c2)) * F[i] * (F[j] - 1) 
-            else
-                # ∂L/∂αᵢ
-                ∇L[i]     += (c1 * c2) / (1 + c1 * c2 - c2)            * F[i] * F[j]
-                # ∂L/∂βᵢ
-                ∇L[i + n] += (c1 * c2) / ((1- c2) * (1 +c1 * c2 - c2)) * F[i] * F[j]
-            end
+        @inbounds xᵢ = x[i]
+        @inbounds yᵢ = y[i]
+        accα = zero(eltype(∇L))
+        accβ = zero(eltype(∇L))
+        @inbounds @simd for j in eachindex(α)
+            c1    = xᵢ * x[j]
+            c2    = yᵢ * y[j]
+            denom = 1 + c1 * c2 - c2
+            p     = (c1 * c2) / denom
+            w     = F[j] - (i == j)                     # (F[j]-1) on the diagonal, F[j] elsewhere
+            accα += p * w
+            accβ += (p / (1 - c2)) * w
         end
+        @inbounds ∇L[i]   = -F[i] * d[i] + F[i] * accα
+        @inbounds ∇L[i+n] = -F[i] * s[i] + F[i] * accβ
     end
 
     return ∇L
 end
 
 
+"""
+    ∇L_UECM_reduced_minus!(args...)
+
+Compute minus the gradient of the log-likelihood of the reduced UECM model (used for the minimisation carried out by
+`Optimization.jl`). Non-allocating: updates the pre-allocated buffers `x`, `y` and `∇L` in place.
+
+See also [`∇L_UECM_reduced!`](@ref).
+"""
 function ∇L_UECM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector, d::Vector, s::Vector, F::Vector, x::AbstractVector, y::AbstractVector, n=length(θ)÷2)
     α = @view θ[1:n]
     β = @view θ[n+1:end]
-    for i in eachindex(α) # to avoid the allocation of exp.(-θ)
+    @inbounds @simd for i in eachindex(α) # to avoid the allocation of exp.(-θ)
         x[i] = exp(-α[i])
         y[i] = exp(-β[i])
     end
 
-    # reset gradient
-    ∇L .= zero(eltype(θ))
-    # compute gradient
     for i in eachindex(α)
-        # ∂L/∂αᵢ
-        ∇L[i]   += F[i] * d[i]
-        # ∂L/∂βᵢ
-        ∇L[i+n] += F[i] * s[i]
-        for j in eachindex(α)
-            c1 = x[i] * x[j]
-            c2 = y[i] * y[j]
-            if i == j
-                # ∂L/∂αᵢ
-                ∇L[i]     -= (c1 * c2) / (1 + c1 * c2 - c2)            * F[i] * (F[j] - 1)
-                # ∂L/∂βᵢ
-                ∇L[i + n] -= (c1 * c2) / ((1- c2) * (1 +c1 * c2 - c2)) * F[i] * (F[j] - 1) 
-            else
-                # ∂L/∂αᵢ
-                ∇L[i]     -= (c1 * c2) / (1 + c1 * c2 - c2)            * F[i] * F[j]
-                # ∂L/∂βᵢ
-                ∇L[i + n] -= (c1 * c2) / ((1- c2) * (1 +c1 * c2 - c2)) * F[i] * F[j]
-            end
+        @inbounds xᵢ = x[i]
+        @inbounds yᵢ = y[i]
+        accα = zero(eltype(∇L))
+        accβ = zero(eltype(∇L))
+        @inbounds @simd for j in eachindex(α)
+            c1    = xᵢ * x[j]
+            c2    = yᵢ * y[j]
+            denom = 1 + c1 * c2 - c2
+            p     = (c1 * c2) / denom
+            w     = F[j] - (i == j)
+            accα += p * w
+            accβ += (p / (1 - c2)) * w
         end
+        @inbounds ∇L[i]   = F[i] * d[i] - F[i] * accα
+        @inbounds ∇L[i+n] = F[i] * s[i] - F[i] * accβ
     end
 
     return ∇L
 end
 
 
+"""
+    UECM_reduced_iter!(θ, d, s, F, x, y, G, nz, n=length(θ)÷2)
+
+Compute the next fixed-point iteration for the reduced UECM model. The pre-allocated buffers `x`, `y` and `G` are
+updated in place. Only the non-zero constraints `nz` are iterated.
+
+**Note**: the fixed-point recipe is unstable for the UECM; `:BFGS`/`:Newton` are preferred (see [`solve_model!`](@ref)).
+"""
 function UECM_reduced_iter!(θ::AbstractVector, d::Vector, s::Vector, F::Vector, x::AbstractVector, y::AbstractVector, G::AbstractVector, nz::Vector, n=length(θ)÷2)
     α = @view θ[1:n]
     β = @view θ[n+1:end]
-    for i in eachindex(α) # to avoid the allocation of exp.(-θ)
+    @inbounds @simd for i in eachindex(α) # to avoid the allocation of exp.(-θ)
         x[i] = exp(-α[i])
         y[i] = exp(-β[i])
     end
-    
+
     # compute
     for i in nz
-        # reset buffer
-        G[i]   = zero(eltype(θ))
-        G[i+n] = zero(eltype(θ))
-        for j in nz
-            c1 = x[i] * x[j]
-            c2 = y[i] * y[j]
-            if i == j
-                G[i]   += (x[j] * c2) / (1 + c1 * c2 - c2) * F[i]     * (F[j] - 1)
-                G[i+n] += (c1 * y[j]) / ((1- c2) * (1 +c1 * c2 - c2)) * F[i] * (F[j] - 1) 
-            else
-                G[i]   += (x[j] * c2) / (1 + c1 * c2 - c2) * F[i] * F[j]
-                G[i+n] += (c1 * y[j]) / ((1- c2) * (1 +c1 * c2 - c2)) * F[i] * F[j] 
-            end
+        @inbounds xᵢ = x[i]
+        @inbounds yᵢ = y[i]
+        accα = zero(eltype(θ))
+        accβ = zero(eltype(θ))
+        @inbounds for j in nz
+            c1    = xᵢ * x[j]
+            c2    = yᵢ * y[j]
+            denom = 1 + c1 * c2 - c2
+            wj    = F[j] - (i == j)
+            accα += (x[j] * c2) / denom * wj
+            accβ += (c1 * y[j]) / ((1 - c2) * denom) * wj
         end
+        @inbounds G[i]   = F[i] * accα
+        @inbounds G[i+n] = F[i] * accβ
     end
 
     for i in nz
-        G[i]   =  - log_nan(F[i] * d[i] / G[i])
-        G[i+n] =  - log_nan(F[i] * s[i] / G[i+n])
+        @inbounds G[i]   = - log_nan(F[i] * d[i] / G[i])
+        @inbounds G[i+n] = - log_nan(F[i] * s[i] / G[i+n])
     end
 
     for i in eachindex(G)
-        if iszero(G[i])
+        @inbounds if iszero(G[i])
             G[i] = 1e8
         end
     end
-    
+
     return G
 end
 
 
-function initial_guess(m::UECM{T,N}; method::Symbol=:strengths) where {T,N}
+"""
+    initial_guess(m::UECM; method::Symbol=:strengths)
+
+Compute an initial guess `θ₀ = [α₀; β₀]` for the maximum likelihood parameters of the UECM model `m`.
+
+The methods available are:
+- `:strengths` (default): degrees/strengths normalised by the number of edges / total strength.
+- `:strengths_minor`: `1/(dᵣ+1)` and `1/(sᵣ+1)`.
+- `:random`: random values drawn from ``U(0,1)``.
+- `:uniform`: uniformly set to `-log(0.001)`.
+"""
+function initial_guess(m::UECM; method::Symbol=:strengths)
+    N = precision(m)
     if isequal(method, :strengths )
         isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
-        res = Vector{N}(-log.(vcat( m.dᵣ ./ (Graphs.ne(m.G) + 1), 
-                                    m.sᵣ ./ (sum(m.sᵣ) + 1)))) # will return Inf initial guesses for zero values 
+        res = Vector{N}(-log.(vcat( m.dᵣ ./ (Graphs.ne(m.G) + 1),
+                                    m.sᵣ ./ (sum(m.sᵣ) + 1)))) # will return Inf initial guesses for zero values
     elseif isequal(method, :strengths_minor)
-        isnothing(m.G) ? throw(ArgumentError("Cannot compute the number of edges because the model has no underlying graph (m.G == nothing)")) : nothing
         res = Vector{N}(-log.(vcat( ones(N, length(m.dᵣ)) ./ (m.dᵣ .+ 1),
                                     ones(N, length(m.sᵣ)) ./ (m.sᵣ .+ 1))))
     elseif isequal(method, :random)
@@ -291,8 +379,6 @@ function initial_guess(m::UECM{T,N}; method::Symbol=:strengths) where {T,N}
         throw(ArgumentError("The initial guess method $(method) is not supported"))
     end
 
-    # replace Inf values with 1e8
-    #res[findall(isinf, res)] .= 1e8 
     return res
 end
 
@@ -327,132 +413,391 @@ end
 
 
 """
-    Ĝ(m::UECM)
+    precision(m::UECM)
 
-Compute the expected **adjacency** matrix for the UECM model `m`. 
-
-Note: The expected weights need to be computed separately.
+Determine the compute precision of the UECM model `m`.
 """
-function Ĝ(m::UECM{T,N}) where {T,N}
+precision(m::UECM) = typeof(m).parameters[2]
+
+
+"""
+    f_UECM(xixj::T, yiyj::T) where {T}
+
+Helper for the UECM model computing the expected adjacency entry `pᵢⱼ = (xᵢxⱼ·yᵢyⱼ)/(1 - yᵢyⱼ + xᵢxⱼ·yᵢyⱼ)` from the
+products `xᵢxⱼ` and `yᵢyⱼ` of the maximum likelihood parameters.
+"""
+f_UECM(xixj::T, yiyj::T) where {T} = (xixj * yiyj) / (one(T) - yiyj + xixj * yiyj)
+
+
+"""
+    A(m::UECM, i::Int, j::Int)
+
+Return the expected value of the adjacency matrix for the UECM model `m` at the node pair `(i,j)`.
+
+❗ For performance reasons, the function does not check:
+- if the node pair is valid.
+- if the parameters of the model have been computed.
+"""
+function A(m::UECM, i::Int, j::Int)
+    return i == j ? zero(precision(m)) : @inbounds f_UECM(m.xᵣ[m.dᵣ_ind[i]] * m.xᵣ[m.dᵣ_ind[j]], m.yᵣ[m.dᵣ_ind[i]] * m.yᵣ[m.dᵣ_ind[j]])
+end
+
+
+"""
+    Ĝ(m::UECM)
+
+Compute the expected **adjacency** matrix for the UECM model `m`.
+
+Note: The expected weights can be computed separately with [`Ŵ`](@ref MaxEntropyGraphs.Ŵ).
+"""
+function Ĝ(m::UECM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    
+
     # get network size => this is the full size
-    n = m.status[:N] 
+    n = m.status[:N]
     # initiate G
-    G = zeros(N, n, n)
+    G = zeros(precision(m), n, n)
     # initiate x and y
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
-    # compute G
+    # compute G (symmetric, branch-free)
     for i = 1:n
-        @simd for j = 1:n
-            if i≠j
-                @inbounds xixj = x[i]*x[j]
-                @inbounds yiyj = y[i]*y[j]
-                @inbounds G[i,j] = (xixj * yiyj) / (1 - yiyj + xixj * yiyj)
-            end
+        @simd for j = i+1:n
+            @inbounds xixj = x[i]*x[j]
+            @inbounds yiyj = y[i]*y[j]
+            @inbounds pij  = (xixj * yiyj) / (1 - yiyj + xixj * yiyj)
+            @inbounds G[i,j] = pij
+            @inbounds G[j,i] = pij
         end
     end
 
-    return G    
+    return G
+end
+
+"""
+    set_Ĝ!(m::UECM)
+
+Set the expected adjacency matrix for the UECM model `m`
+"""
+function set_Ĝ!(m::UECM)
+    m.Ĝ = Ĝ(m)
+    m.status[:G_computed] = true
+    return m.Ĝ
 end
 
 
 """
-    Ŵ(m::UECM)
+    Ŵ(m::UECM)
 
-Compute the expected ** weigthed adjacency** matrix for the UECM model `m`. 
+Compute the expected (unconditional) **weighted adjacency** matrix for the UECM model `m`, i.e.
+`⟨wᵢⱼ⟩ = pᵢⱼ / (1 - yᵢyⱼ)`, so that `sum(Ŵ(m), dims=2) ≈ strength`.
 """
-function Ŵ(m::UECM{T,N}) where {T,N}
+function Ŵ(m::UECM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    
+
     # get network size => this is the full size
-    n = m.status[:N] 
+    n = m.status[:N]
     # initiate W
-    W = zeros(N, n, n)
+    W = zeros(precision(m), n, n)
     # initiate x and y
-    #x = m.xᵣ[m.dᵣ_ind]
+    x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
-    # compute G
+    # compute W (symmetric, branch-free): unconditional expected weight
     for i = 1:n
-        @simd for j = 1:n
-            if i≠j
-                @inbounds W[i,j] = 1 / (1 - y[i]*y[j])
-            end
+        @simd for j = i+1:n
+            @inbounds xixj = x[i]*x[j]
+            @inbounds yiyj = y[i]*y[j]
+            @inbounds pij  = (xixj * yiyj) / (1 - yiyj + xixj * yiyj)
+            @inbounds wij  = pij / (1 - yiyj)
+            @inbounds W[i,j] = wij
+            @inbounds W[j,i] = wij
         end
     end
 
-    return W    
+    return W
 end
 
-
-"""
-    set_σ!(m::UECM)
-
-Set the standard deviation for the elements of the adjacency matrix for the UECM model `m`
-"""
-function set_σ!(m::UECM)
-    throw(MethodError("This function is not implemented yet for UECM models"))
-end
 
 """
     σˣ(m::UECM{T,N}) where {T,N}
 
-Compute the standard deviation for the elements of the adjacency matrix for the UECM model `m`.
+Compute the standard deviation for the elements of the (binary) adjacency matrix for the UECM model `m`, i.e.
+`sqrt(pᵢⱼ(1 - pᵢⱼ))` (the adjacency entries are Bernoulli distributed).
 
-**Note:** read as "sigma star"
+**Note:** this is the variance of the *binary* layer only; the variance of the weights is not (yet) implemented.
+Read as "sigma star".
 """
-function σˣ(m::UECM{T,N}) where {T,N}
-    throw(MethodError("This function is not implemented yet for UECM models"))
+function σˣ(m::UECM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # network size => full size
+    n = m.status[:N]
+    # initiate σ
+    σ = zeros(precision(m), n, n)
+    # initiate x and y
+    x = m.xᵣ[m.dᵣ_ind]
+    y = m.yᵣ[m.dᵣ_ind]
+    # compute σ (symmetric, branch-free)
+    for i = 1:n
+        @simd for j = i+1:n
+            @inbounds xixj = x[i]*x[j]
+            @inbounds yiyj = y[i]*y[j]
+            @inbounds pij  = (xixj * yiyj) / (1 - yiyj + xixj * yiyj)
+            @inbounds sij  = sqrt(pij * (1 - pij))
+            @inbounds σ[i,j] = sij
+            @inbounds σ[j,i] = sij
+        end
+    end
+
+    return σ
+end
+
+"""
+    set_σ!(m::UECM)
+
+Set the standard deviation for the elements of the (binary) adjacency matrix for the UECM model `m`
+"""
+function set_σ!(m::UECM)
+    m.σ = σˣ(m)
+    m.status[:σ_computed] = true
+    return m.σ
+end
+
+"""
+    σₓ(m::UECM, X::Function; gradient_method::Symbol=:ReverseDiff)
+
+Compute the standard deviation of metric `X` for the UECM model `m` via error propagation over the binary adjacency
+matrix. This requires that both the expected values (`m.Ĝ`) and standard deviations (`m.σ`) are computed for `m`.
+"""
+function σₓ(m::UECM, X::Function; gradient_method::Symbol=:ReverseDiff)
+    # checks
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
+    m.status[:σ_computed] ? nothing : throw(ArgumentError("The standard deviations (m.σ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_σ!`"))
+
+    # gradient
+    if gradient_method == :ForwardDiff
+        ∇X = ForwardDiff.gradient(X, m.Ĝ)
+    elseif gradient_method == :ReverseDiff
+        ∇X = ReverseDiff.gradient(X, m.Ĝ)
+    elseif gradient_method == :Zygote
+        ∇X = Zygote.gradient(X, m.Ĝ)[1]
+    else
+        throw(ArgumentError("Invalid gradient method, only :ForwardDiff, :ReverseDiff and :Zygote are accepted"))
+    end
+
+    # return value
+    return sqrt( sum((m.σ .* ∇X) .^ 2) )
 end
 
 
 """
-    rand(m::UECM; precomputed=false)
+    degree(m::UECM, i::Int; method=:reduced)
 
-Generate a random graph from the UECM model `m`.
+Return the expected degree for node `i` of the UECM model `m`.
 
-Keyword arguments:
-- `precomputed::Bool`: if `true`, the precomputed expected adjacency matrix (`m.Ĝ`) is used to generate the random graph, otherwise the maximum likelihood parameters are used to generate the random graph on the fly. For larger networks, it is 
-  recommended to not precompute the expected adjacency matrix to limit memory pressure.
+# Arguments
+- `method::Symbol`:
+    - `:reduced` (default) uses the reduced model parameters `xᵣ`/`yᵣ`.
+    - `:full` uses all elements of the expected adjacency matrix.
+    - `:adjacency` uses the precomputed adjacency matrix `m.Ĝ` of the model.
+"""
+function degree(m::UECM, i::Int; method::Symbol=:reduced)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
+
+    if method == :reduced
+        res = zero(precision(m))
+        i_red = m.dᵣ_ind[i] # find matching index in reduced model
+        for j in eachindex(m.xᵣ)
+            @inbounds pij = f_UECM(m.xᵣ[i_red] * m.xᵣ[j], m.yᵣ[i_red] * m.yᵣ[j])
+            if i_red ≠ j
+                @inbounds res += pij * m.f[j]
+            else
+                @inbounds res += pij * (m.f[j] - 1) # subtract 1 because the diagonal is not counted
+            end
+        end
+    elseif method == :full
+        res = zero(precision(m))
+        for j in eachindex(m.d)
+            res += A(m, i, j)
+        end
+    elseif method == :adjacency
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
+        res = sum(@view m.Ĝ[i,:])
+    else
+        throw(ArgumentError("Unknown method $method"))
+    end
+
+    return res
+end
+
+"""
+    degree(m::UECM[, v]; method=:reduced)
+
+Return a vector corresponding to the expected degree of each node of the UECM model `m`. If `v` is specified, only
+return degrees for nodes in `v`.
+"""
+degree(m::UECM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced) = [degree(m, i, method=method) for i in v]
+
+
+"""
+    strength(m::UECM, i::Int; method=:reduced)
+
+Return the expected (unconditional) strength for node `i` of the UECM model `m`, i.e. `Σⱼ pᵢⱼ/(1 - yᵢyⱼ)`.
+
+# Arguments
+- `method::Symbol`:
+    - `:reduced` (default) uses the reduced model parameters `xᵣ`/`yᵣ`.
+    - `:full` uses all node pairs.
+    - `:adjacency` reuses the precomputed adjacency matrix `m.Ĝ` (plus the `yᵣ` parameters).
+"""
+function strength(m::UECM, i::Int; method::Symbol=:reduced)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
+
+    if method == :reduced
+        res = zero(precision(m))
+        i_red = m.dᵣ_ind[i]
+        for j in eachindex(m.xᵣ)
+            @inbounds yiyj = m.yᵣ[i_red] * m.yᵣ[j]
+            @inbounds wij  = f_UECM(m.xᵣ[i_red] * m.xᵣ[j], yiyj) / (1 - yiyj)
+            if i_red ≠ j
+                @inbounds res += wij * m.f[j]
+            else
+                @inbounds res += wij * (m.f[j] - 1)
+            end
+        end
+    elseif method == :full
+        res = zero(precision(m))
+        for j in eachindex(m.d)
+            if i ≠ j
+                @inbounds yiyj = m.yᵣ[m.dᵣ_ind[i]] * m.yᵣ[m.dᵣ_ind[j]]
+                res += A(m, i, j) / (1 - yiyj)
+            end
+        end
+    elseif method == :adjacency
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
+        y = m.yᵣ[m.dᵣ_ind]
+        res = zero(precision(m))
+        for j in 1:m.status[:N]
+            if i ≠ j
+                @inbounds res += m.Ĝ[i,j] / (1 - y[i] * y[j])
+            end
+        end
+    else
+        throw(ArgumentError("Unknown method $method"))
+    end
+
+    return res
+end
+
+"""
+    strength(m::UECM[, v]; method=:reduced)
+
+Return a vector corresponding to the expected strength of each node of the UECM model `m`. If `v` is specified, only
+return strengths for nodes in `v`.
+"""
+strength(m::UECM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced) = [strength(m, i, method=method) for i in v]
+
+
+"""
+    AIC(m::UECM)
+
+Compute the Akaike Information Criterion (AIC) for the UECM model `m`. The parameters of the model must be computed
+beforehand. The UECM has `2N` parameters (an ``\\alpha`` and a ``\\beta`` per node).
+
+See also [`AICc`](@ref MaxEntropyGraphs.AICc), [`L_UECM_reduced`](@ref MaxEntropyGraphs.L_UECM_reduced).
+"""
+function AIC(m::UECM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = 2 * m.status[:N] # number of parameters (α and β per node)
+    n = (m.status[:N] - 1) * m.status[:N] / 2 # number of observations (node pairs)
+    L = L_UECM_reduced(m) # log-likelihood
+
+    if n/k < 40
+        @warn """The number of observations is small with respect to the number of parameters (n/k < 40). Consider using the corrected AIC (AICc) instead."""
+    end
+
+    return 2*k - 2*L
+end
+
+
+"""
+    AICc(m::UECM)
+
+Compute the corrected Akaike Information Criterion (AICc) for the UECM model `m`.
+
+See also [`AIC`](@ref MaxEntropyGraphs.AIC), [`L_UECM_reduced`](@ref MaxEntropyGraphs.L_UECM_reduced).
+"""
+function AICc(m::UECM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = 2 * m.status[:N] # number of parameters
+    n = (m.status[:N] - 1) * m.status[:N] / 2 # number of observations
+    L = L_UECM_reduced(m) # log-likelihood
+
+    return 2*k - 2*L + (2*k*(k+1)) / (n - k - 1)
+end
+
+
+"""
+    BIC(m::UECM)
+
+Compute the Bayesian Information Criterion (BIC) for the UECM model `m`.
+
+See also [`AIC`](@ref MaxEntropyGraphs.AIC), [`L_UECM_reduced`](@ref MaxEntropyGraphs.L_UECM_reduced).
+"""
+function BIC(m::UECM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    # compute AIC components
+    k = 2 * m.status[:N] # number of parameters
+    n = (m.status[:N] - 1) * m.status[:N] / 2 # number of observations
+    L = L_UECM_reduced(m) # log-likelihood
+
+    return k * log(n) - 2*L
+end
+
+
+"""
+    rand(m::UECM; precomputed=false, rng=Random.default_rng())
+
+Generate a random weighted graph from the UECM model `m`.
+
+# Arguments
+- `precomputed::Bool`: not implemented yet for the UECM (the parameters are always used to generate the graph on the fly).
+- `rng::AbstractRNG`: random number generator to use (defaults to `Random.default_rng()`).
 
 # Examples
 ```jldoctest
-# generate a UECM model from the karate club network
-julia> G = MaxEntropyGraphs.Graphs.SimpleGraphs.smallgraph(:karate);
-julia> model = MaxEntropyGraphs.UECM(G);
-# compute the maximum likelihood parameters
-using NLsolve
-x_buffer = zeros(length(model.dᵣ));G_buffer = zeros(length(model.dᵣ));
-FP_model! = (θ::Vector) -> MaxEntropyGraphs.UECM(θ, model.dᵣ, model.f, x_buffer, G_buffer);
-sol = fixedpoint(FP_model!, θ₀, method=:anderson, ftol=1e-12, iterations=1000);
-model.Θᵣ .= sol.zero;
-model.status[:params_computed] = true;
-set_xᵣ!(model);
-# set the expected adjacency matrix
-MaxEntropyGraphs.set_Ĝ!(model);
-# sample a random graph
-julia> rand(model)
-{34, 78} undirected simple Int64 graph
+julia> model = UECM(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques())); # generate a UECM model
+
+julia> solve_model!(model, method=:BFGS); # compute the maximum likelihood parameters
+
+julia> sample = rand(model); # sample a random weighted graph
+
+julia> typeof(sample)
+SimpleWeightedGraphs.SimpleWeightedGraph{Int64, Int64}
 ```
 """
-function rand(m::UECM; precomputed::Bool=false)
+function rand(m::UECM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     if precomputed
         throw(ArgumentError("This function is not implemented yet for UECM models"))
-        # check if possible to use precomputed Ĝ
-        #m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
-        # generate random graph
-        #G = Graphs.SimpleGraphFromIterator(Graphs.Edge.([(i,j) for i = 1:m.status[:d] for j in i+1:m.status[:d] if rand()<m.Ĝ[i,j]]))
     else
         # check if possible to use parameters
         m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-        # generate x vector
+        # generate x and y vectors
         x = m.xᵣ[m.dᵣ_ind]
         y = m.yᵣ[m.dᵣ_ind]
         # generate random graph edges
-        sources = Vector{Int}(); 
+        sources = Vector{Int}();
         targets = Vector{Int}();
         weights = Vector{Int}();
         for i in 1:m.status[:N]
@@ -461,10 +806,11 @@ function rand(m::UECM; precomputed::Bool=false)
                 @inbounds xixj = x[i]*x[j]
                 @inbounds yiyj = y[i]*y[j]
                 p_ij = (xixj * yiyj) / (1 - yiyj + xixj * yiyj)
-                if rand() ≤ p_ij
+                if rand(rng) ≤ p_ij
                     push!(sources, i)
                     push!(targets, j)
-                    push!(weights, rand(Distributions.Geometric(1-yiyj)+1))
+                    # weight = 1 + Geometric(1 - yᵢyⱼ); mean excess weight = yᵢyⱼ/(1 - yᵢyⱼ)
+                    push!(weights, rand(rng, Geometric(1 - yiyj)) + 1)
                 end
             end
         end
@@ -474,8 +820,7 @@ function rand(m::UECM; precomputed::Bool=false)
         else
             G = SimpleWeightedGraphs.SimpleWeightedGraph(m.status[:N])
         end
-        
-        
+
         # deal with edge case where no edges are generated for the last node(s) in the graph
         while Graphs.nv(G) < m.status[:N]
             Graphs.add_vertex!(G)
@@ -484,12 +829,20 @@ function rand(m::UECM; precomputed::Bool=false)
     end
 end
 
-function rand(m::UECM, n::Int; precomputed::Bool=false)
+"""
+    rand(m::UECM, n::Int; precomputed=false, rng=Random.default_rng())
+
+Generate `n` random weighted graphs from the UECM model `m`. If multithreading is available, the graphs are generated
+in parallel; per-sample seeds are drawn from `rng` so the result is reproducible and independent of the thread schedule.
+"""
+function rand(m::UECM, n::Int; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     # pre-allocate
     res = Vector{SimpleWeightedGraphs.SimpleWeightedGraph}(undef, n)
+    # per-sample seeds drawn from `rng` (reproducible, thread-schedule-independent)
+    seeds = rand(rng, UInt64, n)
     # fill vector using threads
     Threads.@threads for i in 1:n
-        res[i] = rand(m; precomputed=precomputed)
+        res[i] = rand(m; precomputed=precomputed, rng=Xoshiro(seeds[i]))
     end
 
     return res
@@ -497,32 +850,57 @@ end
 
 
 
+# The UECM feasible region is `yᵢyⱼ < 1` (`βᵢ + βⱼ > 0`); outside it the likelihood is not
+# defined (it evaluates to `NaN`). The default HagerZhang / (Strong)Wolfe line searches cannot
+# cope with that barrier and stall almost immediately, whereas a BackTracking line search (halve
+# the step until the objective is finite and satisfies the Armijo condition) stays in the feasible
+# interior and converges — this is exactly the backtracking recipe of Vallarano et al. (2021).
+# We therefore give the UECM its own optimizer instances (the other models keep the package-wide
+# `optimization_methods`, which work well for their unconstrained domain).
+const UECM_optimization_methods = Dict( :LBFGS  => OptimizationOptimJL.LBFGS( linesearch = OptimizationOptimJL.Optim.LineSearches.BackTracking()),
+                                        :BFGS   => OptimizationOptimJL.BFGS(  linesearch = OptimizationOptimJL.Optim.LineSearches.BackTracking()),
+                                        :Newton => OptimizationOptimJL.Newton(linesearch = OptimizationOptimJL.Optim.LineSearches.BackTracking()))
+
 """
-    solve_model!(m::UECM)
+    solve_model!(m::UECM; kwargs...)
 
-Compute the likelihood maximising parameters of the UECM model `m`. 
+Compute the likelihood maximising parameters of the UECM model `m`.
 
-By default the parameters are computed using the BFGS method with Zygote.jl using the strength sequence as initial guess.
+By default the parameters are computed using the BFGS method with the strength sequence as initial guess.
+
+# Arguments
+- `method::Symbol`: solution method, `:BFGS` (default) or any of :$(join(keys(MaxEntropyGraphs.optimization_methods), ", :", " and :")), plus `:fixedpoint`.
+- `initial::Symbol`: initial guess, `:strengths` (default), `:strengths_minor`, `:random`, or `:uniform`.
+- `maxiters::Int`: maximum number of iterations (defaults to 1000).
+- `verbose::Bool`: show log messages (defaults to false).
+- `ftol::Real`: function tolerance for the fixedpoint method (defaults to 1e-8).
+- `abstol`, `reltol`: absolute/relative tolerances for the optimisation methods (default `nothing`).
+- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`).
+- `AD_method::Symbol`: autodiff method, any of :$(join(keys(MaxEntropyGraphs.AD_methods), ", :", " and :")) (defaults to `:AutoZygote`).
+- `analytical_gradient::Bool`: use the analytical gradient instead of autodiff (defaults to `false`).
 
 **Notes**
-- the fixed-point method is very unstable for this model and should not be used. From an acceptable solution it can be used to fine-tune an existing one
+- the fixed-point method is very unstable for this model and should not be used. From an acceptable solution it can be used to fine-tune an existing one.
 - the L-BFGS method is known to be unstable for this model and should not be used.
 """
-function solve_model!(m::UECM{T,N};  # common settings
-                                method::Symbol=:BFGS, 
+function solve_model!(m::UECM;  # common settings
+                                method::Symbol=:BFGS,
                                 initial::Symbol=:strengths,
-                                maxiters::Int=1000, 
+                                maxiters::Int=1000,
                                 verbose::Bool=false,
                                 # NLsolve.jl specific settings (fixed point method)
                                 ftol::Real=1e-8,
                                 # optimisation.jl specific settings (optimisation methods)
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
+                                g_tol::Union{Number, Nothing}=nothing,
                                 AD_method::Symbol=:AutoZygote,
-                                analytical_gradient::Bool=false) where {T,N}
+                                analytical_gradient::Bool=false)
+    N = precision(m)
+    N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
     # initial guess
     θ₀ = initial_guess(m, method=initial)
-    # find Inf values
+    # find Inf values (zero-degree/zero-strength nodes)
     ind_inf = findall(isinf, θ₀)
     if method==:fixedpoint
         @warn "The fixed point method is very unstable for this model and should not be used. `BFGS` is prefered for quasinewton methods."
@@ -536,11 +914,11 @@ function solve_model!(m::UECM{T,N};  # common settings
         θ₀[ind_inf] .= zero(N);
         sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
         if NLsolve.converged(sol)
-            if verbose 
+            if verbose
                 @info "Fixed point iteration converged after $(sol.iterations) iterations"
             end
             m.θᵣ .= sol.zero;
-            m.θᵣ[ind_inf] .= Inf;
+            m.θᵣ[ind_inf] .= N(Inf);
             m.status[:params_computed] = true;
             set_xᵣ!(m);
             set_yᵣ!(m);
@@ -559,15 +937,22 @@ function solve_model!(m::UECM{T,N};  # common settings
         f = AD_method ∈ keys(AD_methods) ? Optimization.OptimizationFunction( (θ, p) -> - L_UECM_reduced(θ, m.dᵣ, m.sᵣ, m.f, length(m.dᵣ)),
                                                                                         AD_methods[AD_method],
                                                                                         grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
-        
-        prob = Optimization.OptimizationProblem(f, θ₀);
 
+        prob = Optimization.OptimizationProblem(f, θ₀);
         # obtain solution
-        sol = method ∈ keys(optimization_methods) ? Optimization.solve(prob, optimization_methods[method], abstol=abstol, reltol=reltol) : throw(ArgumentError("The method $(method) is not supported (yet)"))
+        method ∈ keys(optimization_methods) || throw(ArgumentError("The method $(method) is not supported (yet)"))
+        # use the BackTracking-line-search variants (see `UECM_optimization_methods` above), falling
+        # back to the package-wide method for e.g. `:NelderMead`.
+        opt = get(UECM_optimization_methods, method, optimization_methods[method])
+        # `maxiters` is forwarded (it was previously silently ignored); `g_tol` (when set) maps to
+        # Optim's gradient tolerance so the solve can stop before over-converging.
+        solve_kwargs = isnothing(g_tol) ? (; maxiters = maxiters, abstol = abstol, reltol = reltol) :
+                                          (; maxiters = maxiters, abstol = abstol, reltol = reltol, g_abstol = g_tol)
+        sol = Optimization.solve(prob, opt; solve_kwargs...)
         # check convergence
         if Optimization.SciMLBase.successful_retcode(sol.retcode)
-            if verbose 
-                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.stats.time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))\n$(sol.original)"""
+            if verbose
+                @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.stats.time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
             end
             m.θᵣ .= sol.u;
             m.θᵣ[ind_inf] .= N(Inf);
@@ -579,5 +964,5 @@ function solve_model!(m::UECM{T,N};  # common settings
         end
     end
 
-    return m,sol
+    return m, sol
 end

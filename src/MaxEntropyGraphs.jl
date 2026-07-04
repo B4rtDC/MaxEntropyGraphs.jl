@@ -26,7 +26,7 @@ module MaxEntropyGraphs
     import SparseArrays: dropzeros!, issparse, findnz, SparseMatrixCSC
     #import NaNMath # returns a NaN instead of a DomainError for some functions. The solver(s) will use the NaN within the error control routines to reject the out of bounds step.
 
-    import Distributions: cdf, Poisson, PoissonBinomial
+    import Distributions: cdf, Poisson, PoissonBinomial, Geometric
     import Combinatorics: combinations
     import MultipleTesting
     #import LoopVectorization: @tturbo, @turbo  # not for now
@@ -36,7 +36,7 @@ module MaxEntropyGraphs
     include("Models/UBCM.jl")
     include("Models/DBCM.jl")
     include("Models/BiCM.jl")
-    #include("Models/UECM.jl")
+    include("Models/UECM.jl")
     #include("Models/CReM.jl")
     include("utils.jl")
     include("metrics.jl")
@@ -70,6 +70,7 @@ module MaxEntropyGraphs
     export UBCM, L_UBCM_reduced, ∇L_UBCM_reduced!, UBCM_reduced_iter!
     export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
     export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
+    export UECM, L_UECM_reduced, ∇L_UECM_reduced!, UECM_reduced_iter!
     
     ## demo networks
     export rhesus_macaques, taro_exchange, chesapeakebay, everglades, florida, littlerock, maspalomas, stmarks, corporateclub
@@ -150,6 +151,24 @@ module MaxEntropyGraphs
                         end
                     end
                 end
+            end
+        end
+
+        # UECM workload (fixed point is unstable for the UECM, so only BFGS/Newton are exercised)
+        @setup_workload begin
+            G = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques())
+            @compile_workload begin
+                # model building and solving
+                model = UECM(G)
+                solve_model!(model, method=:BFGS)
+                solve_model!(model, method=:BFGS, analytical_gradient=true)
+                solve_model!(model, method=:Newton)
+                solve_model!(model, method=:Newton, analytical_gradient=true)
+                # sampling
+                rand(model, 10)
+                # metrics
+                set_Ĝ!(model)
+                set_σ!(model)
             end
         end
     end
