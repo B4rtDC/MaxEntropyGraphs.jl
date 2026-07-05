@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+Weighted, undirected models brought to full parity with the binary trio (UBCM/DBCM/BiCM).
+
+### Added
+- **`UECM`** — the Undirected Enhanced Configuration Model (constrains the degree **and** the integer
+  strength sequence). Numerically-stable log-likelihood, branch-free SIMD gradient, seeded reproducible
+  sampling, the full accessor/variance/information-criterion API, a NEMtropy (`ecm_exp`)
+  performance/accuracy comparison, and documentation. Because the likelihood is only defined on the
+  feasible region, the solver uses a `BackTracking` line search (`BFGS` default; the fixed point is
+  unstable for this model).
+- **`CReM`** — the Conditional Reconstruction Method (a two-step model for weighted, undirected networks
+  with **continuous** positive weights: a binary UBCM layer supplies the edge probabilities `fᵢⱼ`,
+  conditional on which the weights are exponential with rate `θᵢ+θⱼ`, constraining the strength
+  sequence). Branch-free SIMD kernels, seeded reproducible sampling, the full accessor/variance/
+  information-criterion API (`k = N` parameters), a NEMtropy (`crema`) performance/accuracy comparison,
+  and documentation. The fixed-point recipe is stable and is the default; `BFGS`/`Newton` are also
+  available.
+
 ## v0.5.1
 
 Solver fixes and robustness.
