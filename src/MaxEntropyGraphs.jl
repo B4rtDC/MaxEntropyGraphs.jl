@@ -26,7 +26,7 @@ module MaxEntropyGraphs
     import SparseArrays: dropzeros!, issparse, findnz, SparseMatrixCSC
     #import NaNMath # returns a NaN instead of a DomainError for some functions. The solver(s) will use the NaN within the error control routines to reject the out of bounds step.
 
-    import Distributions: cdf, Poisson, PoissonBinomial, Geometric
+    import Distributions: cdf, Poisson, PoissonBinomial, Geometric, Exponential
     import Combinatorics: combinations
     import MultipleTesting
     #import LoopVectorization: @tturbo, @turbo  # not for now
@@ -37,7 +37,7 @@ module MaxEntropyGraphs
     include("Models/DBCM.jl")
     include("Models/BiCM.jl")
     include("Models/UECM.jl")
-    #include("Models/CReM.jl")
+    include("Models/CReM.jl")
     include("utils.jl")
     include("metrics.jl")
     include("smallnetworks.jl")
@@ -71,7 +71,8 @@ module MaxEntropyGraphs
     export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
     export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
     export UECM, L_UECM_reduced, ∇L_UECM_reduced!, UECM_reduced_iter!
-    
+    export CReM, L_CReM, ∇L_CReM!, CReM_iter!
+
     ## demo networks
     export rhesus_macaques, taro_exchange, chesapeakebay, everglades, florida, littlerock, maspalomas, stmarks, corporateclub
 
@@ -160,6 +161,25 @@ module MaxEntropyGraphs
             @compile_workload begin
                 # model building and solving
                 model = UECM(G)
+                solve_model!(model, method=:BFGS)
+                solve_model!(model, method=:BFGS, analytical_gradient=true)
+                solve_model!(model, method=:Newton)
+                solve_model!(model, method=:Newton, analytical_gradient=true)
+                # sampling
+                rand(model, 10)
+                # metrics
+                set_Ĝ!(model)
+                set_σ!(model)
+            end
+        end
+
+        # CReM workload (two-step: internal UBCM + weighted layer; fixed point is stable here)
+        @setup_workload begin
+            G = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques())
+            @compile_workload begin
+                # model building and solving
+                model = CReM(G)
+                solve_model!(model)
                 solve_model!(model, method=:BFGS)
                 solve_model!(model, method=:BFGS, analytical_gradient=true)
                 solve_model!(model, method=:Newton)
