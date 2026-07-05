@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.6.0
 
 Weighted, undirected models brought to full parity with the binary trio (UBCM/DBCM/BiCM).
 
@@ -18,6 +18,18 @@ Weighted, undirected models brought to full parity with the binary trio (UBCM/DB
   information-criterion API (`k = N` parameters), a NEMtropy (`crema`) performance/accuracy comparison,
   and documentation. The fixed-point recipe is stable and is the default; `BFGS`/`Newton` are also
   available.
+
+## v0.5.2
+
+Metric-computation performance.
+
+### Performance
+- Accelerated the metric kernels (algorithmic simplifications, BLAS-backed inner products, and AD- and
+  memory-aware implementations); the kernel equivalences are documented.
+
+### Changed
+- Refreshed citation metadata (`CITATION.cff`, Zenodo concept DOI) and listed the network motifs in the
+  API reference.
 
 ## v0.5.1
 
