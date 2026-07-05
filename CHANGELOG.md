@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.6.0
+## v0.5.3
 
 Weighted, undirected models brought to full parity with the binary trio (UBCM/DBCM/BiCM).
 
