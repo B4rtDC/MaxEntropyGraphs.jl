@@ -528,7 +528,432 @@
     end
 
     @testset "UECM" begin
+        # small, self-contained integer-weighted undirected graph for the constructor tests
+        Usrc = [1, 1, 2, 3]; Udst = [2, 3, 3, 4]; Uw = [2, 1, 3, 4]
+        Gsmall = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(Usrc, Udst, Uw)
+        dsmall = MaxEntropyGraphs.Graphs.degree(Gsmall)
+        ssmall = MaxEntropyGraphs.strength(Gsmall)
+        # real integer-weighted undirected anchor (symmetrised rhesus macaques network, N=16)
+        Gw = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques())
 
+        @testset "UECM - generation" begin
+            allowedDataTypes = [Float64; Float32; Float16]
+            # simple model, directly from graph, different precisions
+            for precision in allowedDataTypes
+                model = UECM(Gsmall, precision=precision)
+                @test isa(model, UECM)
+                @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
+                @test typeof(model).parameters[1] == typeof(Gsmall)
+                @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision, eltype(model.yᵣ) == precision])
+            end
+            # simple model, directly from degree and strength sequences, different precisions
+            for precision in allowedDataTypes
+                model = UECM(d=dsmall, s=ssmall, precision=precision)
+                @test isa(model, UECM)
+                @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
+                @test typeof(model).parameters[1] == Nothing
+                @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision, eltype(model.yᵣ) == precision])
+            end
+            # testing breaking conditions
+            @test_throws MethodError UECM(1) # wrong input type
+            # directed graph info loss warning message
+            Gd = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedDiGraph(Usrc, Udst, Uw)
+            @test_logs (:warn,"The graph is directed, the UECM model is undirected, the directional information will be lost") match_mode=:any UECM(Gd, d=MaxEntropyGraphs.Graphs.degree(Gd), s=MaxEntropyGraphs.strength(Gd))
+            # zero degree / zero strength node warnings
+            @test_logs (:warn,"The graph has vertices with zero degree, this may lead to convergence issues.") UECM(d=[0, 1, 1], s=[1, 1, 1])
+            @test_logs (:warn,"The graph has vertices with zero strength, this may lead to convergence issues.") UECM(d=[1, 1, 1], s=[0, 1, 1])
+            # invalid combination of parameters
+            @test_throws ArgumentError UECM(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(0)) # zero node graph
+            @test_throws ArgumentError UECM(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(1)) # single node graph
+            @test_throws DimensionMismatch UECM(Gsmall, d=dsmall[1:end-1], s=ssmall) # different lengths (graph)
+            @test_throws DimensionMismatch UECM(d=[1, 2, 3], s=[1, 2]) # different lengths (sequence)
+            @test_throws ArgumentError UECM(d=Int[], s=Int[]) # zero length
+            @test_throws ArgumentError UECM(d=Int[1], s=Int[1]) # single length
+            @test_throws DomainError UECM(d=[1.5, 2.0], s=[1, 2]) # non-integer degree
+            @test_throws DomainError UECM(d=[1, 2], s=[1.5, 2.0]) # non-integer strength
+            @test_throws DomainError UECM(d=[3, 1, 1], s=[1, 1, 1]) # max degree >= number of nodes
+        end
+
+        @testset "UECM - Likelihood gradient test" begin
+            model = UECM(Gw)
+            n = model.status[:d_unique]
+            θ₀ = MaxEntropyGraphs.initial_guess(model)
+            ∇L_buf = zeros(length(θ₀))
+            ∇L_buf_min = zeros(length(θ₀))
+            x_buff = zeros(n)
+            y_buff = zeros(n)
+            MaxEntropyGraphs.∇L_UECM_reduced!(∇L_buf, θ₀, model.dᵣ, model.sᵣ, model.f, x_buff, y_buff, n)
+            MaxEntropyGraphs.∇L_UECM_reduced_minus!(∇L_buf_min, θ₀, model.dᵣ, model.sᵣ, model.f, x_buff, y_buff, n)
+            @test ∇L_buf ≈ -∇L_buf_min
+            ∇L_zyg = MaxEntropyGraphs.Zygote.gradient(θ -> MaxEntropyGraphs.L_UECM_reduced(θ, model.dᵣ, model.sᵣ, model.f, n), θ₀)[1]
+            @test ∇L_zyg ≈ ∇L_buf
+            @test ∇L_zyg ≈ -∇L_buf_min
+            # the accessor requires computed parameters
+            @test_throws ArgumentError MaxEntropyGraphs.L_UECM_reduced(model)
+        end
+
+        @testset "UECM - parameter computation" begin
+            allowedDataTypes = [Float64] # low precision kept out for occasional convergence issues
+            for precision in allowedDataTypes
+                @testset "$(precision) precision" begin
+                    model = UECM(Gw, precision=precision)
+                    @test_throws ArgumentError Ĝ(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.Ŵ(model)
+                    @test_throws ArgumentError σˣ(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.set_xᵣ!(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.set_yᵣ!(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.initial_guess(model, method=:strange)
+                    # every initial-guess method returns a guess of length 2·d_unique ( θ = [α; β] )
+                    for initial in [:strengths, :strengths_minor, :random, :uniform]
+                        @test length(MaxEntropyGraphs.initial_guess(model, method=initial)) == 2 * model.status[:d_unique]
+                    end
+                    # convergence + constraint reproduction (fixed point is unstable for the UECM, so BFGS/Newton).
+                    # The AD-gradient BFGS is robust from either initial guess. The analytical gradient is a
+                    # fast path but numerically sensitive from the poorer `:strengths_minor` start: on some
+                    # emulated x86_64 platforms its BackTracking line search stalls far from the optimum, so it
+                    # is exercised only from the robust `:strengths` guess. (`g_tol=1e-5` stops the solve just
+                    # short of the feasibility barrier — the default 1e-8 over-converges into a fragile region —
+                    # while still reproducing both constraints to ~1e-5, well inside the tolerance below.)
+                    for (initial, gradient_modes) in [(:strengths, [true, false]), (:strengths_minor, [false])]
+                        @testset "BFGS - initial guess: $initial" begin
+                            for analytical_gradient in gradient_modes
+                                @testset "analytical_gradient: $analytical_gradient" begin
+                                    MaxEntropyGraphs.solve_model!(model, initial=initial, method=:BFGS, analytical_gradient=analytical_gradient, g_tol=1e-5)
+                                    A = MaxEntropyGraphs.Ĝ(model)
+                                    W = MaxEntropyGraphs.Ŵ(model)
+                                    # both the degree and the strength constraints must be reproduced
+                                    @test isapprox(vec(sum(A, dims=2)), model.d, rtol=1e-6)
+                                    @test isapprox(vec(sum(W, dims=2)), model.s, rtol=1e-6)
+                                end
+                            end
+                        end
+                    end
+                    # Newton is more sensitive to the initial guess; test it from the default strengths guess.
+                    @testset "Newton - analytical_gradient: $analytical_gradient" for analytical_gradient in [false, true]
+                        MaxEntropyGraphs.solve_model!(model, initial=:strengths, method=:Newton, analytical_gradient=analytical_gradient)
+                        A = MaxEntropyGraphs.Ĝ(model)
+                        W = MaxEntropyGraphs.Ŵ(model)
+                        @test isapprox(vec(sum(A, dims=2)), model.d, rtol=1e-6)
+                        @test isapprox(vec(sum(W, dims=2)), model.s, rtol=1e-6)
+                    end
+                    @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision, eltype(model.yᵣ) == precision])
+                    # the fixed point method emits its instability warning
+                    @test_logs (:warn, "The fixed point method is very unstable for this model and should not be used. `BFGS` is prefered for quasinewton methods.") match_mode=:any try
+                        MaxEntropyGraphs.solve_model!(model, method=:fixedpoint)
+                    catch
+                    end
+                end
+            end
+        end
+
+        @testset "UECM - sampling" begin
+            model = UECM(Gw)
+            # parameters unknown
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=false)
+            @test_throws ArgumentError MaxEntropyGraphs.Ĝ(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σˣ(model)
+            # solve model
+            MaxEntropyGraphs.solve_model!(model, method=:BFGS)
+            # precomputed sampling is not implemented for the UECM
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=true)
+            # single sample: correct number of vertices and integer weights ≥ 1
+            sample = rand(model)
+            @test isa(sample, MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph)
+            @test MaxEntropyGraphs.Graphs.nv(sample) == model.status[:N]
+            @test all(w -> w ≥ 1, MaxEntropyGraphs.SimpleWeightedGraphs.weight.(collect(MaxEntropyGraphs.Graphs.edges(sample))))
+            # expected adjacency / variance sizes and eltypes
+            MaxEntropyGraphs.set_Ĝ!(model)
+            MaxEntropyGraphs.set_σ!(model)
+            @test eltype(MaxEntropyGraphs.σˣ(model)) == MaxEntropyGraphs.precision(model)
+            @test size(MaxEntropyGraphs.σˣ(model)) == (model.status[:N], model.status[:N])
+            @test eltype(MaxEntropyGraphs.Ĝ(model)) == MaxEntropyGraphs.precision(model)
+            @test size(MaxEntropyGraphs.Ĝ(model)) == (model.status[:N], model.status[:N])
+            # batch sampling
+            S = rand(model, 100)
+            @test length(S) == 100
+            @test all(MaxEntropyGraphs.Graphs.nv.(S) .== model.status[:N])
+            # reproducibility with a fixed rng
+            @test MaxEntropyGraphs.SimpleWeightedGraphs.weights(rand(model, rng=MaxEntropyGraphs.Xoshiro(42))) == MaxEntropyGraphs.SimpleWeightedGraphs.weights(rand(model, rng=MaxEntropyGraphs.Xoshiro(42)))
+        end
+
+        @testset "UECM - degree/strength metrics" begin
+            model = UECM(Gw)
+            # adjacency matrix accessor
+            @test iszero(MaxEntropyGraphs.A(model, 1, 1))
+            @test isa(MaxEntropyGraphs.A(model, 1, 2), precision(model))
+            # parameters not computed yet
+            @test_throws ArgumentError degree(model, 1)
+            @test_throws ArgumentError MaxEntropyGraphs.strength(model, 1)
+            solve_model!(model, method=:BFGS, g_tol=1e-5)
+            # check out of bounds
+            @test_throws ArgumentError degree(model, model.status[:N] + 1)
+            @test_throws ArgumentError MaxEntropyGraphs.strength(model, model.status[:N] + 1)
+            # unknown method
+            @test_throws ArgumentError degree(model, method=:unknown_method)
+            @test_throws ArgumentError MaxEntropyGraphs.strength(model, method=:unknown_method)
+            # reduced/full reproduce the observed degree and strength sequences
+            for method in [:reduced, :full]
+                @test isapprox(degree(model, method=method), model.d, rtol=1e-6)
+                @test isapprox(MaxEntropyGraphs.strength(model, method=method), model.s, rtol=1e-6)
+            end
+            # adjacency-based methods require set_Ĝ!
+            @test_throws ArgumentError degree(model, method=:adjacency)
+            @test_throws ArgumentError MaxEntropyGraphs.strength(model, method=:adjacency)
+            set_Ĝ!(model)
+            @test isapprox(degree(model, method=:adjacency), model.d, rtol=1e-6)
+            @test isapprox(MaxEntropyGraphs.strength(model, method=:adjacency), model.s, rtol=1e-6)
+        end
+
+        @testset "UECM - (B/A)IC(c)" begin
+            model = UECM(Gw)
+            # parameters not computed yet
+            @test_throws ArgumentError MaxEntropyGraphs.AIC(model)
+            @test_throws ArgumentError MaxEntropyGraphs.AICc(model)
+            @test_throws ArgumentError MaxEntropyGraphs.BIC(model)
+            solve_model!(model, method=:BFGS)
+            # small-sample warning (n/k < 40)
+            @test_logs (:warn, "The number of observations is small with respect to the number of parameters (n/k < 40). Consider using the corrected AIC (AICc) instead.") MaxEntropyGraphs.AIC(model)
+            # test types
+            @test isa(MaxEntropyGraphs.AIC(model), precision(model))
+            @test isa(MaxEntropyGraphs.AICc(model), precision(model))
+            @test isa(MaxEntropyGraphs.BIC(model), precision(model))
+        end
+
+        @testset "UECM - adjacency matrix variance" begin
+            model = UECM(Gw)
+            MaxEntropyGraphs.solve_model!(model, method=:BFGS)
+            # expected values not computed yet
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum)
+            MaxEntropyGraphs.set_Ĝ!(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum)
+            MaxEntropyGraphs.set_σ!(model)
+            # unknown autodiff method
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum, gradient_method=:unknown_method)
+            # normal functioning (binary layer)
+            for method in [:ForwardDiff; :ReverseDiff; :Zygote]
+                @testset "gradient_method: $(method)" begin
+                    @test MaxEntropyGraphs.σₓ(model, sum, gradient_method=method) ≈ sqrt(sum(model.σ .^ 2))
+                end
+            end
+        end
+    end
+
+    @testset "CReM" begin
+        # small, self-contained (continuously) weighted undirected graph for the constructor tests
+        Csrc = [1, 1, 2, 3]; Cdst = [2, 3, 3, 4]; Cw = [2.0, 1.0, 3.0, 4.0]
+        Gsmall = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(Csrc, Cdst, Cw)
+        dsmall = MaxEntropyGraphs.Graphs.degree(Gsmall)
+        ssmall = MaxEntropyGraphs.strength(Gsmall)
+        # real weighted undirected anchor (symmetrised rhesus macaques network, N=16)
+        Gw = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques())
+
+        @testset "CReM - generation" begin
+            allowedDataTypes = [Float64; Float32; Float16]
+            # simple model, directly from graph, different precisions
+            for precision in allowedDataTypes
+                model = CReM(Gsmall, precision=precision)
+                @test isa(model, CReM)
+                @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
+                @test typeof(model).parameters[1] == typeof(Gsmall)
+                @test all([eltype(model.θ) == precision, eltype(model.αᵣ) == precision, eltype(model.xᵣ) == precision, eltype(model.s) == precision])
+            end
+            # simple model, directly from degree and strength sequences, different precisions
+            for precision in allowedDataTypes
+                model = CReM(d=dsmall, s=ssmall, precision=precision)
+                @test isa(model, CReM)
+                @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
+                @test typeof(model).parameters[1] == Nothing
+                @test all([eltype(model.θ) == precision, eltype(model.αᵣ) == precision, eltype(model.xᵣ) == precision, eltype(model.s) == precision])
+            end
+            # the CReM allows continuous (non-integer) strengths
+            @test isa(CReM(d=[1, 2, 1], s=[1.5, 2.5, 1.0]), CReM)
+            # testing breaking conditions
+            @test_throws MethodError CReM(1) # wrong input type
+            # directed graph info loss warning message
+            Gd = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedDiGraph(Csrc, Cdst, Cw)
+            @test_logs (:warn, "The graph is directed, the CReM model is undirected, the directional information will be lost") match_mode=:any CReM(Gd, d=MaxEntropyGraphs.Graphs.degree(Gd), s=MaxEntropyGraphs.strength(Gd))
+            # zero degree / zero strength node warnings
+            @test_logs (:warn, "The graph has vertices with zero degree, this may lead to convergence issues.") CReM(d=[0, 1, 1], s=[1.0, 1.0, 1.0])
+            @test_logs (:warn, "The graph has vertices with zero strength, this may lead to convergence issues.") CReM(d=[1, 1, 1], s=[0.0, 1.0, 1.0])
+            # invalid combination of parameters
+            @test_throws ArgumentError CReM(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(0)) # zero node graph
+            @test_throws ArgumentError CReM(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(1)) # single node graph
+            @test_throws DimensionMismatch CReM(Gsmall, d=dsmall[1:end-1], s=ssmall) # different lengths (graph)
+            @test_throws DimensionMismatch CReM(d=[1, 2, 3], s=[1.0, 2.0]) # different lengths (sequence)
+            @test_throws ArgumentError CReM(d=Int[], s=Float64[]) # zero length
+            @test_throws ArgumentError CReM(d=Int[1], s=Float64[1.0]) # single length
+            @test_throws DomainError CReM(d=[1.5, 2.0], s=[1.0, 2.0]) # non-integer degree
+            @test_throws DomainError CReM(d=[3, 1, 1], s=[1.0, 1.0, 1.0]) # max degree >= number of nodes
+            @test_throws DomainError CReM(d=[-1, 2, 1], s=[1.0, 1.0, 1.0]) # negative degree
+            @test_throws DomainError CReM(d=[1, 2, 1], s=[-1.0, 1.0, 1.0]) # negative strength
+        end
+
+        @testset "CReM - Likelihood gradient test" begin
+            model = CReM(Gw)
+            # the accessor requires computed parameters
+            @test_throws ArgumentError L_CReM(model)
+            # solve to populate the binary fitness xᵣ (and θ)
+            solve_model!(model)
+            n = model.status[:N]
+            x = model.xᵣ[model.dᵣ_ind]
+            # evaluate the gradient at a feasible, non-optimal point
+            θtest = MaxEntropyGraphs.initial_guess(model, method=:strengths_minor)
+            ∇L_buf = zeros(n); ∇L_buf_min = zeros(n)
+            MaxEntropyGraphs.∇L_CReM!(∇L_buf, θtest, model.s, x)
+            MaxEntropyGraphs.∇L_CReM_minus!(∇L_buf_min, θtest, model.s, x)
+            @test ∇L_buf ≈ -∇L_buf_min
+            ∇L_zyg = MaxEntropyGraphs.Zygote.gradient(θ -> L_CReM(θ, model.s, x), θtest)[1]
+            @test ∇L_zyg ≈ ∇L_buf
+            @test ∇L_zyg ≈ -∇L_buf_min
+            # the same must hold for the precomputed (matrix) path
+            MaxEntropyGraphs.set_Ĝ!(model)
+            ∇L_mat = zeros(n)
+            MaxEntropyGraphs.∇L_CReM!(∇L_mat, θtest, model.s, model.Ĝ)
+            ∇L_zyg_mat = MaxEntropyGraphs.Zygote.gradient(θ -> L_CReM(θ, model.s, model.Ĝ), θtest)[1]
+            @test ∇L_mat ≈ ∇L_zyg_mat
+            # both likelihood paths agree
+            @test L_CReM(θtest, model.s, x) ≈ L_CReM(θtest, model.s, model.Ĝ)
+        end
+
+        @testset "CReM - parameter computation" begin
+            allowedDataTypes = [Float64] # low precision kept out for occasional convergence issues
+            for precision in allowedDataTypes
+                @testset "$(precision) precision" begin
+                    model = CReM(Gw, precision=precision)
+                    @test_throws ArgumentError Ĝ(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.Ŵ(model)
+                    @test_throws ArgumentError σˣ(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.set_xᵣ!(model)
+                    @test_throws ArgumentError MaxEntropyGraphs.initial_guess(model, method=:strange)
+                    # every initial-guess method returns a strictly positive guess of length N
+                    for initial in [:strengths, :strengths_minor, :random]
+                        g = MaxEntropyGraphs.initial_guess(model, method=initial)
+                        @test length(g) == model.status[:N]
+                        @test all(g .> 0)
+                    end
+                    # the fixed point recipe is stable for the CReM (unlike the UECM); reproduces both constraints
+                    @testset "fixedpoint - initial guess: $initial" for initial in [:strengths, :strengths_minor]
+                        MaxEntropyGraphs.solve_model!(model, initial=initial, method=:fixedpoint)
+                        @test isapprox(vec(sum(Ĝ(model), dims=2)), model.d, rtol=1e-4)
+                        @test isapprox(vec(sum(MaxEntropyGraphs.Ŵ(model), dims=2)), model.s, rtol=1e-4)
+                    end
+                    # BFGS is robust across initial guesses (both analytical and AD gradient)
+                    for initial in [:strengths, :strengths_minor]
+                        @testset "BFGS - initial guess: $initial" begin
+                            for analytical_gradient in [true, false]
+                                @testset "analytical_gradient: $analytical_gradient" begin
+                                    MaxEntropyGraphs.solve_model!(model, initial=initial, method=:BFGS, analytical_gradient=analytical_gradient)
+                                    @test isapprox(vec(sum(Ĝ(model), dims=2)), model.d, rtol=1e-4)
+                                    @test isapprox(vec(sum(MaxEntropyGraphs.Ŵ(model), dims=2)), model.s, rtol=1e-6)
+                                end
+                            end
+                        end
+                    end
+                    # Newton from the default strengths guess
+                    @testset "Newton - analytical_gradient: $analytical_gradient" for analytical_gradient in [false, true]
+                        MaxEntropyGraphs.solve_model!(model, initial=:strengths, method=:Newton, analytical_gradient=analytical_gradient)
+                        @test isapprox(vec(sum(Ĝ(model), dims=2)), model.d, rtol=1e-4)
+                        @test isapprox(vec(sum(MaxEntropyGraphs.Ŵ(model), dims=2)), model.s, rtol=1e-6)
+                    end
+                    @test all([eltype(model.θ) == precision, eltype(model.αᵣ) == precision, eltype(model.xᵣ) == precision])
+                end
+            end
+        end
+
+        @testset "CReM - sampling" begin
+            model = CReM(Gw)
+            # parameters unknown
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=false)
+            @test_throws ArgumentError MaxEntropyGraphs.Ĝ(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σˣ(model)
+            # solve model
+            MaxEntropyGraphs.solve_model!(model, method=:BFGS)
+            # precomputed sampling is not implemented for the CReM
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=true)
+            # single sample: correct number of vertices and continuous positive weights
+            sample = rand(model)
+            @test isa(sample, MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph)
+            @test MaxEntropyGraphs.Graphs.nv(sample) == model.status[:N]
+            @test all(w -> w > 0, MaxEntropyGraphs.SimpleWeightedGraphs.weight.(collect(MaxEntropyGraphs.Graphs.edges(sample))))
+            # expected adjacency / variance sizes and eltypes
+            MaxEntropyGraphs.set_Ĝ!(model)
+            MaxEntropyGraphs.set_σ!(model)
+            @test eltype(MaxEntropyGraphs.σˣ(model)) == MaxEntropyGraphs.precision(model)
+            @test size(MaxEntropyGraphs.σˣ(model)) == (model.status[:N], model.status[:N])
+            @test eltype(MaxEntropyGraphs.Ĝ(model)) == MaxEntropyGraphs.precision(model)
+            @test size(MaxEntropyGraphs.Ĝ(model)) == (model.status[:N], model.status[:N])
+            # batch sampling
+            S = rand(model, 100)
+            @test length(S) == 100
+            @test all(MaxEntropyGraphs.Graphs.nv.(S) .== model.status[:N])
+            # reproducibility with a fixed rng
+            @test MaxEntropyGraphs.SimpleWeightedGraphs.weights(rand(model, rng=MaxEntropyGraphs.Xoshiro(42))) == MaxEntropyGraphs.SimpleWeightedGraphs.weights(rand(model, rng=MaxEntropyGraphs.Xoshiro(42)))
+        end
+
+        @testset "CReM - degree/strength metrics" begin
+            model = CReM(Gw)
+            # adjacency matrix accessor
+            @test iszero(MaxEntropyGraphs.A(model, 1, 1))
+            # parameters not computed yet
+            @test_throws ArgumentError degree(model, 1)
+            @test_throws ArgumentError MaxEntropyGraphs.strength(model, 1)
+            solve_model!(model, method=:BFGS)
+            @test isa(MaxEntropyGraphs.A(model, 1, 2), precision(model))
+            # check out of bounds
+            @test_throws ArgumentError degree(model, model.status[:N] + 1)
+            @test_throws ArgumentError MaxEntropyGraphs.strength(model, model.status[:N] + 1)
+            # unknown method
+            @test_throws ArgumentError degree(model, method=:unknown_method)
+            @test_throws ArgumentError MaxEntropyGraphs.strength(model, method=:unknown_method)
+            # reduced/full reproduce the observed degree and strength sequences
+            for method in [:reduced, :full]
+                @test isapprox(degree(model, method=method), model.d, rtol=1e-4)
+                @test isapprox(MaxEntropyGraphs.strength(model, method=method), model.s, rtol=1e-6)
+            end
+            # adjacency-based methods require set_Ĝ!
+            @test_throws ArgumentError degree(model, method=:adjacency)
+            @test_throws ArgumentError MaxEntropyGraphs.strength(model, method=:adjacency)
+            set_Ĝ!(model)
+            @test isapprox(degree(model, method=:adjacency), model.d, rtol=1e-4)
+            @test isapprox(MaxEntropyGraphs.strength(model, method=:adjacency), model.s, rtol=1e-6)
+        end
+
+        @testset "CReM - (B/A)IC(c)" begin
+            model = CReM(Gw)
+            # parameters not computed yet
+            @test_throws ArgumentError MaxEntropyGraphs.AIC(model)
+            @test_throws ArgumentError MaxEntropyGraphs.AICc(model)
+            @test_throws ArgumentError MaxEntropyGraphs.BIC(model)
+            solve_model!(model, method=:BFGS)
+            # small-sample warning (n/k < 40)
+            @test_logs (:warn, "The number of observations is small with respect to the number of parameters (n/k < 40). Consider using the corrected AIC (AICc) instead.") MaxEntropyGraphs.AIC(model)
+            # test types
+            @test isa(MaxEntropyGraphs.AIC(model), precision(model))
+            @test isa(MaxEntropyGraphs.AICc(model), precision(model))
+            @test isa(MaxEntropyGraphs.BIC(model), precision(model))
+        end
+
+        @testset "CReM - adjacency matrix variance" begin
+            model = CReM(Gw)
+            MaxEntropyGraphs.solve_model!(model, method=:BFGS)
+            # expected values not computed yet
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum)
+            MaxEntropyGraphs.set_Ĝ!(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum)
+            MaxEntropyGraphs.set_σ!(model)
+            # unknown autodiff method
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum, gradient_method=:unknown_method)
+            # normal functioning (binary layer)
+            for method in [:ForwardDiff; :ReverseDiff; :Zygote]
+                @testset "gradient_method: $(method)" begin
+                    @test MaxEntropyGraphs.σₓ(model, sum, gradient_method=method) ≈ sqrt(sum(model.σ .^ 2))
+                end
+            end
+        end
     end
 end
 
