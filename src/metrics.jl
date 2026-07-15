@@ -1569,7 +1569,7 @@ end
 ## 3=:R (both), 4=:Z (absent), and a 4×4×4 lookup mapping every connected state triple to its motif
 ## index (0 = disconnected pattern). Precomputing per-pair states/weight-products/link-counts turns
 ## the O(N³) triple loop into pure array reads (no per-triple hashing, tuple building or symbol
-## branching), which is a large constant-factor gain (see performance/metrics_benchmarks.jl).
+## branching), which is a large constant-factor gain.
 const _state_code = Dict(:P => 1, :Q => 2, :R => 3, :Z => 4)
 const _motif_state_lut = let lut = zeros(Int8, 4, 4, 4)
     for (k, s) in enumerate(_motif_specs)

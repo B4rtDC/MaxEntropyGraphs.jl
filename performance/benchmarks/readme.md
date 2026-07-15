@@ -1,1 +1,0 @@
-Benchmarks for different platforms will be stored here.

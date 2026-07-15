@@ -41,16 +41,10 @@ papercode/*
 # macOS files
 .DS_Store
 
-# ignore all subfolders of the benchmark folder, but keep the readme file
-performance/benchmarks/*
-performance/data/*
-!performance/benchmarks/README.md
-!performance/data/README.md
-# igore performance pycach
-performance/__pycache__/*
-# performance is a separate environment; don't track its lockfiles
-performance/Manifest.toml
-performance/LocalPreferences.toml
+# the 2-year-old benchmark drivers/plots/data live on the JOSS-submission branch, not on main
+# (only the standalone kernel-acceleration proofs stay tracked here)
+/performance/*
+!performance/metrics_acceleration.tex
 
 # a registered library ships only Project.toml; the root Manifest/LocalPreferences
 # are environment-specific and must not be tracked
