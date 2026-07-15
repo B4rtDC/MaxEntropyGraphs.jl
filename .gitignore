@@ -1,64 +1,23 @@
-
-# ignore NEMtropy files
-NEMtropy/
-
-# ignore local .vscode
-.vscode/*
-
-# ignore local .devcontainer
-.devcontainer/*
-
-# ignore pdfs
-*.pdf
-
-# ignore .gz files (from profiling)
-*.gz
-
-# ignore data folder
-data/*
-
-# ignore old test files
-test/oldtests/*
-
-# ignore utils folder
-utils/*
-
-# ignore old src files
-src_old/*
-
-# ignore compiled docs
-docs/build/*
-# docs is a separate environment; it is re-instantiated in CI, don't track its lockfiles
-docs/Manifest.toml
-docs/LocalPreferences.toml
-
-# ignore exmples folders
-examples/*
-
-# ignore pycache
-papercode/*
-
-# macOS files
+# macOS
 .DS_Store
 
-# the 2-year-old benchmark drivers/plots/data live on the JOSS-submission branch, not on main
-# (only the standalone kernel-acceleration proofs stay tracked here)
-/performance/*
-!performance/metrics_acceleration.tex
+# editor-local config
+.vscode/*
 
-# a registered library ships only Project.toml; the root Manifest/LocalPreferences
-# are environment-specific and must not be tracked
+# compiled docs
+docs/build/*
+
+# environment lockfiles — a registered package ships only Project.toml; the
+# per-environment Manifest/LocalPreferences are machine-specific and not tracked
 /Manifest.toml
 /LocalPreferences.toml
+docs/Manifest.toml
+docs/LocalPreferences.toml
+test/Manifest.toml
+validation/Manifest.toml
 
 # local scratch / prototypes / experiments (not part of the package)
 /dev/
-
-# the test environment resolves its own deps; don't track its lockfile
-test/Manifest.toml
-
-# keynote / binary design assets
-*.key
 
 # profiling output
 *.pb.gz
