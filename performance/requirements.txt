@@ -1,0 +1,28 @@
+# Portable (pip) pins for the NEMtropy/Python side of the benchmarks.
+#
+# The exact, fully-locked environment is in benchmarking.yml, but that file is
+# pinned to linux-64 conda builds and therefore only resolves on Linux. On macOS
+# or Windows, create a virtual environment and install these pins instead:
+#
+#   python -m venv .venv
+#   . .venv/bin/activate        # Windows: .venv\Scripts\activate
+#   pip install -r requirements.txt
+#
+# These are the same package versions used for the published 0.5.0 results.
+bicm==3.3.0
+matplotlib==3.9.0
+nemtropy==3.0.3
+# NuMeTriS: reference implementation of the reciprocity-aware models (DBCM, RBCM, DBCM+CReMa,
+# RBCM+CRWCM) and their triadic statistics (Di Vece et al. 2023); used for the RBCM/DCReM/CRWCM
+# cross-checks and benchmarks. Requires numpy>=1.21.5 and numba>=0.56.4 (compatible with the pins below).
+numetris==0.1.1
+networkx==3.3
+numba==0.60.0
+# NEMtropy 3.0.3 still uses np.infty, which was removed in NumPy 2.0, so the last
+# NumPy 1.x is required (compatible with numba 0.60 and scipy 1.14).
+numpy==1.26.4
+powerlaw==1.5
+pytest==8.2.2
+pytest-benchmark==4.0.0
+scipy==1.14.0
+tqdm==4.66.4
