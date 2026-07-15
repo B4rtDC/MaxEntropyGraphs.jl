@@ -16,26 +16,15 @@ papers/*
 # ignore .gz files (from profiling)
 *.gz
 
-# ignore data folder
+# local research data (re-downloadable from the sources listed in its own README). The folder is
+# not present in a fresh clone; the rule is here so a local copy stays out of git.
 data/*
-
-# ignore old test files
-test/oldtests/*
-
-# ignore utils folder
-utils/*
 
 # ignore compiled docs
 docs/build/*
 # docs is a separate environment; it is re-instantiated in CI
 docs/Manifest.toml
 docs/LocalPreferences.toml
-
-# ignore exmples folders
-examples/*
-
-# ignore pycache
-papercode/*
 
 # macOS files
 .DS_Store
@@ -82,7 +71,8 @@ performance/LocalPreferences.toml
 /Manifest.toml
 /LocalPreferences.toml
 
-# local scratch / prototypes / experiments (not part of the package)
+# local scratch / prototypes / experiments (not part of the package). Not present in a fresh clone;
+# the rule is here so a local scratch folder stays out of git.
 /dev/
 
 # the test environment resolves its own deps; don't track its lockfile
