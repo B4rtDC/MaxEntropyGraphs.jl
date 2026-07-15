@@ -14,10 +14,6 @@ We define the parameter vector as ``\theta = [\alpha ; \beta]``, where ``\alpha`
 | $\sigma^{*}(X)$                | ``\sqrt{\sum_{i,j} \left( \sigma^{*}[a_{ij}] \frac{\partial X}{\partial a_{ij}}  \right)^{2}_{A = \langle A^{*} \rangle} + \dots }`` |
 | $\sigma^{*}[a_{ij}]$           | ``\sqrt{p_{ij} (1 - p_{ij})} ``   |
 
-!!! note
-
-    The variance-based quantities (`σˣ`, `set_σ!`, `σₓ`) currently describe the **binary** (adjacency) layer only, for which ``a_{ij}`` follows a Bernoulli distribution with success probability ``p_{ij}``. The variance of the weights is not implemented.
-
 ## Creation
 ```julia
 using Graphs, SimpleWeightedGraphs
@@ -47,8 +43,75 @@ solve_model!(model)
 Ĝ(model)
 
 # expected weighted adjacency matrix; row sums reproduce the strength sequence
-MaxEntropyGraphs.Ŵ(model)
+Ŵ(model)
 ```
+
+## Expectation and variance
+Under the UECM each pair of nodes carries a **two-layer** random variable: the adjacency entry ``a_{ij}`` follows a Bernoulli distribution, while the weight ``w_{ij}`` follows a Bernoulli–geometric mixture (no weight without a link, a geometrically distributed weight conditional on a link). Writing ``x = x_i x_j`` and ``y = y_i y_j``, the first two moments are:
+
+| Layer                | ``\langle g_{ij} \rangle`` | ``\text{Var}(g_{ij})`` | ``\text{Cov}(g_{ij}, g_{ji})`` |
+| -------------------- | :--- | :--- | :--- |
+| binary ``(g = a)``   | ``p_{ij} = \frac{x y}{1 - y + x y}`` | ``p_{ij}(1 - p_{ij})`` | ``= \text{Var}(a_{ij})`` (same variable) |
+| weighted ``(g = w)`` | ``\frac{p_{ij}}{1 - y}`` | ``\frac{p_{ij}(1 + y - p_{ij})}{(1 - y)^{2}}`` | ``= \text{Var}(w_{ij})`` (same variable) |
+
+The two layers of a pair are correlated as well: ``\text{Cov}(a_{ij}, w_{ij}) = \langle w_{ij} \rangle (1 - p_{ij})``.
+
+!!! note "Variance propagation is per-layer"
+
+    `σₓ` propagates the uncertainty of **one layer at a time** (`layer=:binary`, the default, or `layer=:weighted`); the cross-layer covariance above is documented for reference but not propagated. For a metric that mixes both layers, estimate its variance by sampling the ensemble (`rand(model, n)`).
+
+The workflow mirrors that of the binary models: precompute the expected matrices and the entry-wise standard deviations, then propagate them through a metric `X` with `σₓ` (the delta method):
+
+```jldoctest UECM_variance; output = false
+using Graphs, SimpleWeightedGraphs
+using MaxEntropyGraphs
+
+G = SimpleWeightedGraph(rhesus_macaques())
+model = UECM(G)
+solve_model!(model)
+
+# precompute the expected values and standard deviations of both layers
+set_Ĝ!(model); set_σ!(model)     # binary layer
+set_Ŵ!(model); set_σʷ!(model)    # weighted layer
+nothing
+
+# output
+
+
+```
+
+```jldoctest UECM_variance; output = false
+# metric: the total weight of the network (a function of the weighted adjacency matrix)
+X = W -> sum(W) / 2
+# delta-method standard deviation under the null model
+σₓ(model, X, layer=:weighted)
+
+# output
+
+102.7651910420764
+```
+
+```jldoctest UECM_variance; output = false
+# metric: the sum of the squared weights (not a constrained quantity)
+X = W -> sum(W .^ 2) / 2
+# expected value, standard deviation, observed value and z-score
+X_expected = X(model.Ŵ)
+X_std = σₓ(model, X, layer=:weighted)
+X_observed = X(Graphs.weights(G))
+z_X = (X_observed - X_expected) / X_std
+
+# output
+
+1.6936481541084274
+```
+
+!!! note "Within-dyad covariance"
+
+    The network is undirected, so ``g_{ij}`` and ``g_{ji}`` denote the **same** random variable: `σₓ` includes the corresponding within-dyad covariance term. The result is therefore consistent between the one-triangle and full-matrix conventions for writing a metric, e.g. ``\sigma_X\left(W \mapsto \sum_{i<j} w_{ij}\right) = \sigma_X\left(W \mapsto \sum_{i,j} w_{ij}\right)/2``.
+
+!!! warning "Memory footprint"
+
+    `Ĝ`/`σˣ` and `Ŵ`/`σʷ` (with their `set_Ĝ!`/`set_σ!`/`set_Ŵ!`/`set_σʷ!` variants) materialize dense ``N \times N`` matrices, and `σₓ` requires them. This is ``O(N^2)`` memory, intended for small networks; for large networks, prefer sampling to estimate variances (see [Performance, scalability & GPU](../GPU.md)).
 
 ## Sampling the ensemble
 ```julia

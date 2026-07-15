@@ -28,11 +28,15 @@ makedocs(sitename="MaxEntropyGraphs.jl",
          pages = [
             "Home" => "index.md",
             "Models" => Any["models.md",
+                            "Which model when?" => "model_selection.md",
                             "UBCM" => "models/UBCM.md",
                             "DBCM" =>  "models/DBCM.md",
+                            "RBCM" =>  "models/RBCM.md",
                             "BiCM" =>  "models/BiCM.md",
                             "UECM" =>  "models/UECM.md",
-                            "CReM" =>  "models/CReM.md"
+                            "CReM" =>  "models/CReM.md",
+                            "DCReM" => "models/DCReM.md",
+                            "CRWCM" => "models/CRWCM.md"
                             ],
             "Metrics" => Any["metrics.md",
                              "Analytical" => "exact.md", 
@@ -41,9 +45,12 @@ makedocs(sitename="MaxEntropyGraphs.jl",
             "API" => Any[   "Shared" =>"API/API.md",
                             "UBCM" => "API/API_UBCM.md",
                             "DBCM" => "API/API_DBCM.md",
+                            "RBCM" => "API/API_RBCM.md",
                             "BiCM" => "API/API_BiCM.md",
                             "UECM" => "API/API_UECM.md",
-                            "CReM" => "API/API_CReM.md",]
+                            "CReM" => "API/API_CReM.md",
+                            "DCReM" => "API/API_DCReM.md",
+                            "CRWCM" => "API/API_CRWCM.md",]
                             ],
          doctest=false,
          checkdocs=:exports,   # only require exported symbols in the manual (internal helpers like `softplus` are fine)

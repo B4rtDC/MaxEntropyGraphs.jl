@@ -74,4 +74,27 @@ MaxEntropyGraphs.V_motifs
 MaxEntropyGraphs.V_PB_parameters
 ```
 
+## Reciprocity metrics
+```@docs
+MaxEntropyGraphs.reciprocity
+MaxEntropyGraphs.weighted_reciprocity
+MaxEntropyGraphs.nonreciprocated_outdegree
+MaxEntropyGraphs.nonreciprocated_indegree
+MaxEntropyGraphs.reciprocated_degree
+MaxEntropyGraphs.nonreciprocated_outstrength
+MaxEntropyGraphs.nonreciprocated_instrength
+MaxEntropyGraphs.reciprocated_outstrength
+MaxEntropyGraphs.reciprocated_instrength
+```
+
+## Triadic fluxes, intensities and sampling-based significance
+```@docs
+MaxEntropyGraphs.motif_fluxes
+MaxEntropyGraphs.motif_flux
+MaxEntropyGraphs.motif_intensities
+MaxEntropyGraphs.ensemble_zscores
+MaxEntropyGraphs.motif_zscores
+MaxEntropyGraphs.flux_zscores
+```
+
 

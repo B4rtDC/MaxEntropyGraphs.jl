@@ -2,7 +2,7 @@
 ## Model description
 The Conditional Reconstruction Method (CReM) is a maximum-entropy null model for **weighted, undirected** networks with **continuous, positive** weights. It is a **two-step** model [[1](#1),[2](#2)]:
 
-1. a **binary layer** fixes the topology. The marginal probability of an edge, ``f_{ij} = \langle a_{ij} \rangle``, is supplied by a prior binary model — here an internally-solved [`UBCM`](@ref) on the degree sequence, so ``f_{ij} = \frac{x_i x_j}{1 + x_i x_j}`` with ``x_i = e^{-\alpha_i}``;
+1. a **binary layer** fixes the topology. The marginal probability of an edge, ``f_{ij} = \langle a_{ij} \rangle``, is supplied by a prior binary model. Here an internally-solved [`UBCM`](@ref) on the degree sequence, so ``f_{ij} = \frac{x_i x_j}{1 + x_i x_j}`` with ``x_i = e^{-\alpha_i}``;
 2. a **weighted layer** fixes the strengths. Conditional on an edge existing, the weight is exponentially distributed with rate ``\theta_i + \theta_j``. The parameters ``\theta`` (one per node) are obtained by maximising the conditional log-likelihood.
 
 Because the binary structure is taken as given, the CReM is easier to solve than the joint [`UECM`](@ref): both the fixed-point and Newton recipes converge well [[1]](#1), and the fixed point is the default.
@@ -17,10 +17,6 @@ Because the binary structure is taken as given, the CReM is easier to solve than
 | $\langle w_{ij} \rangle$       | `` \frac{f_{ij}}{\theta_i + \theta_j}`` |
 | $\sigma^{*}(X)$                | ``\sqrt{\sum_{i,j} \left( \sigma^{*}[a_{ij}] \frac{\partial X}{\partial a_{ij}}  \right)^{2}_{A = \langle A^{*} \rangle} + \dots }`` |
 | $\sigma^{*}[a_{ij}]$           | ``\sqrt{f_{ij} (1 - f_{ij})} ``   |
-
-!!! note
-
-    The variance-based quantities (`σˣ`, `set_σ!`, `σₓ`) currently describe the **binary** (adjacency) layer only, for which ``a_{ij}`` follows a Bernoulli distribution with success probability ``f_{ij}``. The variance of the (continuous, exponential) weights is not implemented.
 
 ## Creation
 ```julia
@@ -51,8 +47,75 @@ solve_model!(model)
 Ĝ(model)
 
 # expected weighted adjacency matrix; row sums reproduce the strength sequence
-MaxEntropyGraphs.Ŵ(model)
+Ŵ(model)
 ```
+
+## Expectation and variance
+Under the CReM each pair of nodes carries a **two-layer** random variable: the adjacency entry ``a_{ij}`` follows a Bernoulli distribution (the UBCM layer), while the weight ``w_{ij}`` follows a Bernoulli–exponential mixture (no weight without a link, an exponentially distributed weight conditional on a link). The first two moments are:
+
+| Layer                | ``\langle g_{ij} \rangle`` | ``\text{Var}(g_{ij})`` | ``\text{Cov}(g_{ij}, g_{ji})`` |
+| -------------------- | :--- | :--- | :--- |
+| binary ``(g = a)``   | ``f_{ij} = \frac{x_i x_j}{1 + x_i x_j}`` | ``f_{ij}(1 - f_{ij})`` | ``= \text{Var}(a_{ij})`` (same variable) |
+| weighted ``(g = w)`` | ``\frac{f_{ij}}{\theta_i + \theta_j}`` | ``\frac{f_{ij}(2 - f_{ij})}{(\theta_i + \theta_j)^{2}}`` | ``= \text{Var}(w_{ij})`` (same variable) |
+
+The two layers of a pair are correlated as well: ``\text{Cov}(a_{ij}, w_{ij}) = \langle w_{ij} \rangle (1 - f_{ij})``.
+
+!!! note "Variance propagation is per-layer"
+
+    `σₓ` propagates the uncertainty of **one layer at a time** (`layer=:binary`, the default, or `layer=:weighted`); the cross-layer covariance above is documented for reference but not propagated. For a metric that mixes both layers, estimate its variance by sampling the ensemble (`rand(model, n)`). Because the weighted layer is conditional on the binary one, `σʷ`/`set_σʷ!` require both the binary and the conditional parameters; `solve_model!` computes both.
+
+The workflow mirrors that of the binary models: precompute the expected matrices and the entry-wise standard deviations, then propagate them through a metric `X` with `σₓ` (the delta method):
+
+```jldoctest CReM_variance; output = false
+using Graphs, SimpleWeightedGraphs
+using MaxEntropyGraphs
+
+G = SimpleWeightedGraph(rhesus_macaques())
+model = CReM(G)
+solve_model!(model)
+
+# precompute the expected values and standard deviations of both layers
+set_Ĝ!(model); set_σ!(model)     # binary layer
+set_Ŵ!(model); set_σʷ!(model)    # weighted layer
+nothing
+
+# output
+
+
+```
+
+```jldoctest CReM_variance; output = false
+# metric: the total weight of the network (a function of the weighted adjacency matrix)
+X = W -> sum(W) / 2
+# delta-method standard deviation under the null model
+σₓ(model, X, layer=:weighted)
+
+# output
+
+108.64282821918191
+```
+
+```jldoctest CReM_variance; output = false
+# metric: the sum of the squared weights (not a constrained quantity)
+X = W -> sum(W .^ 2) / 2
+# expected value, standard deviation, observed value and z-score
+X_expected = X(model.Ŵ)
+X_std = σₓ(model, X, layer=:weighted)
+X_observed = X(Graphs.weights(G))
+z_X = (X_observed - X_expected) / X_std
+
+# output
+
+1.6671230437867095
+```
+
+!!! note "Within-dyad covariance"
+
+    The network is undirected, so ``g_{ij}`` and ``g_{ji}`` denote the **same** random variable: `σₓ` includes the corresponding within-dyad covariance term. The result is therefore consistent between the one-triangle and full-matrix conventions for writing a metric, e.g. ``\sigma_X\left(W \mapsto \sum_{i<j} w_{ij}\right) = \sigma_X\left(W \mapsto \sum_{i,j} w_{ij}\right)/2``.
+
+!!! warning "Memory footprint"
+
+    `Ĝ`/`σˣ` and `Ŵ`/`σʷ` (with their `set_Ĝ!`/`set_σ!`/`set_Ŵ!`/`set_σʷ!` variants) materialize dense ``N \times N`` matrices, and `σₓ` requires them. This is ``O(N^2)`` memory, intended for small networks; for large networks, prefer sampling to estimate variances (see [Performance, scalability & GPU](../GPU.md)).
 
 ## Sampling the ensemble
 ```julia

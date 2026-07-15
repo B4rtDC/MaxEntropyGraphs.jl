@@ -33,7 +33,7 @@ using MaxEntropyGraphs
 # define the network
 G = corporateclub()
 
-# instantiate a UBCM model
+# instantiate a BiCM model
 model = BiCM(G)
 ```
 
@@ -55,6 +55,47 @@ rand(model, 10)
 AIC(model)
 ```
 
+## Expectation and variance
+Under the BiCM every entry ``b_{i\alpha}`` of the biadjacency matrix is an independent Bernoulli random variable with success probability ``p_{i\alpha}``. There is no within-dyad covariance to account for (the matrix is rectangular; every entry is a distinct, independent variable):
+
+| Quantity                          | Formula |
+| ------------------------------    | :------------------------------------------------ |
+| ``\langle b_{i\alpha} \rangle``   | ``p_{i\alpha} = \frac{x_i y_\alpha}{1 + x_i y_\alpha}, \quad x_i = e^{-\gamma_i}, \; y_\alpha = e^{-\beta_\alpha}`` |
+| ``\mathrm{Var}(b_{i\alpha})``     | ``p_{i\alpha}(1 - p_{i\alpha})`` |
+| ``\mathrm{Cov}(b_{i\alpha}, b_{j\beta})`` | ``0`` for ``(i,\alpha) \ne (j,\beta)`` (independent entries) |
+
+The σ machinery of the BiCM operates on the ``n_{\bot} \times n_{\top}`` biadjacency matrix: `Ĝ(model)`/`set_Ĝ!(model)` and `σˣ(model)`/`set_σ!(model)` return ``n_{\bot} \times n_{\top}`` matrices, and any metric passed to `σₓ` must be a function of the biadjacency matrix (not of the square adjacency matrix of the underlying graph). Since all entries are independent, the delta-method error propagation contains no covariance cross-terms: ``σ^{2}[X] = \sum_{i,\alpha} \left( σ[b_{i\alpha}] \frac{\partial X}{\partial b_{i\alpha}} \right)^{2}`` (the autodiff backend is selectable via `gradient_method ∈ {:ReverseDiff, :ForwardDiff, :Zygote}`):
+
+```jldoctest BiCM_variance
+using MaxEntropyGraphs
+
+# define the network and solve the model
+G = corporateclub()
+model = BiCM(G)
+solve_model!(model)
+# expected biadjacency matrix ⟨B⟩ and entry-wise standard deviations σ[b_iα]
+set_Ĝ!(model)
+set_σ!(model)
+size(model.Ĝ), size(model.σ)
+
+# output
+
+((25, 15), (25, 15))
+```
+```jldoctest BiCM_variance
+# metric: the total V-motif count among the ⊥ nodes, as a function of the biadjacency matrix
+N_V = B -> sum(u -> u * (u - 1) / 2, sum(B, dims=1))
+# the delta-method σₓ coincides with the closed-form delta σ of the Vn machinery (next section)
+σₓ(model, N_V) ≈ Vn_sigma(model, 2, layer=:bottom, method=:delta)
+
+# output
+
+true
+```
+
+!!! warning "Memory footprint"
+    `Ĝ`/`set_Ĝ!` and `σˣ`/`set_σ!` materialize dense ``n_{\bot} \times n_{\top}`` matrices, and `σₓ` requires both, so this analysis uses ``O(n_{\bot} n_{\top})`` memory. For large networks, prefer the sampling route to estimate variances (see [Performance, scalability & GPU](../GPU.md)).
+
 ## Counting network motifs
 
 ```julia
@@ -63,6 +104,47 @@ V_motifs(model, 1, 2, layer=:bottom)
 # Compute the number of occurrences of a V-motif in the original graph
 V_motifs(model.G, model.⊥nodes[1], model.⊥nodes[2])
 ```
+
+## Motif-family significance (Vn / Λn)
+The pairwise V-motif generalizes to co-occurrences of arbitrary order: the total number of `Vn`-motifs between the nodes of a layer is
+
+```math
+N_{Vn} = \sum_{\alpha} \binom{u_\alpha}{n}
+```
+
+where the sum runs over the nodes ``\alpha`` of the *opposite* layer and ``u_\alpha`` is their degree (for `layer=:bottom` these are the column sums of the biadjacency matrix). Each term counts the groups of ``n`` layer nodes sharing the common neighbour ``\alpha``. Following Saracco et al. (2015) [[4]](#4), the family for the bottom (top) layer is also known as the `Vn` (`Λn`) family; ``n = 2`` recovers the total V-motif count.
+
+[`Vn_motifs`](@ref), [`Vn_sigma`](@ref) and [`Vn_zscore`](@ref) provide the observed count, the expected value, the standard deviation and the z-score under the BiCM, with two methods:
+
+- `method=:exact` (default): under the BiCM the random degree ``U_\alpha`` follows a Poisson-binomial distribution, and the ``U_\alpha`` of distinct nodes are independent, so the exact mean and variance of ``N_{Vn}`` follow by direct convolution. Works for any ``n \ge 2``.
+- `method=:delta`: the closed forms of [[4]](#4), i.e., a Taylor expansion of the expectation around the observed degrees (``n \in \{2, 3, 4\}``, exact for ``n = 2``) and a first-order delta-method σ (any ``n``). Accurate when the opposite-layer degrees are large compared to ``n``; for sparse layers the delta σ underestimates the exact one (measured ratios down to ``\approx 0.15`` when the opposite-layer degrees are close to ``n``), which inflates ``|z|`` — prefer `:exact` there.
+
+```jldoctest BiCM_Vn
+using MaxEntropyGraphs
+
+model = BiCM(corporateclub())
+solve_model!(model)
+
+# z-score of the Λ₃ count (triples of organizations sharing a member), exact Poisson-binomial
+Vn_zscore(model, 3, layer=:top)
+
+# output
+
+-1.2505607656327316
+```
+```jldoctest BiCM_Vn
+# the closed-form delta method underestimates σ, hence overestimates |z|
+Vn_zscore(model, 3, layer=:top, method=:delta)
+
+# output
+
+-1.6219521450601682
+```
+
+!!! note "Sign-definite z-scores"
+    The observed count ``N_{Vn}^{obs}`` is fully determined by the constrained degree sequences (it is computed from the degrees stored in the model; no graph needed), and under the BiCM ``\langle N_{Vn} \rangle \ge N_{Vn}^{obs}`` [[4]](#4). The z-scores are therefore always ``\le 0`` and the associated significance tests are one-sided: they can only detect a *lack* of aggregate co-occurrence, never an excess.
+
+These aggregate statistics complement the per-pair validation used by the projection machinery (see below): for a single pair ``(i,j)``, ``V_{ij} = \sum_p b_{ip} b_{jp}`` is a sum of independent Bernoulli variables with success probabilities ``q_p = p_{ip} p_{jp}``, and `project(model; distribution=:PoissonBinomial)` evaluates its p-value from that exact Poisson-binomial law. Note the same delta-method caveat at the per-pair level: the first-order delta variance of ``V_{ij}`` underestimates the exact ``\sum_p q_p(1 - q_p)`` by exactly ``\sum_p p_{ip} p_{jp} (1 - p_{ip})(1 - p_{jp})``.
 
 ## Projecting the bipartite network
 ```julia
@@ -96,6 +178,13 @@ F. Saracco, M. J. Straka, R. Di Clemente, A. Gabrielli, G. Caldarelli, and T. Sq
 <em>"Inferring monopartite projections of bipartite networks: an entropy-based approach"</em> <!--  title --> 
  New J. Phys. 19, 053022 (2017) <!--  publisher(s) --> 
 <a href="http://stacks.iop.org/1367-2630/19/i=5/a=053022">http://stacks.iop.org/1367-2630/19/i=5/a=053022</a>
+</li>
+<li>
+<a id="4">[4]</a> 
+F. Saracco, R. Di Clemente, A. Gabrielli, and T. Squartini <!--  author(s) --> 
+<em>"Randomizing bipartite networks: the case of the World Trade Web"</em> <!--  title --> 
+ Sci Rep 5, 10595 (2015) <!--  publisher(s) --> 
+<a href="https://doi.org/10.1038/srep10595">https://doi.org/10.1038/srep10595</a>
 </li>
 </ul>
 
