@@ -20,8 +20,8 @@ The expected adjacency matrix ``\hat{G}`` is dense and ``O(n^2)`` — about 512 
 ## Variance (`σₓ`): backend choice and scaling
 
 `σₓ(m, X)` evaluates the delta-method variance of a metric `X` by (auto)differentiating `X` at the
-materialized expected matrix and weighting by the per-edge standard deviations. Benchmarking the
-variance computation gives the following guidance:
+materialized expected matrix and weighting by the per-edge standard deviations. Benchmarks
+(`performance/variance_benchmarks.jl`) give the following guidance:
 
 - **Backend (`gradient_method`).** The default **`:ReverseDiff` is the right general choice.** For
   matrix-multiplication metrics (`triangles`, `motifs`) it is the *only* practical backend: `:Zygote`
@@ -41,7 +41,8 @@ variance computation gives the following guidance:
      accessor `MaxEntropyGraphs.A(m, i, j)` is ``O(n)`` in memory: benchmarked at **0 bytes** for the
      edge count and **28 KiB at ``n = 3162``** for triangles, versus Zygote's 1.38 TB at the same size.
      A generic matrix-free `σₓ` fast path for these metrics is a planned addition; until then it can be
-     written directly against `A(m, i, j)`.
+     written directly against `A(m, i, j)` (see `performance/variance_benchmarks.jl` for worked
+     examples).
 
 ## Multithreading
 
