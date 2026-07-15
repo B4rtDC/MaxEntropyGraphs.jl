@@ -39,6 +39,10 @@ mutable struct CReM{T<:Union{Graphs.AbstractGraph, Nothing}, N<:Real} <: Abstrac
     Ĝ::Union{Nothing, Matrix{N}}
     "Variance of the expected (binary) adjacency matrix" # not always computed/required
     σ::Union{Nothing, Matrix{N}}
+    "Expected weighted adjacency matrix" # not always computed/required
+    Ŵ::Union{Nothing, Matrix{N}}
+    "Standard deviation of the expected weighted adjacency matrix" # not always computed/required
+    σʷ::Union{Nothing, Matrix{N}}
     "Status indicators: parameters computed, expected adjacency matrix computed, variance computed, etc."
     const status::Dict{Symbol, Any}
 end
@@ -126,12 +130,14 @@ function CReM(G::T; d::Vector=Graphs.degree(G), s::Vector=strength(G), precision
                     :params_computed             => false,   # is the weighted (CReM) layer solved?
                     :G_computed                  => false,   # is the expected adjacency matrix computed and stored?
                     :σ_computed                  => false,   # is the standard deviation computed and stored?
+                    :W_computed                  => false,   # is the expected weighted adjacency matrix computed and stored?
+                    :σʷ_computed                 => false,   # is the weight standard deviation computed and stored?
                     :cᵣ       => length(dᵣ)/length(d),       # compression ratio of the reduced binary model
                     :d_unique => length(dᵣ),                 # number of unique degrees in the reduced model
                     :N        => length(d)                   # number of vertices in the original graph
                 )
 
-    return CReM{T,precision}(G, θ, αᵣ, xᵣ, Int.(d), dᵣ, f, Vector{precision}(s), d_ind, dᵣ_ind, nothing, nothing, status)
+    return CReM{T,precision}(G, θ, αᵣ, xᵣ, Int.(d), dᵣ, f, Vector{precision}(s), d_ind, dᵣ_ind, nothing, nothing, nothing, nothing, status)
 end
 
 CReM(;d::Vector, s::Vector, precision::Type{<:AbstractFloat}=Float64, kwargs...) = CReM(nothing, d=d, s=s, precision=precision, kwargs...)
@@ -488,6 +494,17 @@ function Ŵ(m::CReM)
     return W
 end
 
+"""
+    set_Ŵ!(m::CReM)
+
+Set the expected weighted adjacency matrix for the CReM model `m`.
+"""
+function set_Ŵ!(m::CReM)
+    m.Ŵ = Ŵ(m)
+    m.status[:W_computed] = true
+    return m.Ŵ
+end
+
 
 """
     σˣ(m::CReM)
@@ -495,8 +512,8 @@ end
 Compute the standard deviation for the elements of the (binary) adjacency matrix for the CReM model `m`,
 i.e. `sqrt(fᵢⱼ(1 - fᵢⱼ))` (the adjacency entries are Bernoulli distributed).
 
-**Note:** this is the variance of the *binary* layer only; the variance of the weights is not (yet)
-implemented. Read as "sigma star".
+**Note:** this is the standard deviation of the *binary* layer; the standard deviation of the weights is
+available via [`σʷ`](@ref MaxEntropyGraphs.σʷ). Read as "sigma star".
 """
 function σˣ(m::CReM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
@@ -528,28 +545,100 @@ function set_σ!(m::CReM)
     return m.σ
 end
 
-"""
-    σₓ(m::CReM, X::Function; gradient_method::Symbol=:ReverseDiff)
 
-Compute the standard deviation of metric `X` for the CReM model `m` via error propagation over the
-(binary) adjacency matrix. This requires that both the expected values (`m.Ĝ`) and standard deviations
-(`m.σ`) are computed for `m`.
 """
-function σₓ(m::CReM, X::Function; gradient_method::Symbol=:ReverseDiff)
-    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
-    m.status[:σ_computed] ? nothing : throw(ArgumentError("The standard deviations (m.σ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_σ!`"))
+    σʷ(m::CReM)
+
+Compute the standard deviation for the elements of the **weighted** adjacency matrix for the CReM model
+`m`. The (unconditional) weight `wᵢⱼ` is a mixture of an exponential (with probability `fᵢⱼ`) and zero,
+so ``⟨w_{ij}^2⟩ = 2f_{ij}/(θ_i + θ_j)^2`` and
+
+``Var(w_{ij}) = \\frac{f_{ij}(2 - f_{ij})}{(θ_i + θ_j)^2}``
+
+As the network is undirected, `wᵢⱼ` and `wⱼᵢ` denote the same random variable; the corresponding
+covariance is accounted for by [`σₓ`](@ref MaxEntropyGraphs.σₓ).
+"""
+function σʷ(m::CReM)
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
+
+    n = m.status[:N]
+    σ = zeros(precision(m), n, n)
+    x = m.xᵣ[m.dᵣ_ind]
+    θ = m.θ
+    for i = 1:n
+        @simd for j = i+1:n
+            @inbounds xixj = x[i]*x[j]
+            @inbounds fij  = xixj / (1 + xixj)
+            @inbounds sij  = sqrt(fij * (2 - fij)) / (θ[i] + θ[j])
+            @inbounds σ[i,j] = sij
+            @inbounds σ[j,i] = sij
+        end
+    end
+
+    return σ
+end
+
+"""
+    set_σʷ!(m::CReM)
+
+Set the standard deviation for the elements of the weighted adjacency matrix for the CReM model `m`.
+"""
+function set_σʷ!(m::CReM)
+    m.σʷ = σʷ(m)
+    m.status[:σʷ_computed] = true
+    return m.σʷ
+end
+
+
+"""
+    σₓ(m::CReM, X::Function; layer::Symbol=:binary, gradient_method::Symbol=:ReverseDiff)
+
+Compute the standard deviation of metric `X` for the CReM model `m` via error propagation (the delta
+method of Squartini & Garlaschelli (2011), Eq. B.16).
+
+# Arguments
+- `layer::Symbol`:
+    - `:binary` (default): propagate over the **binary adjacency matrix** — `X` is a function of the
+      adjacency matrix, the gradient is evaluated at `m.Ĝ` and weighted by `m.σ` (requires `set_Ĝ!` and `set_σ!`).
+    - `:weighted`: propagate over the **weighted adjacency matrix** — `X` is a function of the weight
+      matrix, the gradient is evaluated at `m.Ŵ` and weighted by `m.σʷ` (requires `set_Ŵ!` and `set_σʷ!`).
+- `gradient_method::Symbol`: `:ForwardDiff`, `:ReverseDiff` (default) or `:Zygote`.
+
+As the network is undirected, the entries `(i,j)` and `(j,i)` of either layer denote the *same* random
+variable, so the delta method over ordered pairs includes the within-dyad covariance cross-term
+(`Cov(g_ij, g_ji) = σ²[g_ij]`). This makes the result independent of whether `X` is written using one or
+both triangles of the matrix.
+
+Metrics mixing the two layers (functions of both the adjacency and the weight matrix) are not supported
+by this per-layer propagation; use ensemble sampling instead.
+"""
+function σₓ(m::CReM, X::Function; layer::Symbol=:binary, gradient_method::Symbol=:ReverseDiff)
+    if layer == :binary
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
+        m.status[:σ_computed] ? nothing : throw(ArgumentError("The standard deviations (m.σ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_σ!`"))
+        M, S = m.Ĝ, m.σ
+    elseif layer == :weighted
+        m.status[:W_computed] ? nothing : throw(ArgumentError("The expected weights (m.Ŵ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ŵ!`"))
+        m.status[:σʷ_computed] ? nothing : throw(ArgumentError("The weight standard deviations (m.σʷ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_σʷ!`"))
+        M, S = m.Ŵ, m.σʷ
+    else
+        throw(ArgumentError("Invalid layer, only :binary and :weighted are accepted"))
+    end
 
     if gradient_method == :ForwardDiff
-        ∇X = ForwardDiff.gradient(X, m.Ĝ)
+        ∇X = ForwardDiff.gradient(X, M)
     elseif gradient_method == :ReverseDiff
-        ∇X = ReverseDiff.gradient(X, m.Ĝ)
+        ∇X = ReverseDiff.gradient(X, M)
     elseif gradient_method == :Zygote
-        ∇X = Zygote.gradient(X, m.Ĝ)[1]
+        ∇X = Zygote.gradient(X, M)[1]
     else
         throw(ArgumentError("Invalid gradient method, only :ForwardDiff, :ReverseDiff and :Zygote are accepted"))
     end
 
-    return sqrt( sum((m.σ .* ∇X) .^ 2) )
+    # delta method over ordered pairs; g_ij ≡ g_ji (undirected), so Cov(g_ij, g_ji) = σ²[g_ij]:
+    # σ²[X] = Σ σ²∇² + Σ σ²∇∇ᵀ = Σ σ² ∇ (∇ + ∇ᵀ), fused into a single broadcast
+    return sqrt( sum(S .^ 2 .* ∇X .* (∇X .+ transpose(∇X))) )
 end
 
 
@@ -898,7 +987,7 @@ function solve_model!(m::CReM;  # weighted (CReM) layer settings
         prob = Optimization.OptimizationProblem(f, θ₀)
         method ∈ keys(optimization_methods) || throw(ArgumentError("The method $(method) is not supported (yet)"))
         # use the BackTracking-line-search variants (see `CReM_optimization_methods` above), falling
-        # back to the package-wide method for e.g. `:NelderMead`.
+        # back to the package-wide optimizer for any method without a BackTracking variant.
         opt = get(CReM_optimization_methods, method, optimization_methods[method])
         solve_kwargs = isnothing(g_tol) ? (; maxiters = maxiters, abstol = abstol, reltol = reltol) :
                                           (; maxiters = maxiters, abstol = abstol, reltol = reltol, g_abstol = g_tol)

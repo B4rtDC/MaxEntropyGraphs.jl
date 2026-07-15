@@ -653,6 +653,90 @@ function set_Ĝ!(m::BiCM)
 end
 
 """
+    σˣ(m::BiCM)
+
+Compute the standard deviation for the elements of the **biadjacency matrix** for the BiCM model `m`,
+i.e. `sqrt(pᵢα(1 - pᵢα))` (the biadjacency entries are independent Bernoulli distributed variables).
+
+**Note:** read as "sigma star". The result is an `n⊥ × n⊤` matrix, like the biadjacency matrix itself.
+"""
+function σˣ(m::BiCM)
+    # check if possible
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+
+    # get layer sizes => this is the full size of the network
+    n⊥, n⊤ = m.status[:N⊥], m.status[:N⊤]
+
+    # initiate σ
+    σ = zeros(precision(m), n⊥, n⊤)
+
+    # initiate x and y
+    x = m.xᵣ[m.d⊥ᵣ_ind]
+    y = m.yᵣ[m.d⊤ᵣ_ind]
+
+    # compute σ
+    for i in 1:n⊥
+        for j in 1:n⊤
+            piα = x[i]*y[j]/(1 + x[i]*y[j])
+            σ[i,j] = sqrt(piα * (1 - piα))
+        end
+    end
+
+    return σ
+end
+
+"""
+    set_σ!(m::BiCM)
+
+Set the standard deviation for the elements of the biadjacency matrix for the BiCM model `m`.
+"""
+function set_σ!(m::BiCM)
+    m.σ = σˣ(m)
+    m.status[:σ_computed] = true
+    return m.σ
+end
+
+
+"""
+    σₓ(m::BiCM, X::Function; gradient_method::Symbol=:ReverseDiff)
+
+Compute the standard deviation of metric `X` for the BiCM model `m` via error propagation (the delta
+method of Squartini & Garlaschelli (2011); see also Saracco et al. (2015)).
+
+`X` must be a function of the **biadjacency matrix** (`n⊥ × n⊤`, cf. [`Ĝ`](@ref MaxEntropyGraphs.Ĝ)),
+not of an adjacency matrix. The biadjacency entries are independent Bernoulli variables, so no
+covariance terms occur:
+
+``σ^{2}[X] = \\sum_{i,α} \\left( σ[m_{iα}] \\frac{∂X}{∂m_{iα}} \\right)^{2}``
+
+This requires that both the expected values (`m.Ĝ`) and standard deviations (`m.σ`) are computed for `m`.
+
+For the statistical significance of projection-related quantities, the exact Poisson-binomial machinery
+(cf. [`project`](@ref MaxEntropyGraphs.project) and [`V_PB_parameters`](@ref MaxEntropyGraphs.V_PB_parameters))
+is preferable to the delta method.
+"""
+function σₓ(m::BiCM, X::Function; gradient_method::Symbol=:ReverseDiff)
+    # checks
+    m.status[:G_computed] ? nothing : throw(ArgumentError("The expected values (m.Ĝ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_Ĝ!`"))
+    m.status[:σ_computed] ? nothing : throw(ArgumentError("The standard deviations (m.σ) must be computed for `m` before computing the standard deviation of metric `X`, see `set_σ!`"))
+
+    # gradient
+    if gradient_method == :ForwardDiff
+        ∇X = ForwardDiff.gradient(X, m.Ĝ)
+    elseif gradient_method == :ReverseDiff
+        ∇X = ReverseDiff.gradient(X, m.Ĝ)
+    elseif gradient_method == :Zygote
+        ∇X = Zygote.gradient(X, m.Ĝ)[1]
+    else
+        throw(ArgumentError("Invalid gradient method, only :ForwardDiff, :ReverseDiff and :Zygote are accepted"))
+    end
+
+    # independent entries: no covariance terms
+    return sqrt( sum((m.σ .* ∇X) .^ 2) )
+end
+
+
+"""
     rand(m::BiCM; precomputed::Bool=false)
 
 Generate a random graph from the BiCM model `m`.

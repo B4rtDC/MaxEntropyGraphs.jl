@@ -47,8 +47,8 @@ end
 
 Base.show(io::IO, m::DBCM{T,N}) where {T,N} = print(io, """DBCM{$(T), $(N)} ($(m.status[:d]) vertices, $(m.status[:d_unique]) unique degree pairs, $(@sprintf("%.2f", m.status[:cᵣ])) compression ratio)""")
 
-"""Return the reduced number of nodes in the UBCM network"""
-Base.length(m::DBCM) = length(m.dᵣ)
+"""Return the reduced number of nodes in the DBCM network"""
+Base.length(m::DBCM) = length(m.dᵣ_out)
 
 
 """

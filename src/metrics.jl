@@ -77,6 +77,537 @@ function strength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, i::N, T::
 end
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# Reciprocity metrics (directed graphs)
+#
+# Dyadic decomposition following Squartini & Garlaschelli (2011) New J. Phys. 13 083001, App. C.1
+# (see also Di Vece et al. (2023)): every ordered pair (i,j), i≠j, is classified as
+#   - non-reciprocated outgoing (i→j present, j→i absent):  a⭢ᵢⱼ = aᵢⱼ(1-aⱼᵢ)
+#   - non-reciprocated incoming (j→i present, i→j absent):  a⭠ᵢⱼ = (1-aᵢⱼ)aⱼᵢ
+#   - reciprocated (both present):                          a⭤ᵢⱼ = aᵢⱼaⱼᵢ
+#   - absent (neither present).
+# The *degree* matrix methods are purely algebraic (no binarisation): on a 0/1 adjacency matrix they count
+# dyads, on a probability matrix under dyadic independence (e.g. a DBCM's Ĝ) they yield expected values.
+# The *strength* variants and `weighted_reciprocity` use presence indicators (`!iszero`) on the reverse
+# direction, so they are empirical quantities; model-expected counterparts are provided by the model methods.
+# All definitions exclude the diagonal (self-loops are not considered).
+# ----------------------------------------------------------------------------------------------------------------------
+
+"""
+    nonreciprocated_outdegree(A::AbstractMatrix, i::Int)
+    nonreciprocated_outdegree(A::AbstractMatrix)
+
+Compute the non-reciprocated outdegree of node `i` from the adjacency matrix `A`, defined as
+``k^{→}_i = \\sum_{j≠i} a_{ij}(1 - a_{ji})``, i.e. the number of nodes `j` that `i` points to without `j` pointing back.
+Without the node argument, the whole sequence is returned.
+
+The computation is purely algebraic: for a 0/1 adjacency matrix this counts dyads, for a probability matrix
+under dyadic independence it yields the expected value. Weighted adjacency matrices should be binarised first.
+
+# Examples
+```jldoctest
+julia> A = [0 1 0; 1 0 1; 0 0 0];
+
+julia> nonreciprocated_outdegree(A, 2)
+1
+
+julia> nonreciprocated_outdegree(A)
+3-element Vector{Int64}:
+ 0
+ 1
+ 0
+```
+"""
+function nonreciprocated_outdegree(A::T, i::Int) where T<:AbstractMatrix
+    size(A,1) == size(A,2) || throw(DimensionMismatch("The adjacency matrix must be square"))
+    (i < 1 || i > size(A,1)) && throw(ArgumentError("Attempted to access node $i in a $(size(A,1)) node graph"))
+    o = one(eltype(A))
+    res = zero(promote_type(eltype(A), Int))
+    @inbounds for j in axes(A,2)
+        j ≠ i && (res += A[i,j] * (o - A[j,i]))
+    end
+    return res
+end
+
+nonreciprocated_outdegree(A::T) where T<:AbstractMatrix = [nonreciprocated_outdegree(A, i) for i in axes(A,1)]
+
+"""
+    nonreciprocated_outdegree(G::Graphs.AbstractGraph, i::Int)
+    nonreciprocated_outdegree(G::Graphs.AbstractGraph)
+
+Compute the non-reciprocated outdegree of node `i` in the directed graph `G` (``k^{→}_i = \\sum_{j≠i} a_{ij}(1 - a_{ji})``).
+Without the node argument, the whole sequence is returned.
+
+# Examples
+```jldoctest
+julia> G = maspalomas();
+
+julia> nonreciprocated_outdegree(G, 1)
+4
+```
+"""
+function nonreciprocated_outdegree(G::T, i::Int) where T<:Graphs.AbstractGraph
+    Graphs.is_directed(G) || throw(ArgumentError("The graph must be directed for reciprocity-based metrics"))
+    return count(j -> j ≠ i && !Graphs.has_edge(G, j, i), Graphs.outneighbors(G, i))
+end
+
+nonreciprocated_outdegree(G::T) where T<:Graphs.AbstractGraph = [nonreciprocated_outdegree(G, i) for i in Graphs.vertices(G)]
+
+
+"""
+    nonreciprocated_indegree(A::AbstractMatrix, i::Int)
+    nonreciprocated_indegree(A::AbstractMatrix)
+
+Compute the non-reciprocated indegree of node `i` from the adjacency matrix `A`, defined as
+``k^{←}_i = \\sum_{j≠i} a_{ji}(1 - a_{ij})``, i.e. the number of nodes `j` that point to `i` without `i` pointing back.
+Without the node argument, the whole sequence is returned.
+
+The computation is purely algebraic: for a 0/1 adjacency matrix this counts dyads, for a probability matrix
+under dyadic independence it yields the expected value. Weighted adjacency matrices should be binarised first.
+
+# Examples
+```jldoctest
+julia> A = [0 1 0; 1 0 1; 0 0 0];
+
+julia> nonreciprocated_indegree(A, 3)
+1
+```
+"""
+function nonreciprocated_indegree(A::T, i::Int) where T<:AbstractMatrix
+    size(A,1) == size(A,2) || throw(DimensionMismatch("The adjacency matrix must be square"))
+    (i < 1 || i > size(A,1)) && throw(ArgumentError("Attempted to access node $i in a $(size(A,1)) node graph"))
+    o = one(eltype(A))
+    res = zero(promote_type(eltype(A), Int))
+    @inbounds for j in axes(A,2)
+        j ≠ i && (res += A[j,i] * (o - A[i,j]))
+    end
+    return res
+end
+
+nonreciprocated_indegree(A::T) where T<:AbstractMatrix = [nonreciprocated_indegree(A, i) for i in axes(A,1)]
+
+"""
+    nonreciprocated_indegree(G::Graphs.AbstractGraph, i::Int)
+    nonreciprocated_indegree(G::Graphs.AbstractGraph)
+
+Compute the non-reciprocated indegree of node `i` in the directed graph `G` (``k^{←}_i = \\sum_{j≠i} a_{ji}(1 - a_{ij})``).
+Without the node argument, the whole sequence is returned.
+
+# Examples
+```jldoctest
+julia> G = maspalomas();
+
+julia> nonreciprocated_indegree(G, 1)
+1
+```
+"""
+function nonreciprocated_indegree(G::T, i::Int) where T<:Graphs.AbstractGraph
+    Graphs.is_directed(G) || throw(ArgumentError("The graph must be directed for reciprocity-based metrics"))
+    return count(j -> j ≠ i && !Graphs.has_edge(G, i, j), Graphs.inneighbors(G, i))
+end
+
+nonreciprocated_indegree(G::T) where T<:Graphs.AbstractGraph = [nonreciprocated_indegree(G, i) for i in Graphs.vertices(G)]
+
+
+"""
+    reciprocated_degree(A::AbstractMatrix, i::Int)
+    reciprocated_degree(A::AbstractMatrix)
+
+Compute the reciprocated degree of node `i` from the adjacency matrix `A`, defined as
+``k^{↔}_i = \\sum_{j≠i} a_{ij}a_{ji}``, i.e. the number of nodes `j` with links in both directions between `i` and `j`.
+Without the node argument, the whole sequence is returned.
+
+The computation is purely algebraic: for a 0/1 adjacency matrix this counts dyads, for a probability matrix
+under dyadic independence it yields the expected value. Weighted adjacency matrices should be binarised first.
+
+# Examples
+```jldoctest
+julia> A = [0 1 0; 1 0 1; 0 0 0];
+
+julia> reciprocated_degree(A, 1)
+1
+```
+"""
+function reciprocated_degree(A::T, i::Int) where T<:AbstractMatrix
+    size(A,1) == size(A,2) || throw(DimensionMismatch("The adjacency matrix must be square"))
+    (i < 1 || i > size(A,1)) && throw(ArgumentError("Attempted to access node $i in a $(size(A,1)) node graph"))
+    res = zero(promote_type(eltype(A), Int))
+    @inbounds for j in axes(A,2)
+        j ≠ i && (res += A[i,j] * A[j,i])
+    end
+    return res
+end
+
+reciprocated_degree(A::T) where T<:AbstractMatrix = [reciprocated_degree(A, i) for i in axes(A,1)]
+
+"""
+    reciprocated_degree(G::Graphs.AbstractGraph, i::Int)
+    reciprocated_degree(G::Graphs.AbstractGraph)
+
+Compute the reciprocated degree of node `i` in the directed graph `G` (``k^{↔}_i = \\sum_{j≠i} a_{ij}a_{ji}``).
+Without the node argument, the whole sequence is returned.
+
+# Examples
+```jldoctest
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques());
+
+julia> reciprocated_degree(G, 1)
+2
+```
+"""
+function reciprocated_degree(G::T, i::Int) where T<:Graphs.AbstractGraph
+    Graphs.is_directed(G) || throw(ArgumentError("The graph must be directed for reciprocity-based metrics"))
+    return count(j -> j ≠ i && Graphs.has_edge(G, j, i), Graphs.outneighbors(G, i))
+end
+
+reciprocated_degree(G::T) where T<:Graphs.AbstractGraph = [reciprocated_degree(G, i) for i in Graphs.vertices(G)]
+
+
+"""
+    nonreciprocated_outstrength(W::AbstractMatrix, i::Int)
+    nonreciprocated_outstrength(W::AbstractMatrix)
+
+Compute the non-reciprocated outstrength of node `i` from the weighted adjacency matrix `W`
+(convention: `W[i,j]` is the weight of the link `i→j`), defined as
+``s^{→}_i = \\sum_{j≠i} w_{ij} \\, \\mathbb{1}[a_{ij}(1-a_{ji})]``, i.e. the total weight on links from `i`
+to nodes that do not point back. Without the node argument, the whole sequence is returned.
+
+Note: the reverse-direction indicator uses `iszero`, so this is an *empirical* quantity;
+for model-expected counterparts use the corresponding model methods.
+
+# Examples
+```jldoctest
+julia> W = [0.0 2.5 0.0; 1.0 0.0 3.0; 0.0 0.0 0.0];
+
+julia> nonreciprocated_outstrength(W, 2)
+3.0
+```
+"""
+function nonreciprocated_outstrength(W::T, i::Int) where T<:AbstractMatrix
+    size(W,1) == size(W,2) || throw(DimensionMismatch("The adjacency matrix must be square"))
+    (i < 1 || i > size(W,1)) && throw(ArgumentError("Attempted to access node $i in a $(size(W,1)) node graph"))
+    res = zero(promote_type(eltype(W), Int))
+    @inbounds for j in axes(W,2)
+        j ≠ i && (res += W[i,j] * iszero(W[j,i]))
+    end
+    return res
+end
+
+nonreciprocated_outstrength(W::T) where T<:AbstractMatrix = [nonreciprocated_outstrength(W, i) for i in axes(W,1)]
+
+"""
+    nonreciprocated_outstrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, i::Int)
+    nonreciprocated_outstrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph)
+
+Compute the non-reciprocated outstrength of node `i` in the weighted directed graph `G`
+(``s^{→}_i``: total weight on links from `i` to nodes that do not point back).
+Without the node argument, the whole sequence is returned.
+
+# Examples
+```jldoctest
+julia> G = rhesus_macaques();
+
+julia> nonreciprocated_outstrength(G, 6)
+19.0
+```
+"""
+function nonreciprocated_outstrength(G::T, i::Int) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph
+    Graphs.is_directed(G) || throw(ArgumentError("The graph must be directed for reciprocity-based metrics"))
+    S = G.weights # S[dst, src] = w(src → dst)
+    res = zero(SimpleWeightedGraphs.weighttype(G))
+    @inbounds for j in Graphs.outneighbors(G, i)
+        j ≠ i && iszero(S[i,j]) && (res += S[j,i])
+    end
+    return res
+end
+
+nonreciprocated_outstrength(G::T) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph = [nonreciprocated_outstrength(G, i) for i in Graphs.vertices(G)]
+
+
+"""
+    nonreciprocated_instrength(W::AbstractMatrix, i::Int)
+    nonreciprocated_instrength(W::AbstractMatrix)
+
+Compute the non-reciprocated instrength of node `i` from the weighted adjacency matrix `W`
+(convention: `W[i,j]` is the weight of the link `i→j`), defined as
+``s^{←}_i = \\sum_{j≠i} w_{ji} \\, \\mathbb{1}[a_{ji}(1-a_{ij})]``, i.e. the total weight on links towards `i`
+from nodes that `i` does not point back to. Without the node argument, the whole sequence is returned.
+
+Note: the reverse-direction indicator uses `iszero`, so this is an *empirical* quantity;
+for model-expected counterparts use the corresponding model methods.
+
+# Examples
+```jldoctest
+julia> W = [0.0 2.5 0.0; 1.0 0.0 3.0; 0.0 0.0 0.0];
+
+julia> nonreciprocated_instrength(W, 3)
+3.0
+```
+"""
+function nonreciprocated_instrength(W::T, i::Int) where T<:AbstractMatrix
+    size(W,1) == size(W,2) || throw(DimensionMismatch("The adjacency matrix must be square"))
+    (i < 1 || i > size(W,1)) && throw(ArgumentError("Attempted to access node $i in a $(size(W,1)) node graph"))
+    res = zero(promote_type(eltype(W), Int))
+    @inbounds for j in axes(W,2)
+        j ≠ i && (res += W[j,i] * iszero(W[i,j]))
+    end
+    return res
+end
+
+nonreciprocated_instrength(W::T) where T<:AbstractMatrix = [nonreciprocated_instrength(W, i) for i in axes(W,1)]
+
+"""
+    nonreciprocated_instrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, i::Int)
+    nonreciprocated_instrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph)
+
+Compute the non-reciprocated instrength of node `i` in the weighted directed graph `G`
+(``s^{←}_i``: total weight on links towards `i` from nodes that `i` does not point back to).
+Without the node argument, the whole sequence is returned.
+
+# Examples
+```jldoctest
+julia> G = rhesus_macaques();
+
+julia> nonreciprocated_instrength(G, 6)
+0.0
+```
+"""
+function nonreciprocated_instrength(G::T, i::Int) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph
+    Graphs.is_directed(G) || throw(ArgumentError("The graph must be directed for reciprocity-based metrics"))
+    S = G.weights # S[dst, src] = w(src → dst)
+    res = zero(SimpleWeightedGraphs.weighttype(G))
+    @inbounds for j in Graphs.inneighbors(G, i)
+        j ≠ i && iszero(S[j,i]) && (res += S[i,j])
+    end
+    return res
+end
+
+nonreciprocated_instrength(G::T) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph = [nonreciprocated_instrength(G, i) for i in Graphs.vertices(G)]
+
+
+"""
+    reciprocated_outstrength(W::AbstractMatrix, i::Int)
+    reciprocated_outstrength(W::AbstractMatrix)
+
+Compute the reciprocated outstrength of node `i` from the weighted adjacency matrix `W`
+(convention: `W[i,j]` is the weight of the link `i→j`), defined as
+``s^{↔,out}_i = \\sum_{j≠i} w_{ij} \\, \\mathbb{1}[a_{ij}a_{ji}]``, i.e. the total weight on links from `i`
+to nodes that also point back. Without the node argument, the whole sequence is returned.
+
+Note: the reverse-direction indicator uses `iszero`, so this is an *empirical* quantity;
+for model-expected counterparts use the corresponding model methods.
+
+# Examples
+```jldoctest
+julia> W = [0.0 2.5 0.0; 1.0 0.0 3.0; 0.0 0.0 0.0];
+
+julia> reciprocated_outstrength(W, 1)
+2.5
+```
+"""
+function reciprocated_outstrength(W::T, i::Int) where T<:AbstractMatrix
+    size(W,1) == size(W,2) || throw(DimensionMismatch("The adjacency matrix must be square"))
+    (i < 1 || i > size(W,1)) && throw(ArgumentError("Attempted to access node $i in a $(size(W,1)) node graph"))
+    res = zero(promote_type(eltype(W), Int))
+    @inbounds for j in axes(W,2)
+        j ≠ i && (res += W[i,j] * !iszero(W[j,i]))
+    end
+    return res
+end
+
+reciprocated_outstrength(W::T) where T<:AbstractMatrix = [reciprocated_outstrength(W, i) for i in axes(W,1)]
+
+"""
+    reciprocated_outstrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, i::Int)
+    reciprocated_outstrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph)
+
+Compute the reciprocated outstrength of node `i` in the weighted directed graph `G`
+(``s^{↔,out}_i``: total weight on links from `i` to nodes that also point back).
+Without the node argument, the whole sequence is returned.
+
+# Examples
+```jldoctest
+julia> G = rhesus_macaques();
+
+julia> reciprocated_outstrength(G, 6)
+20.0
+```
+"""
+function reciprocated_outstrength(G::T, i::Int) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph
+    Graphs.is_directed(G) || throw(ArgumentError("The graph must be directed for reciprocity-based metrics"))
+    S = G.weights # S[dst, src] = w(src → dst)
+    res = zero(SimpleWeightedGraphs.weighttype(G))
+    @inbounds for j in Graphs.outneighbors(G, i)
+        j ≠ i && !iszero(S[i,j]) && (res += S[j,i])
+    end
+    return res
+end
+
+reciprocated_outstrength(G::T) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph = [reciprocated_outstrength(G, i) for i in Graphs.vertices(G)]
+
+
+"""
+    reciprocated_instrength(W::AbstractMatrix, i::Int)
+    reciprocated_instrength(W::AbstractMatrix)
+
+Compute the reciprocated instrength of node `i` from the weighted adjacency matrix `W`
+(convention: `W[i,j]` is the weight of the link `i→j`), defined as
+``s^{↔,in}_i = \\sum_{j≠i} w_{ji} \\, \\mathbb{1}[a_{ij}a_{ji}]``, i.e. the total weight on links towards `i`
+from nodes that `i` also points to. Without the node argument, the whole sequence is returned.
+
+Note: the reverse-direction indicator uses `iszero`, so this is an *empirical* quantity;
+for model-expected counterparts use the corresponding model methods.
+
+# Examples
+```jldoctest
+julia> W = [0.0 2.5 0.0; 1.0 0.0 3.0; 0.0 0.0 0.0];
+
+julia> reciprocated_instrength(W, 1)
+1.0
+```
+"""
+function reciprocated_instrength(W::T, i::Int) where T<:AbstractMatrix
+    size(W,1) == size(W,2) || throw(DimensionMismatch("The adjacency matrix must be square"))
+    (i < 1 || i > size(W,1)) && throw(ArgumentError("Attempted to access node $i in a $(size(W,1)) node graph"))
+    res = zero(promote_type(eltype(W), Int))
+    @inbounds for j in axes(W,2)
+        j ≠ i && (res += W[j,i] * !iszero(W[i,j]))
+    end
+    return res
+end
+
+reciprocated_instrength(W::T) where T<:AbstractMatrix = [reciprocated_instrength(W, i) for i in axes(W,1)]
+
+"""
+    reciprocated_instrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph, i::Int)
+    reciprocated_instrength(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph)
+
+Compute the reciprocated instrength of node `i` in the weighted directed graph `G`
+(``s^{↔,in}_i``: total weight on links towards `i` from nodes that `i` also points to).
+Without the node argument, the whole sequence is returned.
+
+# Examples
+```jldoctest
+julia> G = rhesus_macaques();
+
+julia> reciprocated_instrength(G, 6)
+30.0
+```
+"""
+function reciprocated_instrength(G::T, i::Int) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph
+    Graphs.is_directed(G) || throw(ArgumentError("The graph must be directed for reciprocity-based metrics"))
+    S = G.weights # S[dst, src] = w(src → dst)
+    res = zero(SimpleWeightedGraphs.weighttype(G))
+    @inbounds for j in Graphs.inneighbors(G, i)
+        j ≠ i && !iszero(S[j,i]) && (res += S[i,j])
+    end
+    return res
+end
+
+reciprocated_instrength(G::T) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph = [reciprocated_instrength(G, i) for i in Graphs.vertices(G)]
+
+
+"""
+    reciprocity(A::AbstractMatrix)
+    reciprocity(G::Graphs.AbstractGraph)
+
+Compute the topological reciprocity of the directed network, defined as the ratio of reciprocated links to
+the total number of links: ``r = L^{↔}/L = \\sum_{i≠j} a_{ij}a_{ji} / \\sum_{i≠j} a_{ij}``
+(Di Vece et al. (2023), Eq. 1).
+
+The matrix method is purely algebraic: for a 0/1 adjacency matrix it returns the observed reciprocity, for a
+probability matrix under dyadic independence it returns the ratio-of-expectations approximation of the
+expected reciprocity. Weighted adjacency matrices should be binarised first (or use [`weighted_reciprocity`](@ref)).
+
+*Note*: `Graphs.jl` also exports a `reciprocity` function. When both packages are loaded with `using`,
+the function must be qualified (`MaxEntropyGraphs.reciprocity` / `Graphs.reciprocity`).
+
+# Examples
+```jldoctest
+julia> G = MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques());
+
+julia> reciprocity(G)
+0.7567567567567568
+```
+"""
+function reciprocity(A::T) where T<:AbstractMatrix
+    size(A,1) == size(A,2) || throw(DimensionMismatch("The adjacency matrix must be square"))
+    num = zero(promote_type(eltype(A), Int))
+    den = zero(promote_type(eltype(A), Int))
+    @inbounds for i in axes(A,1)
+        for j in axes(A,2)
+            if i ≠ j
+                num += A[i,j] * A[j,i]
+                den += A[i,j]
+            end
+        end
+    end
+    iszero(den) && throw(ArgumentError("The network has no links, reciprocity is undefined"))
+    return num / den
+end
+
+function reciprocity(G::T) where T<:Graphs.AbstractGraph
+    Graphs.is_directed(G) || throw(ArgumentError("The graph must be directed for reciprocity-based metrics"))
+    iszero(Graphs.ne(G)) && throw(ArgumentError("The network has no links, reciprocity is undefined"))
+    L_recip = count(e -> Graphs.src(e) ≠ Graphs.dst(e) && Graphs.has_edge(G, Graphs.dst(e), Graphs.src(e)), Graphs.edges(G))
+    return L_recip / Graphs.ne(G)
+end
+
+
+"""
+    weighted_reciprocity(W::AbstractMatrix)
+    weighted_reciprocity(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph)
+
+Compute the weighted reciprocity of the directed network, defined as the share of the total weight that sits
+on reciprocated links: ``r_w = W^{↔}/W_{tot} = \\sum_{i≠j} w_{ij}\\mathbb{1}[a_{ij}a_{ji}] / \\sum_{i≠j} w_{ij}``
+(Di Vece et al. (2023), Eq. 2).
+
+*Note*: this "share of total weight on reciprocated links" definition differs from the fully weighted
+reciprocity of Squartini et al. (2013) ("Reciprocity of weighted networks"), which is based on the mutual
+weight ``\\min(w_{ij}, w_{ji})``.
+
+# Examples
+```jldoctest
+julia> G = rhesus_macaques();
+
+julia> weighted_reciprocity(G)
+0.8995363214837713
+```
+"""
+function weighted_reciprocity(W::T) where T<:AbstractMatrix
+    size(W,1) == size(W,2) || throw(DimensionMismatch("The adjacency matrix must be square"))
+    num = zero(promote_type(eltype(W), Int))
+    den = zero(promote_type(eltype(W), Int))
+    @inbounds for i in axes(W,1)
+        for j in axes(W,2)
+            if i ≠ j
+                num += W[i,j] * !iszero(W[j,i])
+                den += W[i,j]
+            end
+        end
+    end
+    iszero(den) && throw(ArgumentError("The network has no links, reciprocity is undefined"))
+    return num / den
+end
+
+function weighted_reciprocity(G::T) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph
+    Graphs.is_directed(G) || throw(ArgumentError("The graph must be directed for reciprocity-based metrics"))
+    S = G.weights # S[dst, src] = w(src → dst)
+    num = zero(SimpleWeightedGraphs.weighttype(G))
+    den = zero(SimpleWeightedGraphs.weighttype(G))
+    @inbounds for i in Graphs.vertices(G)
+        for j in Graphs.outneighbors(G, i)
+            if j ≠ i
+                num += S[j,i] * !iszero(S[i,j])
+                den += S[j,i]
+            end
+        end
+    end
+    iszero(den) && throw(ArgumentError("The network has no links, reciprocity is undefined"))
+    return num / den
+end
+
+
 """
     ANND(G::T, i::Int; check_directed::Bool=true) where {T<:Graphs.AbstractGraph}
 
@@ -795,6 +1326,22 @@ for i = 1:13
             
             return $(fname)(m.Ĝ)
         end
+
+        # method for RBCM > use the dyadic probability matrices, NOT the expected adjacency matrix: within a
+        # dyad aᵢⱼ and aⱼᵢ are correlated under the RBCM, so evaluating the motif on the expected adjacency
+        # matrix would be wrong. With the dyadic matrices the result is the EXACT expectation (Squartini &
+        # Garlaschelli (2011), Eq. C.16): a motif's three dyads are distinct, and distinct dyads are independent.
+        """
+            $($fname)(m::RBCM)
+
+        Compute the exact expected occurrence of motif $($fname) (Σ_{i≠j≠k} $(directed_graph_motif_functions[$i][1]) (i,j) × $(directed_graph_motif_functions[$i][2]) (j,k) × $(directed_graph_motif_functions[$i][3]) (k,i) ) under the `RBCM` model, evaluated from the dyadic probability matrices (p⭢, p⭠, p⭤, p∅).
+        """
+        function $(fname)(m::RBCM)
+            m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters of `m` must be computed before counting the occurence of motif $($fname), see `solve_model!`"))
+            P, R, Z = _dyadic_probability_matrices(m)
+            Q = transpose(P)
+            return _motif_count($(l1), $(l2), $(l3), $(zp))
+        end
     end
 end
 
@@ -807,11 +1354,16 @@ end for i in 1:13)
 """
     motifs(A::AbstractMatrix)
     motifs(m::DBCM)
+    motifs(m::RBCM)
 
 Count all 13 directed 3-node motifs at once, returning the vector `[M1, M2, …, M13]`.
 
 The four base matrices (`P, Q, R, Z`) are built once and shared across the whole spectrum, so this is faster
 than calling `M1`…`M13` individually (which each rebuild them). Results are identical to the individual methods.
+
+For the `RBCM` the base matrices are the model's dyadic probability matrices (p⭢, p⭠, p⭤, p∅) rather than
+functions of `Ĝ` (within a dyad `aᵢⱼ` and `aⱼᵢ` are correlated under the RBCM), which makes the result the
+**exact** expected motif spectrum ⟨M1⟩, …, ⟨M13⟩ (Squartini & Garlaschelli (2011), Eq. C.16).
 
 # Examples
 ```jldoctest motifs_doc
@@ -836,6 +1388,432 @@ function motifs(m::DBCM)
 
     return motifs(m.Ĝ)
 end
+
+function motifs(m::RBCM)
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters of `m` must be computed before counting motifs, see `solve_model!`"))
+    P, R, Z = _dyadic_probability_matrices(m)
+    Q = transpose(P)
+    return [_motif_count(_motif_select(s[1], P, Q, R, Z),
+                         _motif_select(s[2], P, Q, R, Z),
+                         _motif_select(s[3], P, Q, R, Z), s[4]) for s in _motif_specs]
+end
+
+
+# ---- triadic fluxes -----------------------------------------------------------------------------------
+# The triadic flux of motif m is the total weight sitting on the links of all its occurrences
+# (Di Vece et al. (2023), the Fₘ statistic):
+#   F_m = Σ_{i≠j≠k} f₁(i,j) f₂(j,k) f₃(k,i) × [w(dyad₁) + w(dyad₂) + w(dyad₃)]
+# where an a⭢ dyad carries wᵢⱼ, an a⭠ dyad carries wⱼᵢ, an a⭤ dyad carries wᵢⱼ + wⱼᵢ, and an absent
+# dyad carries nothing. Because the bracket splits by position, F_m is a sum of at most three trace terms,
+# each equal to `_motif_count` with exactly ONE binary factor replaced by its weighted counterpart:
+#   Pw = W ∘ (1 - Aᵀ)  (weight on an a⭢ factor),  Qw = transpose(Pw)  (an a⭠(i,j) factor carries wⱼᵢ),
+#   Rw = W ∘ Aᵀ + Wᵀ ∘ A  (both directions of an a⭤ factor);   the a̲ position is skipped (zero weight).
+# The zpos diagonal correction inside `_motif_count` stays valid (the weighted matrices share the binary
+# matrices' zero diagonal, Z keeps its unit diagonal). For the model methods the same trace forms hold with
+# the expected matrices — since a motif's three dyads are distinct and dyads are independent, the
+# expectation factorises per position and the result is the EXACT ⟨F_m⟩:
+#   - DCReM: entries are independent, so P̂w = Ŵ ∘ (1 - Ĝᵀ), R̂w = Ŵ ∘ Ĝᵀ + Ŵᵀ ∘ Ĝ (the same algebra
+#     applied to the expected matrices),
+#   - CRWCM: within-dyad correlation requires the dyadic forms P̂w[i,j] = f⭢ᵢⱼ/(θ⭢ᵢ+θ⭠ⱼ) = E[wᵢⱼ·𝟙⭢] and
+#     R̂w[i,j] = f⭤ᵢⱼ·[1/(θ⭤ᵒᵢ+θ⭤ⁱⱼ) + 1/(θ⭤ᵒⱼ+θ⭤ⁱᵢ)] = E[(wᵢⱼ+wⱼᵢ)·𝟙⭤].
+# --------------------------------------------------------------------------------------------------------
+
+# binary + weighted base matrices from a weight matrix `W` and its (probability or 0/1) support `A`
+function _flux_base_matrices(W::AbstractMatrix, A::AbstractMatrix)
+    At = transpose(A)
+    o  = one(eltype(A))
+    P  = A .* (o .- At)
+    R  = A .* At
+    Z  = (o .- A) .* (o .- At)
+    Pw = W .* (o .- At)
+    Rw = W .* At .+ transpose(W) .* A
+    return P, R, Z, Pw, Rw
+end
+
+# the 13 triadic fluxes from precomputed base matrices (shared by the empirical and model methods).
+# By the cyclic property of the trace, the flux term with the weighted factor at position q is
+#   tr(W_q · B_q) = dot(W_q, transpose(B_q)),
+# where B_q is the PRODUCT OF THE OTHER TWO BINARY FACTORS in cyclic order (q=1: F2F3, q=2: F3F1,
+# q=3: F1F2). The zpos diagonal correction of `_motif_count` carries over as a cheap dot as well
+# (e.g. for zp=2 and the weight at q=1 it subtracts tr(F3·W1) = dot(W1, transpose(F3))). Only the
+# BINARY pair products appear as matrix multiplications, and they repeat across motifs and weighted
+# positions, so they are computed once and shared: ≤12 distinct products serve all 33 flux terms
+# (vs. one product per term in the naive evaluation, a ~3x reduction in BLAS-3 work).
+# NOTE: the product cache makes this value path non-Zygote-differentiable (mutation); ForwardDiff
+# still traces through it. The z-scores of the fluxes are sampling-based anyway (`flux_zscores`).
+function _motif_fluxes(P, Q, R, Z, Pw, Qw, Rw)
+    T = eltype(Pw)
+    binmat = lbl -> _motif_select(lbl, P, Q, R, Z)
+    wmat   = lbl -> _motif_select(lbl, Pw, Qw, Rw, Z)
+    # shared cache of binary pair products (materialised as plain matrices)
+    prods = Dict{Tuple{Symbol,Symbol}, Matrix{T}}()
+    pairprod!(a::Symbol, b::Symbol) = get!(() -> Matrix{T}(binmat(a) * binmat(b)), prods, (a, b))
+
+    res = Vector{T}(undef, 13)
+    for (k, s) in enumerate(_motif_specs)
+        (l1, l2, l3, zp) = s
+        lbls = (l1, l2, l3)
+        acc = zero(T)
+        for q in 1:3
+            lbls[q] === :Z && continue                        # an absent dyad carries no weight
+            W_q = wmat(lbls[q])
+            a, b = lbls[mod1(q + 1, 3)], lbls[mod1(q + 2, 3)] # the other two factors, in cyclic order
+            acc += dot(W_q, transpose(pairprod!(a, b)))       # tr(W_q F_a F_b)
+            # diagonal correction (zp is never q: the a̲ factor carries no weight): subtract the trace
+            # over the two non-Z POSITIONS of the ordered triple, with F_q replaced by W_q
+            if zp != 0
+                o1, o2 = mod1(zp + 1, 3), mod1(zp + 2, 3)
+                other = o1 == q ? o2 : o1 # the non-Z position that is not the weighted one
+                acc -= dot(W_q, transpose(binmat(lbls[other]))) # tr(W_q · F_other) (= tr(F_other · W_q))
+            end
+        end
+        res[k] = acc
+    end
+    return res
+end
+
+"""
+    motif_fluxes(W::AbstractMatrix)
+    motif_fluxes(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph)
+    motif_fluxes(m::DCReM)
+    motif_fluxes(m::CRWCM)
+
+Compute the 13 triadic fluxes `[F1, F2, …, F13]` of the weighted directed network: the total weight sitting
+on the links of all occurrences of each 3-node motif (Di Vece et al. (2023)). The motif numbering matches
+[`motifs`](@ref).
+
+For the matrix/graph methods the binary support is obtained by binarising the weight matrix
+(`W[i,j] ≠ 0` ⟺ link `i→j`; matrix convention: `W[i,j]` is the weight of the link `i→j`). For the model
+methods the result is the **exact** expected flux spectrum ⟨F1⟩, …, ⟨F13⟩ (a motif's three dyads are
+distinct and dyads are independent, so the expectation factorises per position; for the [`CRWCM`](@ref)
+the within-dyad correlation between the two directions is handled through the dyadic expectations).
+
+# Examples
+```jldoctest motif_fluxes_doc
+julia> G = rhesus_macaques();
+
+julia> model = CRWCM(G);
+
+julia> solve_model!(model);
+
+julia> length(motif_fluxes(model)) == length(motif_fluxes(G)) == 13
+true
+```
+"""
+function motif_fluxes(W::T) where T<:AbstractMatrix
+    size(W,1) == size(W,2) || throw(DimensionMismatch("The weight matrix must be square"))
+    A = (!iszero).(W) .* one(eltype(W)) # numeric 0/1 support, same eltype as W
+    P, R, Z, Pw, Rw = _flux_base_matrices(W, A)
+    return _motif_fluxes(P, transpose(P), R, Z, Pw, transpose(Pw), Rw)
+end
+
+motif_fluxes(G::T) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph = Graphs.is_directed(G) ? motif_fluxes(Matrix(transpose(G.weights))) : throw(ArgumentError("The graph must be directed for the triadic fluxes"))
+
+function motif_fluxes(m::DCReM)
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters of `m` must be computed before computing the triadic fluxes, see `solve_model!`"))
+    Ghat = Ĝ(m)
+    What = Ŵ(m)
+    # Ĝ has a zero diagonal, so the (1-A)∘(1-Aᵀ) form automatically carries the unit diagonal required by
+    # the `_motif_count` inclusion–exclusion convention
+    P, R, Z, Pw, Rw = _flux_base_matrices(What, Ghat)
+    return _motif_fluxes(P, transpose(P), R, Z, Pw, transpose(Pw), Rw)
+end
+
+function motif_fluxes(m::CRWCM)
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters of `m` must be computed before computing the triadic fluxes, see `solve_model!`"))
+    n = m.status[:N]
+    x = m.xᵣ[m.dᵣ_ind]
+    y = m.yᵣ[m.dᵣ_ind]
+    z = m.zᵣ[m.dᵣ_ind]
+    θ⭢  = @view m.θ[1:n]
+    θ⭠  = @view m.θ[n+1:2*n]
+    θ⭤ᵒ = @view m.θ[2*n+1:3*n]
+    θ⭤ⁱ = @view m.θ[3*n+1:4*n]
+    o = one(precision(m))
+    P̂  = zeros(precision(m), n, n)
+    R̂  = zeros(precision(m), n, n)
+    Ẑ  = zeros(precision(m), n, n)
+    P̂w = zeros(precision(m), n, n)
+    R̂w = zeros(precision(m), n, n)
+    for i in 1:n
+        @inbounds Ẑ[i,i] = o
+        for j in 1:n
+            if i ≠ j
+                @inbounds xiyj = x[i]*y[j]
+                @inbounds zizj = z[i]*z[j]
+                @inbounds D = o + xiyj + x[j]*y[i] + zizj
+                @inbounds P̂[i,j] = xiyj / D
+                @inbounds R̂[i,j] = zizj / D
+                @inbounds Ẑ[i,j] = o / D
+                @inbounds P̂w[i,j] = iszero(xiyj) ? zero(precision(m)) : (xiyj / D) / (θ⭢[i] + θ⭠[j])
+                @inbounds R̂w[i,j] = iszero(zizj) ? zero(precision(m)) : (zizj / D) * (o/(θ⭤ᵒ[i] + θ⭤ⁱ[j]) + o/(θ⭤ᵒ[j] + θ⭤ⁱ[i]))
+            end
+        end
+    end
+    return _motif_fluxes(P̂, transpose(P̂), R̂, Ẑ, P̂w, transpose(P̂w), R̂w)
+end
+
+"""
+    motif_flux(x, k::Int)
+
+Compute the triadic flux of motif `k` (`k ∈ 1:13`) only. Accepts the same arguments as
+[`motif_fluxes`](@ref). When several fluxes are needed, `motif_fluxes` is cheaper than repeated calls.
+"""
+function motif_flux(x, k::Int)
+    1 <= k <= 13 || throw(ArgumentError("The motif number must be in 1:13"))
+    return motif_fluxes(x)[k]
+end
+
+
+## dyad-state machinery for the intensity kernel: state codes 1=:P (i→j only), 2=:Q (j→i only),
+## 3=:R (both), 4=:Z (absent), and a 4×4×4 lookup mapping every connected state triple to its motif
+## index (0 = disconnected pattern). Precomputing per-pair states/weight-products/link-counts turns
+## the O(N³) triple loop into pure array reads (no per-triple hashing, tuple building or symbol
+## branching), which is a large constant-factor gain (see performance/metrics_benchmarks.jl).
+const _state_code = Dict(:P => 1, :Q => 2, :R => 3, :Z => 4)
+const _motif_state_lut = let lut = zeros(Int8, 4, 4, 4)
+    for (k, s) in enumerate(_motif_specs)
+        lut[_state_code[s[1]], _state_code[s[2]], _state_code[s[3]]] = Int8(k)
+    end
+    lut
+end
+
+"""
+    motif_intensities(W::AbstractMatrix)
+    motif_intensities(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph)
+
+Compute the 13 triadic intensities `[I1, I2, …, I13]` of the weighted directed network: for every
+occurrence of a 3-node motif, its intensity is the *geometric mean* of the weights on its links
+(Onnela et al. (2005)), and `I_m` sums the intensities of all occurrences of motif `m` (the `Im`
+statistic of NuMeTriS / Di Vece et al. (2023)).
+
+*Note*: unlike the fluxes, the intensities have no closed-form model expectation (the geometric mean does
+not factorise over dyads); model-induced z-scores can be obtained by sampling via [`ensemble_zscores`](@ref).
+
+# Examples
+```jldoctest
+julia> length(motif_intensities(rhesus_macaques())) == 13
+true
+```
+"""
+function motif_intensities(W::T) where T<:AbstractMatrix
+    size(W,1) == size(W,2) || throw(DimensionMismatch("The weight matrix must be square"))
+    n = size(W,1)
+    F = float(eltype(W))
+    res = zeros(F, 13)
+    # precompute, per ordered pair, the dyad-state code, the product of the weights the dyad carries
+    # in this orientation (1 for an absent dyad: multiplicative identity), and its link count — O(N²)
+    S  = Matrix{Int8}(undef, n, n)
+    WP = Matrix{F}(undef, n, n)
+    NL = Matrix{Int8}(undef, n, n)
+    @inbounds for j in 1:n, i in 1:n
+        fwd = !iszero(W[i,j]); bwd = !iszero(W[j,i])
+        if fwd & bwd
+            S[i,j] = Int8(3); WP[i,j] = F(W[i,j]) * F(W[j,i]); NL[i,j] = Int8(2)
+        elseif fwd
+            S[i,j] = Int8(1); WP[i,j] = F(W[i,j]);             NL[i,j] = Int8(1)
+        elseif bwd
+            S[i,j] = Int8(2); WP[i,j] = F(W[j,i]);             NL[i,j] = Int8(1)
+        else
+            S[i,j] = Int8(4); WP[i,j] = one(F);                NL[i,j] = Int8(0)
+        end
+    end
+    # triple loop over array reads only
+    @inbounds for i in 1:n, j in 1:n
+        i == j && continue
+        Sij = S[i,j]; Wij = WP[i,j]; Lij = NL[i,j]
+        for k in 1:n
+            (k == i || k == j) && continue
+            idx = _motif_state_lut[Sij, S[j,k], S[k,i]]
+            iszero(idx) && continue
+            res[idx] += (Wij * WP[j,k] * WP[k,i])^(1 / (Lij + NL[j,k] + NL[k,i]))
+        end
+    end
+    return res
+end
+
+motif_intensities(G::T) where T<:SimpleWeightedGraphs.AbstractSimpleWeightedGraph = Graphs.is_directed(G) ? motif_intensities(Matrix(transpose(G.weights))) : throw(ArgumentError("The graph must be directed for the triadic intensities"))
+
+
+# ---- model-expected reciprocity for the weighted directed models --------------------------------------
+
+"""
+    reciprocity(m::DCReM)
+
+Compute the expected topological reciprocity of the (binary DBCM layer of the) DCReM model `m` as the
+ratio of expectations ``\\sum_{i≠j} f_{ij}f_{ji} / \\sum_{i≠j} f_{ij}`` (directions independent under the DBCM).
+"""
+function reciprocity(m::DCReM)
+    m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
+    n = m.status[:N]
+    num = zero(precision(m))
+    den = zero(precision(m))
+    for i = 1:n
+        for j = 1:n
+            if i ≠ j
+                num += A(m, i, j) * A(m, j, i)
+                den += A(m, i, j)
+            end
+        end
+    end
+    return num / den
+end
+
+"""
+    reciprocity(m::CRWCM)
+
+Compute the expected topological reciprocity of the (binary RBCM layer of the) CRWCM model `m` as the
+ratio of expectations ``\\sum_{i≠j} p^{↔}_{ij} / \\sum_{i≠j} ⟨a_{ij}⟩``. As the RBCM layer constrains the
+reciprocal degree sequences, this reproduces the observed reciprocity of the network it was fitted to.
+"""
+function reciprocity(m::CRWCM)
+    m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
+    n = m.status[:N]
+    num = zero(precision(m))
+    den = zero(precision(m))
+    for i = 1:n
+        for j = 1:n
+            if i ≠ j
+                pr = p⭤(m, i, j)
+                num += pr
+                den += pr + p⭢(m, i, j)
+            end
+        end
+    end
+    return num / den
+end
+
+"""
+    weighted_reciprocity(m::DCReM)
+
+Compute the expected weighted reciprocity of the DCReM model `m` as the ratio of expectations
+``\\sum_{i≠j} ⟨w_{ij}⟩ f_{ji} / \\sum_{i≠j} ⟨w_{ij}⟩`` (the weight of `i→j` and the presence of `j→i` are
+independent under the DBCM layer).
+"""
+function weighted_reciprocity(m::DCReM)
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    n = m.status[:N]
+    θᵒ = @view m.θ[1:n]
+    θⁱ = @view m.θ[n+1:end]
+    num = zero(precision(m))
+    den = zero(precision(m))
+    for i = 1:n
+        for j = 1:n
+            if i ≠ j
+                w = A(m, i, j) / (θᵒ[i] + θⁱ[j])
+                num += w * A(m, j, i)
+                den += w
+            end
+        end
+    end
+    return num / den
+end
+
+"""
+    weighted_reciprocity(m::CRWCM)
+
+Compute the expected weighted reciprocity of the CRWCM model `m` as the ratio of expectations
+``\\sum_{i≠j} E[w_{ij} 𝟙^{↔}_{ij}] / \\sum_{i≠j} ⟨w_{ij}⟩``, where the numerator terms are
+``f^{↔}_{ij}/(θ^{↔,o}_i + θ^{↔,i}_j)`` (weight sits on a reciprocated link iff the dyad is reciprocated).
+As the CRWCM constrains the reciprocal strength sequences, this reproduces the observed weighted
+reciprocity of the network it was fitted to.
+"""
+function weighted_reciprocity(m::CRWCM)
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    n = m.status[:N]
+    θ⭢  = @view m.θ[1:n]
+    θ⭠  = @view m.θ[n+1:2*n]
+    θ⭤ᵒ = @view m.θ[2*n+1:3*n]
+    θ⭤ⁱ = @view m.θ[3*n+1:4*n]
+    num = zero(precision(m))
+    den = zero(precision(m))
+    for i = 1:n
+        for j = 1:n
+            if i ≠ j
+                f1 = p⭢(m, i, j)
+                f2 = p⭤(m, i, j)
+                wrec = iszero(f2) ? zero(precision(m)) : f2 / (θ⭤ᵒ[i] + θ⭤ⁱ[j])
+                num += wrec
+                den += wrec + (iszero(f1) ? zero(precision(m)) : f1 / (θ⭢[i] + θ⭠[j]))
+            end
+        end
+    end
+    return num / den
+end
+
+
+# ---- sampling-based ensemble z-scores ------------------------------------------------------------------
+
+# dense weight matrix of a weighted graph in the W[i,j] = w(i→j) convention
+_weight_matrix(G::SimpleWeightedGraphs.AbstractSimpleWeightedGraph) = Matrix(transpose(G.weights))
+_weight_matrix(G) = throw(ArgumentError("Weighted metrics require a weighted graph (got $(typeof(G)))"))
+
+# dense BINARY (0/1, numeric) adjacency matrix. NOTE: `Graphs.adjacency_matrix` on a
+# SimpleWeightedGraphs graph returns the WEIGHTS, so it must be binarised explicitly — feeding
+# weights into a binary metric (e.g. `motifs`) would silently produce garbage.
+_binary_matrix(G) = Float64.((!iszero).(Matrix(Graphs.adjacency_matrix(G))))
+
+"""
+    ensemble_zscores(m::AbstractMaxEntropyModel, X::Function; n::Int=500, rng=Random.default_rng(), weighted::Bool=false)
+
+Compute sampling-based z-scores of the metric `X` under the model `m`: sample `n` graphs from the model,
+evaluate `X` on each (and on the observed graph `m.G`), and standardise the observed value with the
+ensemble mean and standard deviation. `X` maps a matrix to a scalar **or a vector** (e.g. [`motifs`](@ref)
+or [`motif_fluxes`](@ref)); with `weighted=true` `X` receives the dense weight matrix, otherwise the
+binary adjacency matrix.
+
+Returns a `NamedTuple` `(obs = X(G_obs), μ = ensemble mean, σ = ensemble std, z = (obs - μ)/σ)`.
+
+This mirrors the numerical procedure used in Di Vece et al. (2023) and the NuMeTriS package
+(`numerical_triadic_zscores`, default 500-sample ensembles), which is required when no analytical
+expectation or standard deviation is available (e.g. for triadic fluxes and intensities) or when the
+metric's ensemble distribution is not normal.
+
+See also [`motif_zscores`](@ref), [`flux_zscores`](@ref).
+
+# Examples
+```jldoctest
+julia> model = RBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(rhesus_macaques()));
+
+julia> solve_model!(model);
+
+julia> res = ensemble_zscores(model, motifs, n=100, rng=MaxEntropyGraphs.Xoshiro(1));
+
+julia> length(res.z)
+13
+```
+"""
+function ensemble_zscores(m::AbstractMaxEntropyModel, X::Function; n::Int=500, rng::AbstractRNG=default_rng(), weighted::Bool=false)
+    isnothing(m.G) && throw(ArgumentError("The model must hold an observed graph (m.G) to compute z-scores"))
+    n > 1 || throw(ArgumentError("The ensemble size must be larger than one"))
+    # observed value
+    obs = weighted ? X(_weight_matrix(m.G)) : X(_binary_matrix(m.G))
+    # ensemble values
+    sample = rand(m, n; rng=rng)
+    vals = [weighted ? X(_weight_matrix(g)) : X(_binary_matrix(g)) for g in sample]
+    # elementwise mean / std / z (works for scalar- and vector-valued metrics alike)
+    μ = sum(vals) ./ n
+    σ = sqrt.(sum(v -> (v .- μ) .^ 2, vals) ./ (n - 1))
+    z = (obs .- μ) ./ σ
+    return (obs = obs, μ = μ, σ = σ, z = z)
+end
+
+"""
+    motif_zscores(m::AbstractMaxEntropyModel; n::Int=500, rng=Random.default_rng())
+
+Sampling-based z-scores of the 13 binary triadic motif counts under the model `m`
+(`ensemble_zscores(m, motifs; ...)`). For the [`RBCM`](@ref), analytical z-scores are also available
+through the exact `motifs(m)` expectations and `σₓ(m, Mk)`.
+"""
+motif_zscores(m::AbstractMaxEntropyModel; n::Int=500, rng::AbstractRNG=default_rng()) = ensemble_zscores(m, motifs; n=n, rng=rng)
+
+"""
+    flux_zscores(m::AbstractMaxEntropyModel; n::Int=500, rng=Random.default_rng())
+
+Sampling-based z-scores of the 13 triadic fluxes under the (weighted) model `m`
+(`ensemble_zscores(m, motif_fluxes; weighted=true, ...)`).
+"""
+flux_zscores(m::AbstractMaxEntropyModel; n::Int=500, rng::AbstractRNG=default_rng()) = ensemble_zscores(m, motif_fluxes; n=n, rng=rng, weighted=true)
 
 function M13(G::T) where T <: Graphs.AbstractGraph
     # check if the graph is directed
@@ -1794,9 +2772,280 @@ function V_PB_parameters(m::BiCM, i::Int, j::Int; layer::Symbol=:bottom, precomp
 end
 
 
+# falling-factorial form of binomial(u, n), valid for real u (needed for expected/plug-in values).
+# Delegates to Base's generic binomial(x::Number, k::Integer), which divides term-by-term and thus
+# avoids the OverflowError that factorial(n) throws for n > 20.
+_binomial_poly(u::T, n::Int) where {T<:Real} = binomial(float(u), n)
+
+# harmonic-number difference H_u - H_{u-n} = Σ_{i=u-n+1}^{u} 1/i (zero when u < n), cf. Saracco et al. (2015), SI Eq. III.7
+_harmonic_diff(u::Int, n::Int) = u < n ? 0.0 : sum(1/i for i in (u-n+1):u)
 
 """
-    project(m::BiCM;   α::Float64=0.05, layer::Symbol=:bottom, precomputed::Bool=true, 
+    _Vn_aggregation_classes(m::BiCM, layer::Symbol)
+
+Internal helper for the Vn/Λn motif family. `Vn`-motifs between nodes of `layer` aggregate over the
+degrees of the *opposite* layer: return `(own_r, own_f, own_d, opp_r, opp_f)` where `own_r/own_f/own_d`
+are the reduced parameters, frequencies and reduced degrees of the aggregated (opposite) layer and
+`opp_r/opp_f` those generating the connection probabilities (one per node of `layer`).
+"""
+function _Vn_aggregation_classes(m::BiCM, layer::Symbol)
+    if layer ∈ [:bottom; :⊥]
+        return m.yᵣ, m.f⊤, m.d⊤ᵣ, m.xᵣ, m.f⊥
+    elseif layer ∈ [:top; :⊤]
+        return m.xᵣ, m.f⊥, m.d⊥ᵣ, m.yᵣ, m.f⊤
+    else
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+    end
+end
+
+"""
+    _Vn_exact_moments(m::BiCM, n::Int; layer::Symbol=:bottom)
+
+Internal helper computing the **exact** mean and variance of ``N_{Vn} = \\sum_α \\binom{U_α}{n}`` under
+the BiCM, where the sum runs over the nodes `α` of the layer opposite to `layer` and
+``U_α = \\sum_k a_{kα}`` is the (random) degree of `α`. Each `U_α` follows a Poisson-binomial
+distribution (the biadjacency entries are independent Bernoulli variables) and the `U_α` of distinct
+nodes involve disjoint entry sets, hence are independent:
+
+``⟨N_{Vn}⟩ = \\sum_α ⟨\\binom{U_α}{n}⟩, \\qquad Var[N_{Vn}] = \\sum_α Var[\\binom{U_α}{n}]``
+
+The Poisson-binomial pmf of each `U_α` is obtained by direct convolution over the connection
+probabilities, at cost `O(n_{opp}^2)` per unique degree class.
+"""
+function _Vn_exact_moments(m::BiCM, n::Int; layer::Symbol=:bottom)
+    own_r, own_f, _, opp_r, opp_f = _Vn_aggregation_classes(m, layer)
+    N = precision(m)
+    nopp = sum(opp_f)
+    μ, v = zero(N), zero(N)
+    pmf = Vector{N}(undef, nopp + 1)
+    for β in eachindex(own_r)
+        # Poisson-binomial pmf of U_β by convolution over all opposite-layer nodes
+        fill!(pmf, zero(N))
+        pmf[1] = one(N)
+        cnt = 0
+        for k in eachindex(opp_r)
+            p = N(f_BiCM(opp_r[k] * own_r[β]))
+            q = one(N) - p
+            for _ in 1:opp_f[k]
+                cnt += 1
+                @inbounds for u in cnt:-1:1
+                    pmf[u+1] = pmf[u+1] * q + pmf[u] * p
+                end
+                @inbounds pmf[1] *= q
+            end
+        end
+        # moments of binomial(U_β, n)
+        m1, m2 = zero(N), zero(N)
+        for u in n:nopp
+            g = _binomial_poly(N(u), n)
+            @inbounds w = pmf[u+1]
+            m1 += w * g
+            m2 += w * g * g
+        end
+        μ += own_f[β] * m1
+        v += own_f[β] * (m2 - m1^2)
+    end
+    return μ, v
+end
+
+"""
+    _Vn_observed(m::BiCM, n::Int, layer::Symbol)
+
+Internal helper: the observed count ``N_{Vn} = \\sum_α \\binom{u_α}{n}`` computed from the observed
+degree sequence of the aggregated (opposite) layer stored in the model (no graph needed).
+"""
+function _Vn_observed(m::BiCM, n::Int, layer::Symbol)
+    _, own_f, own_d, _, _ = _Vn_aggregation_classes(m, layer)
+    N = precision(m)
+    return sum(own_f[β] * (own_d[β] < n ? zero(N) : N(_binomial_poly(N(own_d[β]), n))) for β in eachindex(own_d))
+end
+
+"""
+    _Vn_delta_inputs(m::BiCM, layer::Symbol)
+
+Internal helper for the closed-form (`method=:delta`) Vn machinery: return `(uᵣ, fᵣ, s2ᵣ)` with the
+reduced observed degrees `uᵣ` of the aggregated (opposite) layer, their frequencies `fᵣ` and the
+variance of each random degree ``σ^2[U_α] = \\sum_k p_{kα}(1 - p_{kα})`` per reduced class.
+"""
+function _Vn_delta_inputs(m::BiCM, layer::Symbol)
+    own_r, own_f, own_d, opp_r, opp_f = _Vn_aggregation_classes(m, layer)
+    N = precision(m)
+    s2 = zeros(N, length(own_r))
+    for β in eachindex(own_r)
+        acc = zero(N)
+        for k in eachindex(opp_r)
+            p = N(f_BiCM(opp_r[k] * own_r[β]))
+            acc += opp_f[k] * p * (1 - p)
+        end
+        s2[β] = acc
+    end
+    return own_d, own_f, s2
+end
+
+"""
+    Vn_motifs(A::T, n::Int; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
+
+Count the total number of `Vn`-motifs (`n`-fold co-occurrences, i.e. `n` nodes of a layer sharing a
+common neighbour in the other layer) in the biadjacency matrix `A` for one of its layers:
+``N_{Vn} = \\sum_α \\binom{u_α}{n}`` where the `u_α` are the degrees of the *opposite* layer.
+For `n = 2` this is the V-motif count ([`V_motifs`](@ref)); following Saracco et al. (2015), the
+family for the bottom (top) layer is also known as the `Vn` (`Λn`) family.
+
+# Arguments
+- `n`: motif order (`n ≥ 2`).
+- `layer`: the layer between whose nodes the co-occurrences are counted (`:bottom` or `:top`).
+- `skipchecks`: if true, skip the dimension check on `A`.
+
+# Examples
+```jldoctest Vn_motifs_bipartite_matrix
+julia> A = [1 1; 1 1; 1 0];
+
+julia> Vn_motifs(A, 2, layer=:bottom)
+4.0
+
+julia> Vn_motifs(A, 3, layer=:bottom)
+1.0
+
+```
+"""
+function Vn_motifs(A::T, n::Int; layer::Symbol=:bottom, skipchecks::Bool=false) where {T<:AbstractMatrix}
+    n ≥ 2 || throw(ArgumentError("The motif order `n` must be at least 2"))
+    if !skipchecks && isequal(size(A)...)
+        @warn "The matrix `A` is square, make sure it is a biadjacency matrix."
+    end
+    if layer ∈ [:bottom; :⊥]
+        u = vec(sum(A, dims=1))     # degrees of the ⊤ layer (columns)
+    elseif layer ∈ [:top; :⊤]
+        u = vec(sum(A, dims=2))     # degrees of the ⊥ layer (rows)
+    else
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] for the bottom layer or [:top, :⊤] for the top layer."))
+    end
+    return sum(uα < n ? zero(float(eltype(A))) : _binomial_poly(float(uα), n) for uα in u)
+end
+
+"""
+    Vn_motifs(m::BiCM, n::Int; layer::Symbol=:bottom, method::Symbol=:exact)
+
+Compute the expected total number of `Vn`-motifs ``⟨N_{Vn}⟩`` between the nodes of `layer` under the
+BiCM model `m` (cf. [`Vn_motifs(::AbstractMatrix, ::Int)`](@ref) for the definition).
+
+# Arguments
+- `n`: motif order (`n ≥ 2`).
+- `layer`: the layer between whose nodes the co-occurrences are counted (`:bottom` or `:top`).
+- `method`:
+    - `:exact` (default): exact expectation from the Poisson-binomial distribution of the random
+      opposite-layer degrees (see [`_Vn_exact_moments`](@ref MaxEntropyGraphs._Vn_exact_moments)); any `n ≥ 2`.
+    - `:delta`: closed-form Taylor expansion around the observed degrees (Saracco et al. (2015), SI
+      Eqs. III.9-III.13); only `n ∈ {2, 3, 4}` (exact for `n = 2`). Accurate when the opposite-layer
+      degrees are large compared to `n`; for sparse layers prefer `:exact`.
+
+# Examples
+```jldoctest Vn_motifs_bicm
+julia> model = BiCM(corporateclub());
+
+julia> solve_model!(model);
+
+julia> Vn_motifs(model, 2, layer=:bottom) ≈ V_motifs(model, layer=:bottom, precomputed=false)
+true
+
+```
+"""
+function Vn_motifs(m::BiCM, n::Int; layer::Symbol=:bottom, method::Symbol=:exact)
+    n ≥ 2 || throw(ArgumentError("The motif order `n` must be at least 2"))
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The likelihood maximising parameters must be computed for `m` first, see `solve_model!`"))
+    if method == :exact
+        return _Vn_exact_moments(m, n; layer=layer)[1]
+    elseif method == :delta
+        uᵣ, fᵣ, s2 = _Vn_delta_inputs(m, layer)
+        obs = _Vn_observed(m, n, layer)
+        if n == 2
+            shift = sum(fᵣ[β] * s2[β] / 2 for β in eachindex(uᵣ))
+        elseif n == 3
+            shift = sum(fᵣ[β] * s2[β] * (uᵣ[β] - 1) / 2 for β in eachindex(uᵣ))
+        elseif n == 4
+            shift = sum(fᵣ[β] * (3s2[β]^2 + s2[β] * (6uᵣ[β]^2 - 18uᵣ[β] + 11)) / 24 for β in eachindex(uᵣ))
+        else
+            throw(ArgumentError("The closed-form (:delta) expectation is only available for n ∈ {2, 3, 4}, use method=:exact instead"))
+        end
+        return obs + shift
+    else
+        throw(ArgumentError("Invalid method, only :exact and :delta are accepted"))
+    end
+end
+
+"""
+    Vn_sigma(m::BiCM, n::Int; layer::Symbol=:bottom, method::Symbol=:exact)
+
+Compute the standard deviation ``σ[N_{Vn}]`` of the total number of `Vn`-motifs between the nodes of
+`layer` under the BiCM model `m`.
+
+# Arguments
+- `n`: motif order (`n ≥ 2`).
+- `layer`: the layer between whose nodes the co-occurrences are counted (`:bottom` or `:top`).
+- `method`:
+    - `:exact` (default): exact variance from the Poisson-binomial distribution of the random
+      opposite-layer degrees (independent across nodes, see
+      [`_Vn_exact_moments`](@ref MaxEntropyGraphs._Vn_exact_moments)); any `n ≥ 2`.
+    - `:delta`: first-order delta method around the observed degrees (Saracco et al. (2015), SI
+      Eqs. III.6-III.7): ``σ[N_{Vn}] = \\sqrt{\\sum_α [\\binom{u_α}{n}(H_{u_α} - H_{u_α-n})]^2 σ^2[U_α]}``.
+      Accurate when the opposite-layer degrees are large compared to `n`; it *underestimates* the
+      variance for sparse layers — prefer `:exact`.
+"""
+function Vn_sigma(m::BiCM, n::Int; layer::Symbol=:bottom, method::Symbol=:exact)
+    n ≥ 2 || throw(ArgumentError("The motif order `n` must be at least 2"))
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The likelihood maximising parameters must be computed for `m` first, see `solve_model!`"))
+    if method == :exact
+        return sqrt(_Vn_exact_moments(m, n; layer=layer)[2])
+    elseif method == :delta
+        uᵣ, fᵣ, s2 = _Vn_delta_inputs(m, layer)
+        N = precision(m)
+        acc = zero(N)
+        for β in eachindex(uᵣ)
+            uᵣ[β] < n && continue
+            deriv = _binomial_poly(N(uᵣ[β]), n) * _harmonic_diff(uᵣ[β], n)
+            acc += fᵣ[β] * deriv^2 * s2[β]
+        end
+        return sqrt(acc)
+    else
+        throw(ArgumentError("Invalid method, only :exact and :delta are accepted"))
+    end
+end
+
+"""
+    Vn_zscore(m::BiCM, n::Int; layer::Symbol=:bottom, method::Symbol=:exact)
+
+Compute the z-score of the observed total number of `Vn`-motifs between the nodes of `layer` with
+respect to the BiCM model `m`:
+``z = (N_{Vn}^{obs} - ⟨N_{Vn}⟩)/σ[N_{Vn}]``.
+The observed count is obtained from the observed degree sequence stored in the model (no graph needed).
+
+!!! note
+    Because the constrained degrees fully determine the observed count, these z-scores have a definite
+    sign (cf. Saracco et al. (2015), SI): under the BiCM, ``⟨N_{Vn}⟩ ≥ N_{Vn}^{obs}``. The associated
+    significance tests are one-sided.
+
+# Arguments
+- `n`: motif order (`n ≥ 2`).
+- `layer`: the layer between whose nodes the co-occurrences are counted (`:bottom` or `:top`).
+- `method`: `:exact` (default, any `n ≥ 2`) or `:delta` (`n ∈ {2, 3, 4}`); see
+  [`Vn_motifs`](@ref) and [`Vn_sigma`](@ref).
+"""
+function Vn_zscore(m::BiCM, n::Int; layer::Symbol=:bottom, method::Symbol=:exact)
+    n ≥ 2 || throw(ArgumentError("The motif order `n` must be at least 2"))
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The likelihood maximising parameters must be computed for `m` first, see `solve_model!`"))
+    obs = _Vn_observed(m, n, layer)
+    if method == :exact
+        # single pass: the Poisson-binomial convolution yields mean and variance together
+        μ, v = _Vn_exact_moments(m, n; layer=layer)
+        return (obs - μ) / sqrt(v)
+    else
+        return (obs - Vn_motifs(m, n; layer=layer, method=method)) / Vn_sigma(m, n; layer=layer, method=method)
+    end
+end
+
+
+"""
+    project(m::BiCM;   α::Float64=0.05, layer::Symbol=:bottom, precomputed::Bool=true,
                         distribution::Symbol=:Poisson, adjustment::PValueAdjustment=BenjaminiHochberg(),
                             multithreaded::Bool=false)
 

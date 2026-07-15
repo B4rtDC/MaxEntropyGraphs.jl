@@ -982,6 +982,14 @@ end
 Compute the standard deviation of metric `X` for the UBCM model `m`. 
     
 This requires that both the expected values (m.Ĝ) and standard deviations (m.σ) are computed for `m`.
+
+The computation follows the delta method over ordered node pairs (Squartini & Garlaschelli, 2011, Eq. B.16):
+
+``σ^{2}[X] = \\sum_{i,j} \\left[ \\left( σ[a_{ij}] \\frac{∂X}{∂a_{ij}} \\right)^{2} + \\mathrm{Cov}(a_{ij}, a_{ji}) \\frac{∂X}{∂a_{ij}} \\frac{∂X}{∂a_{ji}} \\right]``
+
+For an undirected network ``a_{ij}`` and ``a_{ji}`` denote the same random variable, so
+``\\mathrm{Cov}(a_{ij}, a_{ji}) = σ^{2}[a_{ij}]``. The covariance cross-term makes the result
+independent of whether `X` is written using one or both triangles of the adjacency matrix.
 """
 function σₓ(m::UBCM, X::Function; gradient_method::Symbol=:ReverseDiff)
     # checks
@@ -999,6 +1007,7 @@ function σₓ(m::UBCM, X::Function; gradient_method::Symbol=:ReverseDiff)
         throw(ArgumentError("Invalid gradient method, only :ForwardDiff, :ReverseDiff and :Zygote are accepted"))
     end
 
-    # return value
-    return sqrt( sum((m.σ .* ∇X) .^ 2) )
+    # delta method over ordered pairs; a_ij ≡ a_ji, so Cov(a_ij, a_ji) = σ²[a_ij]:
+    # σ²[X] = Σ σ²∇² + Σ σ²∇∇ᵀ = Σ σ² ∇ (∇ + ∇ᵀ), fused into a single broadcast
+    return sqrt( sum(m.σ .^ 2 .* ∇X .* (∇X .+ transpose(∇X))) )
 end

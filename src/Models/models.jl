@@ -8,8 +8,7 @@
 # solver function constants
 const optimization_methods = Dict(  :LBFGS      => OptimizationOptimJL.LBFGS(),
                                     :BFGS       => OptimizationOptimJL.BFGS(),
-                                    :Newton     => OptimizationOptimJL.Newton(),
-                                    :NelderMead => OptimizationOptimJL.NelderMead())
+                                    :Newton     => OptimizationOptimJL.Newton())
 
 const AD_methods = Dict(:AutoZygote         => Optimization.AutoZygote(),
                         :AutoForwardDiff    => Optimization.AutoForwardDiff(),
@@ -54,4 +53,21 @@ for low-precision (`Float32`/`Float16`) solves. Its derivative is the logistic s
 `1 / (1 + exp(-x))`, matching the analytical gradients used by the models.
 """
 @inline softplus(x::T) where {T<:Real} = max(x, zero(T)) + log1p(exp(-abs(x)))
+
+
+"""
+    log1pexpsum(a, b, c)
+
+Numerically stable evaluation of `log(1 + exp(a) + exp(b) + exp(c))` (a four-term log-sum-exp with an
+implicit unit term). This is the analog of `softplus` for the RBCM's dyadic normaliser:
+``\\ln D_{ij} = \\ln(1 + x_iy_j + x_jy_i + z_iz_j) =`` `log1pexpsum(-(αᵢ+βⱼ), -(αⱼ+βᵢ), -(γᵢ+γⱼ))`.
+
+Computed by factoring out `m = max(0, a, b, c)`, which avoids overflow for large positive arguments and
+degrades gracefully for `-Inf` arguments (channels pinned at their analytical optimum contribute an exact
+zero: `exp(-Inf) = 0`, and `m ≥ 0` remains finite).
+"""
+@inline function log1pexpsum(a::T, b::T, c::T) where {T<:Real}
+    m = max(zero(T), a, b, c)
+    return m + log(exp(-m) + exp(a - m) + exp(b - m) + exp(c - m))
+end
 
