@@ -1,9 +1,18 @@
 # Changelog
 
-## Unreleased
+## v0.6.0
 
 Homogenized expectation & variance machinery across all eight models
-(Squartini & Garlaschelli 2011, App. A.3/A.4/B; Saracco et al. 2015 SI for the BiCM).
+(Squartini & Garlaschelli 2011, App. A.3/A.4/B; Saracco et al. 2015 SI for the BiCM),
+together with the reciprocity-aware directed models and triadic statistics detailed below.
+
+### Breaking
+- **`σₓ` gained the within-dyad covariance term for undirected models** (UBCM, and the binary layer of
+  UECM/CReM), so the variances and z-scores it returns for those models change (they were previously low
+  by up to `√2`). This behavioural change — detailed under *Fixed* — is what warrants the minor bump; a
+  `0.x` minor increment is a breaking release under Julia's SemVer convention.
+- **The `:NelderMead` solver option was removed.** `solve_model!(m, method=:NelderMead)` now raises an
+  `ArgumentError`; use the fixed-point default or a gradient-based method (`BFGS`/`LBFGS`/`Newton`).
 
 ### Fixed
 - **Undirected delta-method `σₓ` was missing the within-dyad covariance term** (UBCM, and the binary
