@@ -191,12 +191,23 @@ profiting from the reduced parameter space; for the larger weighted problems the
 gradient-based alternatives are slower than `NuMeTriS`'s compiled solver, but
 the fixed point remains the fastest option overall (\autoref{fig:crwcm}). The
 comparison again doubles as a cross-package validation: both implementations
-converge to the same maximum-likelihood solution (identical binary Lagrange
-multipliers to $\sim\!10^{-5}$, with each implementation reproducing its
-constraint sequences at its own $10^{-8}$ solver tolerance), and, after
-aligning the deterministic counting conventions of the two packages, the
-empirical triadic motif counts agree exactly and the triadic fluxes to machine
-precision. Beyond parity, `MaxEntropyGraphs.jl` evaluates the *exact* expected
+converge to the same maximum-likelihood solution. The binary Lagrange multipliers
+themselves are not comparable across the two packages, since they are defined only
+up to a global gauge (rescaling the out- and in-fitnesses by a reciprocal constant
+leaves every dyadic probability, and hence the likelihood, unchanged) and the two
+solvers settle in different gauges. The gauge-invariant dyadic connection
+probabilities, which are what the models actually predict, agree to
+$\sim\!10^{-8}$ on the *rhesus macaques* network. On the constraints, `NuMeTriS`
+reproduces its imposed sequences to $\sim\!10^{-8}$, in line with a solver
+tolerance that is set on the constraint residual itself, whereas
+`MaxEntropyGraphs.jl`'s default fixed-point tolerance is set on the parameter
+increment, so at its default of $10^{-8}$ it reproduces the binary sequences to
+$\sim\!10^{-7}$ but the weighted sequences of the two-step models only to
+$\sim\!10^{-5}$. Tightening that tolerance to $10^{-12}$ brings all sequences to
+$\sim\!10^{-9}$, confirming that the residual reflects the stopping rule rather
+than a different optimum. After aligning the deterministic counting conventions of
+the two packages, the empirical triadic motif counts agree exactly and the triadic
+fluxes to machine precision. Beyond parity, `MaxEntropyGraphs.jl` evaluates the *exact* expected
 motif and flux spectra under these models from the dyadic probabilities (within
 a dyad the two link directions are correlated, so these expectations cannot be
 formed from the expected adjacency matrix alone) and propagates the

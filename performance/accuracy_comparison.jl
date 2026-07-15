@@ -110,6 +110,68 @@ function constraint_violation(model::CRWCM)
 end
 
 """
+    dyadic_probabilities(model) -> Dict{String,Matrix{Float64}}
+
+The model's dyadic connection probability matrices, keyed exactly as the NuMeTriS dumps key them.
+
+These are the right object for a cross-package comparison. The fitted Lagrange multipliers are **not**:
+the binary sector carries an exact one-parameter gauge freedom (`αᵢ → αᵢ + c`, `βⱼ → βⱼ - c` rescales
+the fitnesses by a reciprocal constant and leaves `xᵢyⱼ`, `xⱼyᵢ` and `zᵢzⱼ` all unchanged), so it leaves
+every dyadic probability, and the whole likelihood, invariant. The two packages therefore settle in
+different gauges and their raw parameters differ by an arbitrary offset. The dyadic probabilities are
+what the models actually predict, and they are gauge-invariant.
+"""
+function dyadic_probabilities(m::RBCM)
+    P, R, _ = MaxEntropyGraphs._dyadic_probability_matrices(m)
+    return Dict("p_nonrec" => Matrix{Float64}(P), "p_rec" => Matrix{Float64}(R))
+end
+
+function dyadic_probabilities(m::DCReM)
+    return Dict("p_link" => Matrix{Float64}(MaxEntropyGraphs.Ĝ(m)))
+end
+
+# The CRWCM's binary layer is an internally solved RBCM, but it stores its fitnesses rather than a
+# nested model, so the dyadic matrices are rebuilt here from the same expression the model uses
+# (`_CRWCM_f⭢` / `_CRWCM_f⭤`), which is also NuMeTriS's.
+function dyadic_probabilities(m::CRWCM)
+    x = m.xᵣ[m.dᵣ_ind]; y = m.yᵣ[m.dᵣ_ind]; z = m.zᵣ[m.dᵣ_ind]
+    n = length(x)
+    P = zeros(Float64, n, n)
+    R = zeros(Float64, n, n)
+    for i = 1:n, j = 1:n
+        i == j && continue
+        D = 1 + x[i]*y[j] + x[j]*y[i] + z[i]*z[j]
+        P[i, j] = x[i]*y[j] / D
+        R[i, j] = z[i]*z[j] / D
+    end
+    return Dict("p_nonrec" => P, "p_rec" => R)
+end
+
+"""
+    dyadic_agreement(model, dump) -> Union{Nothing, Float64}
+
+Maximum absolute difference between this model's dyadic probabilities and the NuMeTriS dump's, over
+every shared matrix. Returns `nothing` when the dump carries no probability matrices (they are only
+written for the small networks). The dump stores rows as nested lists, so `d[key][i][j]` is entry
+`(i, j)`; this avoids relying on a flattening order matching between NumPy and Julia.
+"""
+function dyadic_agreement(model, dump)
+    dump === nothing && return nothing
+    ours = dyadic_probabilities(model)
+    Δmax = nothing
+    for (key, P) in ours
+        haskey(dump, key) || continue
+        rows = dump[key]
+        (length(rows) == size(P, 1)) || continue
+        for i in axes(P, 1), j in axes(P, 2)
+            δ = abs(P[i, j] - Float64(rows[i][j]))
+            Δmax = Δmax === nothing ? δ : max(Δmax, δ)
+        end
+    end
+    return Δmax
+end
+
+"""
     nemtropy_violation(name) -> Union{Nothing, NamedTuple}
 
 Load a NEMtropy solution dump (`accuracy/<name>_nemtropy.json`, written by the generated Python
@@ -234,6 +296,29 @@ for (name, builder) in reference_models
     # check of the EMPIRICAL triadic statistics — the observed motif counts (and fluxes, for the
     # weighted models) are convention-sensitive, so agreement validates both implementations.
     nmt = numetris_dump(name)
+    if nmt !== nothing && model isa Union{RBCM,DCReM,CRWCM}
+        # The two "1e-8" tolerances are NOT the same test, so the raw violations above are not a like
+        # for like accuracy comparison. NuMeTriS's `tol` bounds the jacobian infinity norm, which for
+        # these models IS the constraint residual, so its violation cannot exceed 1e-8 by construction.
+        # `ftol` here bounds the Anderson fixed-point increment ‖FP(θ) - θ‖∞ in PARAMETER space, and the
+        # jacobian factor carrying that into constraint space is ~5e3 on the weighted layers of these
+        # graphs. Re-solving at a tolerance tight enough to make the constraint residuals comparable
+        # shows that the two packages do agree on the optimum, so record that here rather than leaving
+        # the default-tolerance numbers to be misread as an accuracy deficit.
+        tight = builder()
+        solve_model!(tight, ftol = 1e-12)
+        tmax, tmean = constraint_violation(tight)
+        entry["julia_tight_ftol"] = 1e-12
+        entry["julia_tight_max_violation"] = tmax
+        entry["julia_tight_mean_violation"] = tmean
+
+        # Gauge-invariant cross-package agreement on what the models actually predict.
+        dagree = dyadic_agreement(tight, nmt)
+        if dagree !== nothing
+            entry["numetris_dyadic_max_absdiff"] = dagree
+            @info "$(name): dyadic probability agreement vs NuMeTriS = $(dagree) | MaxEntropyGraphs max violation at ftol=1e-12 = $(tmax)"
+        end
+    end
     if nmt !== nothing
         entry["numetris_max_violation"] = nmt["max_violation"]
         entry["numetris_mean_violation"] = nmt["mean_violation"]

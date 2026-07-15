@@ -1322,10 +1322,23 @@ try:
             "Nm_emp": [float(v) for v in np.asarray(G.Nm_emp).ravel()]}
     if hasattr(G, 'Fm_emp'):
         dump["Fm_emp"] = [float(v) for v in np.asarray(G.Fm_emp).ravel()]
+    # Gauge-invariant dyadic connection probabilities. The fitted multipliers are defined only up to
+    # a global gauge (scaling the out- and in-fitnesses by a reciprocal constant leaves every dyadic
+    # probability, and hence the likelihood, unchanged), so the two packages settle in different
+    # gauges and their raw parameters are NOT comparable. These matrices are, so they are what the
+    # cross-package agreement is measured on. Dumped as nested lists to keep the row/column order
+    # explicit, and only for the small networks, which is all the Julia comparison reads.
+    if n <= 64:
+        if MODEL in ('RBCM', 'RBCM+CRWCM'):
+            dump["p_nonrec"] = Pf.tolist()
+            dump["p_rec"] = Rf.tolist()
+        elif MODEL == 'DBCM+CReMa':
+            dump["p_link"] = F.tolist()
     with open(os.path.join(_acc, '{{scriptname}}_numetris.json'), 'w') as f:
         json.dump(dump, f)
-except Exception:
-    pass
+except Exception as _e:
+    # Never fail the benchmark over the accuracy dump, but never hide the miss either.
+    print("WARNING: could not dump NuMeTriS accuracy data: " + repr(_e))
 
 ## ---------------------- ##
 ## Functions to benchmark ##
