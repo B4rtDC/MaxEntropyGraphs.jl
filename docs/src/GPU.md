@@ -1,4 +1,4 @@
-# Performance, scalability & GPU
+# Performance and scalability
 
 ## Memory: the analysis is matrix-free
 
