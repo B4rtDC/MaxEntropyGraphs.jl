@@ -432,17 +432,40 @@ try:
     os.makedirs(_acc, exist_ok=True)
     _dump = {}
     for _key, _cands in (("rows_deg", ("rows_deg",)),
-                         ("cols_deg", ("cols_deg",)),
-                         ("expected_dseq_rows", ("avg_rows_deg", "expected_rows_deg", "expected_dseq_rows")),
-                         ("expected_dseq_cols", ("avg_cols_deg", "expected_cols_deg", "expected_dseq_cols"))):
+                         ("cols_deg", ("cols_deg",))):
         for _a in _cands:
             if hasattr(M, _a):
                 _dump[_key] = [float(_v) for _v in getattr(M, _a)]
                 break
+    # NEMtropy 3.0.3 exposes no expected-degree attribute at all: the expected biadjacency
+    # matrix is the only route. Earlier revisions probed avg_rows_deg / expected_rows_deg /
+    # expected_dseq_rows, none of which exist, so the dump silently lost both expected
+    # sequences and the Julia side then skipped the BiCM comparison entirely.
+    _avg = None
+    if hasattr(M, "get_bicm_matrix"):
+        _avg = M.get_bicm_matrix()
+    elif getattr(M, "avg_mat", None) is not None:
+        _avg = M.avg_mat
+    if _avg is not None:
+        _avg = np.asarray(_avg, dtype=float)
+        _dump["expected_dseq_rows"] = [float(_v) for _v in _avg.sum(axis=1)]
+        _dump["expected_dseq_cols"] = [float(_v) for _v in _avg.sum(axis=0)]
+    # Also record the quasi-Newton solution. The reported bipartite accuracy comparison is scoped to
+    # that solver, so the harness has to produce the very pairing that is quoted, not just the
+    # fixed-point one. A separate object is used so the benchmarked M is left untouched.
+    _Mq = BipartiteGraph(edgelist=EDGE_LIST)
+    _Mq.solve_tool(method="quasinewton", initial_guess="degrees", tol=1e-8, eps=1e-8, max_steps=1000)
+    _avgq = _Mq.get_bicm_matrix() if hasattr(_Mq, "get_bicm_matrix") else None
+    if _avgq is not None:
+        _avgq = np.asarray(_avgq, dtype=float)
+        _dump["expected_dseq_rows_quasinewton"] = [float(_v) for _v in _avgq.sum(axis=1)]
+        _dump["expected_dseq_cols_quasinewton"] = [float(_v) for _v in _avgq.sum(axis=0)]
     with open(os.path.join(_acc, '{{scriptname}}_nemtropy.json'), 'w') as _f:
         json.dump(_dump, _f)
-except Exception:
-    pass
+except Exception as _e:
+    # Never fail the benchmark over the accuracy dump, but never hide the miss either:
+    # a bare `pass` here is precisely why the BiCM comparison went missing unnoticed.
+    print("WARNING: could not dump NEMtropy BiCM accuracy data: " + repr(_e))
 
 ## ---------------------- ##
 ## Functions to benchmark ##

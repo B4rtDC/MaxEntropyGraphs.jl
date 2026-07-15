@@ -149,14 +149,23 @@ three-node motif computation across a
 range of problem scales, using `BenchmarkTools.jl` [@chen2016benchmarktools] on
 the Julia side and `pytest-benchmark` on the Python side, with both
 implementations restricted to the same number of cores. `MaxEntropyGraphs.jl` is
-consistently and often substantially faster at model construction and at
-fixed-point parameter computation, with the gap widening as the number of
-distinct constraints grows (\autoref{fig:ubcm}, \autoref{fig:bicm}). For the
+consistently and often substantially faster at fixed-point parameter
+computation, with the gap widening as the number of distinct constraints grows
+(\autoref{fig:ubcm}, \autoref{fig:bicm}), and at model construction
+(\autoref{fig:crwcm}). For the
 gradient-based (quasi-Newton) solver it is faster on the binary configuration
-models; for the bipartite model it is somewhat slower, but converges to a
-markedly tighter solution, recovering the imposed degree sequence to within
-$\sim\!10^{-9}$ against `NEMtropy`'s $\sim\!10^{-7}$ (both under matched solver
-tolerances). Ensemble
+models. For the bipartite model it is somewhat slower, but returns a markedly
+more accurate solution: given identical solver settings (a $10^{-8}$ tolerance,
+at most 1000 iterations, and a degree-based initial guess), `MaxEntropyGraphs.jl`
+reproduces the imposed degree sequence to a maximum error of $\sim\!10^{-9}$ on
+all three bipartite benchmarks, while `NEMtropy`'s `quasinewton` routine stops
+between $\sim\!10^{-7}$ and $\sim\!10^{-6}$ away from it. The gap is not a
+tolerance mismatch. `MaxEntropyGraphs.jl` attains its requested gradient
+tolerance, whereas `NEMtropy`'s `quasinewton` terminates early on a line-search
+stall and does not improve under a tighter tolerance, a larger iteration budget,
+or a different initial guess. This concerns that routine specifically rather than
+the package as a whole, since `NEMtropy`'s `newton` routine converges to between
+$\sim\!10^{-12}$ and $\sim\!10^{-9}$ on the same networks. Ensemble
 sampling, which `MaxEntropyGraphs.jl` performs in memory as native graph objects,
 is orders of magnitude faster than `NEMtropy`'s disk-based sampler. For the
 analytical directed three-node motif spectrum, `MaxEntropyGraphs.jl` evaluates
@@ -202,13 +211,14 @@ functionality; blue indicates interaction with external packages. Arrows show
 possible directions of the workflow.\label{fig:schematic}](figures/schematic.pdf)
 
 ![Performance comparison between `NEMtropy` and `MaxEntropyGraphs.jl` for the
-UBCM model at different problem scales: model creation time (left) and median
-parameter-computation time (right) as a function of the number of unique
-constraints.\label{fig:ubcm}](figures/ubcm_benchmark.pdf)
+UBCM model: parameter-computation time for each of the three solvers (fixed
+point, quasi-Newton and Newton) at three problem scales, as a function of the
+number of unique constraints.\label{fig:ubcm}](figures/ubcm_benchmark.pdf)
 
 ![Performance comparison between `NEMtropy` and `MaxEntropyGraphs.jl` for the
-BiCM model at different problem scales, including the validated bipartite
-projection.\label{fig:bicm}](figures/bicm_benchmark.pdf)
+BiCM model: parameter-computation time for each of the three solvers (fixed
+point, quasi-Newton and Newton) at three problem scales, as a function of the
+number of unique constraints.\label{fig:bicm}](figures/bicm_benchmark.pdf)
 
 ![Performance comparison between `NuMeTriS` and `MaxEntropyGraphs.jl` for the
 CRWCM model (binary and weighted layers solved jointly) at different problem

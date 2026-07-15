@@ -117,7 +117,7 @@ scripts) and return its own max/mean constraint violation, or `nothing` if no du
 The dump is expected to contain the keys "expected_dseq" and "dseq" (and, for bipartite graphs,
 the "_rows"/"_cols" variants).
 """
-function nemtropy_violation(name::AbstractString)
+function nemtropy_violation(name::AbstractString; variant::AbstractString = "")
     f = joinpath(accuracypath, "$(name)_nemtropy.json")
     isfile(f) || return nothing
     d = JSON.parsefile(f)
@@ -126,8 +126,11 @@ function nemtropy_violation(name::AbstractString)
                          ("expected_sseq", "sseq"),               # UECM strength sequence
                          ("expected_dseq_rows", "rows_deg"),
                          ("expected_dseq_cols", "cols_deg"))
-        if haskey(d, ekey) && haskey(d, okey)
-            append!(Δall, abs.(Float64.(d[ekey]) .- Float64.(d[okey])))
+        # `variant` selects an alternative solver's dump (e.g. "_quasinewton"); the observed
+        # sequence it is compared against is the same either way.
+        ek = ekey * variant
+        if haskey(d, ek) && haskey(d, okey)
+            append!(Δall, abs.(Float64.(d[ek]) .- Float64.(d[okey])))
         end
     end
     isempty(Δall) && return nothing
@@ -191,6 +194,23 @@ for (name, builder) in reference_models
     if nv !== nothing
         entry["nemtropy_max_violation"] = nv.max
         entry["nemtropy_mean_violation"] = nv.mean
+    end
+
+    # Bipartite quasi-Newton pairing. The default solved above is the fixed point on both sides, but
+    # the reported bipartite accuracy result is scoped to the gradient-based solver, so solve that
+    # pairing explicitly here rather than leaving the quoted numbers unreproducible from this script.
+    if model isa BiCM
+        qmodel = builder()
+        solve_model!(qmodel, method = :BFGS, initial = :degrees, maxiters = 1000, g_tol = 1e-8)
+        qmax, qmean = constraint_violation(qmodel)
+        entry["julia_quasinewton_max_violation"] = qmax
+        entry["julia_quasinewton_mean_violation"] = qmean
+        nvq = nemtropy_violation(name; variant = "_quasinewton")
+        if nvq !== nothing
+            entry["nemtropy_quasinewton_max_violation"] = nvq.max
+            entry["nemtropy_quasinewton_mean_violation"] = nvq.mean
+            @info "$(name) [quasi-Newton]: MaxEntropyGraphs max = $(qmax) | NEMtropy max = $(nvq.max)"
+        end
     end
 
     # Motif cross-check (DBCM only): the accelerated expected 3-node motif spectrum must reproduce
