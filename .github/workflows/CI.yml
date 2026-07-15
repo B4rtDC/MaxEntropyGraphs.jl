@@ -7,6 +7,9 @@ on:
     branches:
       - main
     tags: ['*']
+  # Manual escape hatch: lets the docs be rebuilt/redeployed for a ref without pushing a commit.
+  # Note this only works for refs whose own CI.yml already carries this trigger.
+  workflow_dispatch:
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
