@@ -71,6 +71,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       JULIA_NUM_THREADS: '2'
+      # Skip the symbolic moment identities in THIS job only (they run everywhere else). Pinning
+      # Optimization to its 4.0.5 floor drags its SciML tree back too, resolving Symbolics 6.58
+      # instead of the 7.x used by every other job. The `ratzero` oracle in test/symbolics.jl treats
+      # "substitution did not fold to a Number" as "not zero", and Symbolics 6 does not fold the UECM
+      # generating function at t=0 — a false negative about the *oracle*, not the package: the
+      # identity holds (proven on Symbolics 7, Monte-Carlo-gated in validation/). Symbolics is a
+      # test-only dep that no user of this package resolves, so its transitive floor is out of scope
+      # here, exactly like the `skip` list above.
+      MEG_SKIP_SYMBOLIC: '1'
     strategy:
       fail-fast: false
       matrix:
