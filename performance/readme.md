@@ -35,8 +35,8 @@ our two-step `solve_model!`.
 
 ### Julia environment
 
-The Julia environment is described by `Project.toml` (pinned to the Julia 1.10 LTS baseline used
-for the published 0.5.0 results — see `../NOTES.md`). The harness `dev`s the *local* package so the
+The Julia environment is described by `Project.toml` (pinned to the Julia 1.10 LTS baseline, see
+`../NOTES.md`). The harness `dev`s the *local* package so the
 benchmarks test this checkout's code, not a registry release:
 
 ```bash
@@ -190,9 +190,10 @@ from the fitted parameters, which is valid because the reconstruction is gauge-i
 * **Threads.** Pin `JULIA_NUM_THREADS` and compare runs with the same value; the thread count is
   recorded in each result file.
 * **Python pins.** `nemtropy==3.0.3`, `numetris==0.1.1`, `numpy==1.26.4`, `numba==0.60.0`,
-  `scipy==1.14.0`, `networkx==3.3`, `bicm==3.3.0`, `pytest==8.2.2`, `pytest-benchmark==4.0.0`,
-  Python 3.12.4. `requirements.txt` is the authoritative list. Note `numpy` must stay below 2.0
-  (NEMtropy 3.0.3 still calls `np.infty`, which NumPy 2.0 removed).
+  `scipy==1.14.0`, `networkx==3.3`, `bicm==3.3.0`, `pytest==9.0.3`, `pytest-benchmark==5.2.3`,
+  Python 3.12. `requirements.txt` is the authoritative list. Note `numpy` must stay below 2.0
+  (NEMtropy 3.0.3 still calls `np.infty`, which NumPy 2.0 removed), and `matplotlib==3.9.0` has no
+  wheel for Python 3.13 or later, so stay on 3.12 (`benchmarks.sh` pins it via `uv venv --python 3.12`).
 
 ## Output layout
 

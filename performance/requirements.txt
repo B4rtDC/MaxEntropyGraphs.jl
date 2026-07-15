@@ -8,7 +8,7 @@
 #   . .venv/bin/activate        # Windows: .venv\Scripts\activate
 #   pip install -r requirements.txt
 #
-# These are the same package versions used for the published 0.5.0 results.
+# These are the package versions used for the published benchmark results.
 bicm==3.3.0
 matplotlib==3.9.0
 nemtropy==3.0.3
@@ -22,7 +22,9 @@ numba==0.60.0
 # NumPy 1.x is required (compatible with numba 0.60 and scipy 1.14).
 numpy==1.26.4
 powerlaw==1.5
-pytest==8.2.2
-pytest-benchmark==4.0.0
+# pytest 9.0.3 is the first release that fixes the predictable /tmp/pytest-of-{user} directory
+# handling (GHSA-6w46-j5rx-g56g); pytest-benchmark 5.x is the line that supports pytest 9.
+pytest==9.0.3
+pytest-benchmark==5.2.3
 scipy==1.14.0
 tqdm==4.66.4
