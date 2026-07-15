@@ -94,7 +94,7 @@ true
 ```
 
 !!! warning "Memory footprint"
-    `Ĝ`/`set_Ĝ!` and `σˣ`/`set_σ!` materialize dense ``n_{\bot} \times n_{\top}`` matrices, and `σₓ` requires both, so this analysis uses ``O(n_{\bot} n_{\top})`` memory. For large networks, prefer the sampling route to estimate variances (see [Performance, scalability & GPU](../GPU.md)).
+    `Ĝ`/`set_Ĝ!` and `σˣ`/`set_σ!` materialize dense ``n_{\bot} \times n_{\top}`` matrices, and `σₓ` requires both, so this analysis uses ``O(n_{\bot} n_{\top})`` memory. For large networks, prefer the sampling route to estimate variances (see [Performance and scalability](../performance.md)).
 
 ## Counting network motifs
 

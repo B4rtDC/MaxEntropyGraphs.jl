@@ -105,7 +105,7 @@ z_M13 = (M13(A) - M13(model)) / σₓ(model, M13)
 The reciprocated triangle count sits about two standard deviations above the DBCM expectation on this highly reciprocal network (``r \approx 0.76``). The DBCM does not constrain reciprocity, so reciprocity-driven patterns show up as deviations. The [`RBCM`](@ref MaxEntropyGraphs.RBCM) absorbs them (same metric, same network: ``z_{M13} \approx -0.28``).
 
 !!! warning "Memory footprint"
-    `Ĝ`/`set_Ĝ!` and `σˣ`/`set_σ!` materialize dense ``N \times N`` matrices, and `σₓ` requires both, so this analysis uses ``O(N^2)`` memory. For large networks, prefer the sampling route to estimate variances (see [Performance, scalability & GPU](../GPU.md)).
+    `Ĝ`/`set_Ĝ!` and `σˣ`/`set_σ!` materialize dense ``N \times N`` matrices, and `σₓ` requires both, so this analysis uses ``O(N^2)`` memory. For large networks, prefer the sampling route to estimate variances (see [Performance and scalability](../performance.md)).
 
 _References_
 

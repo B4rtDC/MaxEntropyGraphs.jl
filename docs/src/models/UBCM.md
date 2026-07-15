@@ -87,7 +87,7 @@ true
 ```
 
 !!! warning "Memory footprint"
-    `Ĝ`/`set_Ĝ!` and `σˣ`/`set_σ!` materialize dense ``N \times N`` matrices, and `σₓ` requires both, so this analysis uses ``O(N^2)`` memory. For large networks, prefer the sampling route to estimate variances (see [Performance, scalability & GPU](../GPU.md)).
+    `Ĝ`/`set_Ĝ!` and `σˣ`/`set_σ!` materialize dense ``N \times N`` matrices, and `σₓ` requires both, so this analysis uses ``O(N^2)`` memory. For large networks, prefer the sampling route to estimate variances (see [Performance and scalability](../performance.md)).
 
 ## Sampling the ensemble
 ```julia

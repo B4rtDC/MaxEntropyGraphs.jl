@@ -109,7 +109,7 @@ The reciprocated triangle count is fully consistent with the RBCM on this networ
     The delta-method `σₓ` includes the within-dyad covariance cross-term ``\mathrm{Cov}(a_{ij}, a_{ji}) \frac{\partial X}{\partial a_{ij}} \frac{\partial X}{\partial a_{ji}}`` in the error propagation (cf. the "Dyadic dependence" note above); distinct dyads remain independent.
 
 !!! warning "Memory footprint"
-    `Ĝ`/`set_Ĝ!` and `σˣ`/`set_σ!` materialize dense ``N \times N`` matrices, and `σₓ` requires both, so this analysis uses ``O(N^2)`` memory. For large networks, prefer the sampling route to estimate variances (see [Performance, scalability & GPU](../GPU.md)).
+    `Ĝ`/`set_Ĝ!` and `σˣ`/`set_σ!` materialize dense ``N \times N`` matrices, and `σₓ` requires both, so this analysis uses ``O(N^2)`` memory. For large networks, prefer the sampling route to estimate variances (see [Performance and scalability](../performance.md)).
 
 _References_
 
