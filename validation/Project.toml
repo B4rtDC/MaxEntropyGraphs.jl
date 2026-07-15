@@ -1,0 +1,4 @@
+[deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+MaxEntropyGraphs = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"
+Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
