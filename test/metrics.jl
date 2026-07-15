@@ -178,7 +178,201 @@
             @test_throws ArgumentError @eval begin $(motif_name)($(Gu)) end
             @test gcount == acount
         end
-    end    
+    end
+
+    @testset "reciprocity metrics" begin
+        # hand-built 4-node weighted digraph with known reciprocity structure:
+        # dyad (1,2) reciprocated (w(1→2)=2.5, w(2→1)=1.0), dyads (2,3) and (4,3) single-direction (w=3.0, w=4.0)
+        G = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedDiGraph(Int, Float64)
+        for _ in 1:4
+            MaxEntropyGraphs.Graphs.add_vertex!(G)
+        end
+        MaxEntropyGraphs.Graphs.add_edge!(G, 1, 2, 2.5)
+        MaxEntropyGraphs.Graphs.add_edge!(G, 2, 1, 1.0)
+        MaxEntropyGraphs.Graphs.add_edge!(G, 2, 3, 3.0)
+        MaxEntropyGraphs.Graphs.add_edge!(G, 4, 3, 4.0)
+        # weighted adjacency matrix in the W[i,j] = w(i→j) convention
+        W = [0.0 2.5 0.0 0.0;
+             1.0 0.0 3.0 0.0;
+             0.0 0.0 0.0 0.0;
+             0.0 0.0 4.0 0.0]
+        A = Int.(.!iszero.(W))
+
+        @testset "reciprocal degree sequences" begin
+            # known values
+            @test nonreciprocated_outdegree(A) == [0, 1, 0, 1]
+            @test nonreciprocated_indegree(A)  == [0, 0, 2, 0]
+            @test reciprocated_degree(A)       == [1, 1, 0, 0]
+            # graph ≡ matrix dispatch
+            @test nonreciprocated_outdegree(G) == nonreciprocated_outdegree(A)
+            @test nonreciprocated_indegree(G)  == nonreciprocated_indegree(A)
+            @test reciprocated_degree(G)       == reciprocated_degree(A)
+            # single node ≡ sequence
+            for f in (nonreciprocated_outdegree, nonreciprocated_indegree, reciprocated_degree)
+                @test f(A) == [f(A, i) for i in 1:4]
+                @test f(G) == [f(G, i) for i in 1:4]
+            end
+            # decomposition identities on a real network
+            Gm = MaxEntropyGraphs.maspalomas()
+            @test nonreciprocated_outdegree(Gm) .+ reciprocated_degree(Gm) == MaxEntropyGraphs.Graphs.outdegree(Gm)
+            @test nonreciprocated_indegree(Gm)  .+ reciprocated_degree(Gm) == MaxEntropyGraphs.Graphs.indegree(Gm)
+            Am = MaxEntropyGraphs.Graphs.adjacency_matrix(Gm)
+            @test nonreciprocated_outdegree(Gm) == nonreciprocated_outdegree(Am)
+            @test nonreciprocated_indegree(Gm)  == nonreciprocated_indegree(Am)
+            @test reciprocated_degree(Gm)       == reciprocated_degree(Am)
+            # errors
+            @test_throws DimensionMismatch nonreciprocated_outdegree(W[:, 1:end-1])
+            @test_throws ArgumentError nonreciprocated_outdegree(A, 5)
+            @test_throws ArgumentError nonreciprocated_outdegree(A, 0)
+            Gu = MaxEntropyGraphs.Graphs.smallgraph(:karate)
+            @test_throws ArgumentError nonreciprocated_outdegree(Gu)
+            @test_throws ArgumentError nonreciprocated_indegree(Gu, 1)
+            @test_throws ArgumentError reciprocated_degree(Gu)
+        end
+
+        @testset "reciprocal strength sequences" begin
+            # known values
+            @test nonreciprocated_outstrength(W) == [0.0, 3.0, 0.0, 4.0]
+            @test nonreciprocated_instrength(W)  == [0.0, 0.0, 7.0, 0.0]
+            @test reciprocated_outstrength(W)    == [2.5, 1.0, 0.0, 0.0]
+            @test reciprocated_instrength(W)     == [1.0, 2.5, 0.0, 0.0]
+            # graph ≡ matrix dispatch
+            @test nonreciprocated_outstrength(G) == nonreciprocated_outstrength(W)
+            @test nonreciprocated_instrength(G)  == nonreciprocated_instrength(W)
+            @test reciprocated_outstrength(G)    == reciprocated_outstrength(W)
+            @test reciprocated_instrength(G)     == reciprocated_instrength(W)
+            # single node ≡ sequence
+            for f in (nonreciprocated_outstrength, nonreciprocated_instrength, reciprocated_outstrength, reciprocated_instrength)
+                @test f(W) == [f(W, i) for i in 1:4]
+                @test f(G) == [f(G, i) for i in 1:4]
+            end
+            # decomposition identities on a real network
+            Gr = MaxEntropyGraphs.rhesus_macaques()
+            @test nonreciprocated_outstrength(Gr) .+ reciprocated_outstrength(Gr) ≈ MaxEntropyGraphs.outstrength(Gr)
+            @test nonreciprocated_instrength(Gr)  .+ reciprocated_instrength(Gr)  ≈ MaxEntropyGraphs.instrength(Gr)
+            Wr = Matrix(transpose(Gr.weights))
+            @test nonreciprocated_outstrength(Gr) == nonreciprocated_outstrength(Wr)
+            @test nonreciprocated_instrength(Gr)  == nonreciprocated_instrength(Wr)
+            @test reciprocated_outstrength(Gr)    == reciprocated_outstrength(Wr)
+            @test reciprocated_instrength(Gr)     == reciprocated_instrength(Wr)
+            # errors
+            @test_throws DimensionMismatch nonreciprocated_outstrength(W[:, 1:end-1])
+            @test_throws ArgumentError reciprocated_outstrength(W, 5)
+            Gu = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques())
+            @test_throws ArgumentError nonreciprocated_outstrength(Gu)
+            @test_throws ArgumentError reciprocated_instrength(Gu, 1)
+        end
+
+        @testset "triadic fluxes and intensities" begin
+            Gr = MaxEntropyGraphs.rhesus_macaques()
+            Wr = Matrix(transpose(Gr.weights))
+            # naive triple-loop reference for the fluxes (same proof pattern as metrics_acceleration.tex)
+            function ref_fluxes(Wf)
+                nf = size(Wf, 1)
+                Af = (!iszero).(Wf) .* 1.0
+                af(l, i, j) = l === :P ? Af[i,j]*(1-Af[j,i]) : l === :Q ? (1-Af[i,j])*Af[j,i] : l === :R ? Af[i,j]*Af[j,i] : (1-Af[i,j])*(1-Af[j,i])
+                wf(l, i, j) = l === :P ? Wf[i,j] : l === :Q ? Wf[j,i] : l === :R ? Wf[i,j]+Wf[j,i] : 0.0
+                resf = zeros(13)
+                for (k, s) in enumerate(MaxEntropyGraphs._motif_specs)
+                    for i in 1:nf, j in 1:nf, l in 1:nf
+                        (i == j || j == l || i == l) && continue
+                        ind = af(s[1],i,j) * af(s[2],j,l) * af(s[3],l,i)
+                        iszero(ind) && continue
+                        resf[k] += ind * (wf(s[1],i,j) + wf(s[2],j,l) + wf(s[3],l,i))
+                    end
+                end
+                return resf
+            end
+            @test motif_fluxes(Wr) ≈ ref_fluxes(Wr)
+            @test motif_fluxes(Gr) == motif_fluxes(Wr)
+            @test motif_flux(Wr, 13) == motif_fluxes(Wr)[13]
+            @test_throws ArgumentError motif_flux(Wr, 14)
+            @test_throws DimensionMismatch motif_fluxes(Wr[:, 1:end-1])
+            @test_throws ArgumentError motif_fluxes(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(Gr)) # undirected
+            # intensities: on a binary-weight network intensity == count of instances weighted by 1
+            Wb = Float64.((!iszero).(Wr))
+            @test motif_intensities(Wb) ≈ Float64.(motifs(Matrix(Wb)))
+            # intensities on the weighted network: nonzero exactly where the fluxes are
+            I = motif_intensities(Gr)
+            @test length(I) == 13
+            @test (I .> 0) == (motif_fluxes(Gr) .> 0)
+            @test_throws ArgumentError motif_intensities(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(Gr)) # undirected
+            # model methods: exact expected fluxes are finite, positive on populated motifs, and the
+            # constraint-preserving model reproduces the total flux scale (Σ⟨Fm⟩ ≈ ΣFm within the ensemble spread)
+            for model in (CRWCM(Gr), DCReM(Gr))
+                @test_throws ArgumentError motif_fluxes(model) # parameters not computed
+                solve_model!(model)
+                fexp = motif_fluxes(model)
+                @test length(fexp) == 13 && all(isfinite, fexp) && all(fexp .>= 0)
+            end
+        end
+
+        @testset "ensemble z-scores" begin
+            Gr = MaxEntropyGraphs.rhesus_macaques()
+            model = CRWCM(Gr)
+            solve_model!(model)
+            # binary vector metric: the observed value must be computed on the BINARISED adjacency
+            # (Graphs.adjacency_matrix returns the weights for SimpleWeightedGraphs graphs)
+            res = motif_zscores(model, n=50, rng=MaxEntropyGraphs.Xoshiro(1))
+            @test length(res.z) == length(res.μ) == length(res.σ) == length(res.obs) == 13
+            @test res.obs == motifs(Float64.((!iszero).(Matrix(MaxEntropyGraphs.Graphs.adjacency_matrix(Gr)))))
+            @test res.obs == motifs(MaxEntropyGraphs.Graphs.adjacency_matrix(MaxEntropyGraphs.Graphs.SimpleDiGraph(Gr)))
+            # weighted vector metric
+            resf = flux_zscores(model, n=50, rng=MaxEntropyGraphs.Xoshiro(1))
+            @test resf.obs ≈ motif_fluxes(Gr)
+            @test all(isfinite, resf.z[resf.σ .> 0])
+            # scalar metric, reproducibility under a fixed seed
+            r1 = ensemble_zscores(model, sum, n=50, rng=MaxEntropyGraphs.Xoshiro(9), weighted=true)
+            r2 = ensemble_zscores(model, sum, n=50, rng=MaxEntropyGraphs.Xoshiro(9), weighted=true)
+            @test r1.z == r2.z
+            @test isa(r1.z, Float64)
+            # error paths
+            @test_throws ArgumentError ensemble_zscores(model, sum, n=1)
+            m_nog = CRWCM(d_out=model.d_out, d_in=model.d_in, d_rec=model.d_rec, s_out=model.s_out, s_in=model.s_in, s_rec_out=model.s_rec_out, s_rec_in=model.s_rec_in)
+            @test_throws ArgumentError ensemble_zscores(m_nog, sum) # no observed graph
+            mb = RBCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(Gr))
+            solve_model!(mb)
+            @test_throws ArgumentError ensemble_zscores(mb, sum, n=10, weighted=true) # binary model has no weights
+        end
+
+        @testset "(weighted) reciprocity" begin
+            # known values: 2 of 4 links reciprocated; 3.5 of 10.5 total weight on reciprocated links
+            @test reciprocity(A) == 0.5
+            @test reciprocity(G) == 0.5
+            @test weighted_reciprocity(W) ≈ 3.5 / 10.5
+            @test weighted_reciprocity(G) ≈ 3.5 / 10.5
+            # graph ≡ matrix on a real network
+            Gm = MaxEntropyGraphs.maspalomas()
+            @test reciprocity(Gm) == reciprocity(Matrix(MaxEntropyGraphs.Graphs.adjacency_matrix(Gm)))
+            Gr = MaxEntropyGraphs.rhesus_macaques()
+            @test weighted_reciprocity(Gr) == weighted_reciprocity(Matrix(transpose(Gr.weights)))
+            # boundary values
+            @test reciprocity(MaxEntropyGraphs.taro_exchange()) == 1.0 # fully reciprocal
+            # model methods: constraint-preserving models reproduce the observed values, baselines do not
+            Grd = MaxEntropyGraphs.Graphs.SimpleDiGraph(Gr)
+            mrbcm = RBCM(Grd); solve_model!(mrbcm)
+            @test reciprocity(mrbcm) ≈ reciprocity(Grd) rtol=1e-6
+            mdbcm = DBCM(Grd); solve_model!(mdbcm)
+            @test reciprocity(mdbcm) < reciprocity(Grd)
+            mcrwcm = CRWCM(Gr); solve_model!(mcrwcm)
+            @test reciprocity(mcrwcm) ≈ reciprocity(Grd) rtol=1e-6
+            @test weighted_reciprocity(mcrwcm) ≈ weighted_reciprocity(Gr) rtol=1e-4
+            mdcrem = DCReM(Gr); solve_model!(mdcrem)
+            @test reciprocity(mdcrem) < reciprocity(Grd)
+            @test weighted_reciprocity(mdcrem) < weighted_reciprocity(Gr)
+            @test_throws ArgumentError reciprocity(RBCM(Grd))              # parameters not computed
+            @test_throws ArgumentError weighted_reciprocity(CRWCM(Gr))     # parameters not computed
+            # errors
+            @test_throws ArgumentError reciprocity(MaxEntropyGraphs.Graphs.smallgraph(:karate)) # undirected
+            @test_throws ArgumentError reciprocity(MaxEntropyGraphs.Graphs.SimpleDiGraph(3))    # no links
+            @test_throws ArgumentError reciprocity(zeros(3,3))                                  # no links
+            @test_throws DimensionMismatch reciprocity(zeros(3,2))
+            @test_throws ArgumentError weighted_reciprocity(zeros(3,3))
+            @test_throws DimensionMismatch weighted_reciprocity(zeros(3,2))
+            Gu = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(Gr)
+            @test_throws ArgumentError weighted_reciprocity(Gu)
+        end
+    end
 end
 
 @testset "Bipartite graph metrics" begin
