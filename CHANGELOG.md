@@ -1,5 +1,87 @@
 # Changelog
 
+## Unreleased
+
+Homogenized expectation & variance machinery across all eight models
+(Squartini & Garlaschelli 2011, App. A.3/A.4/B; Saracco et al. 2015 SI for the BiCM).
+
+### Fixed
+- **Undirected delta-method `σₓ` was missing the within-dyad covariance term** (UBCM, and the binary
+  layer of UECM/CReM). For an undirected model `aᵢⱼ` and `aⱼᵢ` are the *same* random variable, so the
+  ordered-pair sum of Squartini & Garlaschelli Eq. B.16 requires the cross-term
+  `Cov(aᵢⱼ,aⱼᵢ)·(∂X/∂aᵢⱼ)(∂X/∂aⱼᵢ)` with `Cov = σ²[aᵢⱼ]`. Without it, `σₓ` was low by exactly `√2`
+  for metrics written on the full symmetric matrix (e.g. `sum`, ANND — Monte-Carlo confirmed on the
+  karate club: 10.03 vs a sampled 14.24) and could even *overestimate* for direction-selective metrics
+  (ANND of a single node: 2.52 vs a sampled 1.42). Metrics written on a single triangle were unaffected.
+  The corrected form is now independent of which convention the metric uses. z-scores computed with
+  `σₓ` for undirected models change accordingly (this is the reason for the 0.6.0 version bump).
+
+### Added
+- **UECM & CReM weighted-layer variance**: `Ŵ` is now stored via `set_Ŵ!`, and the new `σʷ`/`set_σʷ!`
+  provide the per-edge weight standard deviations (UECM: Bernoulli–geometric mixture,
+  `Var(wᵢⱼ) = pᵢⱼ(1 + yᵢyⱼ - pᵢⱼ)/(1 - yᵢyⱼ)²`; CReM: Bernoulli–exponential mixture,
+  `Var(wᵢⱼ) = fᵢⱼ(2 - fᵢⱼ)/(θᵢ + θⱼ)²`). `σₓ` gained the `layer=:binary|:weighted` keyword (same API
+  as the DCReM/CRWCM). Both formulas are derived symbolically and validated against ensemble sampling
+  in `validation/`.
+- **BiCM variance machinery**: `σˣ`/`set_σ!` (per-entry Bernoulli standard deviations of the
+  biadjacency matrix) and the delta-method `σₓ` (independent entries, no covariance terms) now exist
+  for the BiCM, closing the last gap in the common model API.
+- **BiCM `Vn`/`Λn` motif families**: `Vn_motifs` (observed & expected `n`-fold co-occurrence counts),
+  `Vn_sigma` and `Vn_zscore`, for any `n ≥ 2` and both layers. The default `method=:exact` evaluates
+  the mean and variance *exactly* from the Poisson-binomial distribution of the random opposite-layer
+  degrees (independent across nodes); `method=:delta` provides the closed forms of Saracco et al.
+  (2015, SI Eqs. III.6-III.13), which are accurate when the opposite-layer degrees are large compared
+  to `n` (they underestimate the variance for sparse layers — Monte-Carlo measured σ ratios down to
+  0.15 at degrees ≈ n, hence the exact default).
+- **`validation/`**: a standalone validation suite deriving every model's per-dyad moments
+  (`⟨g⟩`, `Var[g]`, `Cov(gᵢⱼ,gⱼᵢ)`) symbolically with Symbolics.jl (state sums, probability generating
+  functions, moment generating functions) and Monte-Carlo gates for all new/changed formulas; a fast
+  distilled subset runs in CI (`test/symbolics.jl`).
+
+Reciprocity-aware directed models and triadic statistics
+(Squartini & Garlaschelli 2011; Di Vece, Pijpers & Garlaschelli 2023 — the model family of the NuMeTriS package).
+
+### Added
+- **`RBCM`** — the Reciprocal Binary Configuration Model (constrains, per node, the non-reciprocated
+  out-degree `k→`, non-reciprocated in-degree `k←` and reciprocated degree `k↔`). Parameter reduction over
+  the unique degree triples, a numerically-stable four-term log-sum-exp likelihood, branch-free SIMD
+  analytical gradient, a stable fixed-point default, dyadic probability accessors, **exact** expected
+  motif spectra evaluated from the dyadic probabilities (within a dyad `aᵢⱼ` and `aⱼᵢ` are correlated, so
+  the `Ĝ`-based evaluation valid for the DBCM would be wrong), a covariance-aware delta-method `σₓ`,
+  dyad-state sampling, `reciprocity` model methods (also for the `DBCM` baseline), and the full
+  accessor/information-criterion API (`k = 3N`, same observation count as the DBCM, so the two are
+  directly comparable).
+- **`DCReM`** — the directed Conditional Reconstruction Method (CReM_A in the literature; `DBCM+CReMa` in
+  NuMeTriS): a two-step model for weighted directed networks with continuous weights (internally solved
+  DBCM topology + exponential conditional weights constraining the out/in-strengths). Includes the
+  expected-weight machinery `Ŵ`/`set_Ŵ!`/`σʷ`/`set_σʷ!` (now exported) and a layer-aware `σₓ`
+  (`layer=:binary`/`:weighted`).
+- **`CRWCM`** — the Conditionally Reciprocal Weighted Configuration Model (Di Vece et al. 2023;
+  `RBCM+CRWCM` in NuMeTriS): a two-step model constraining the four reciprocal strength sequences
+  (`s→`, `s←`, `s↔out`, `s↔in`) conditional on an internally solved RBCM topology. The block-separable
+  4N system is solved jointly; dead channels are pinned automatically; the within-dyad weight covariance
+  `Cov(wᵢⱼ, wⱼᵢ) ≠ 0` is available analytically and enters the layer-aware `σₓ`.
+- **Reciprocity metrics**: `reciprocity` (topological, `r_t`) and `weighted_reciprocity` (`r_w`), plus the
+  reciprocal degree sequences (`nonreciprocated_outdegree`, `nonreciprocated_indegree`,
+  `reciprocated_degree`) and reciprocal strength sequences (`nonreciprocated_outstrength`,
+  `nonreciprocated_instrength`, `reciprocated_outstrength`, `reciprocated_instrength`), each with graph,
+  matrix, single-node and model methods.
+- **Triadic statistics**: `motif_fluxes`/`motif_flux` (the weight circulating on each of the 13 directed
+  3-node motifs; BLAS-backed trace formulation with **exact** expected spectra for the DCReM and CRWCM),
+  `motif_intensities` (Onnela geometric-mean intensities), and the sampling-based significance utilities
+  `ensemble_zscores`/`motif_zscores`/`flux_zscores` (NuMeTriS `numerical_triadic_zscores` parity).
+- A **"Which model when?"** documentation page guiding model selection (incl. the reciprocity
+  diagnostics), plus model and API documentation pages for the three new models.
+
+### Removed
+- The `:NelderMead` solver option. It existed for testing purposes only: the derivative-free simplex
+  rarely converges on these likelihoods and adds no value next to the fixed-point and gradient-based
+  methods. `solve_model!(m, method=:NelderMead)` now raises an `ArgumentError` listing the supported
+  methods.
+
+### Fixed
+- `Base.length(m::DBCM)` referenced a nonexistent field and would error when called.
+
 ## v0.5.3
 
 Weighted, undirected models brought to full parity with the binary trio (UBCM/DBCM/BiCM).
