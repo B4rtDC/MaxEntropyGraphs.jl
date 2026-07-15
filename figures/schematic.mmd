@@ -1,0 +1,49 @@
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "Helvetica, Arial, DejaVu Sans, sans-serif", "fontSize": "15px", "primaryColor": "#fafafa", "primaryBorderColor": "#000000", "primaryTextColor": "#111111", "lineColor": "#000000", "edgeLabelBackground": "#ffffff"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 40, "rankSpacing": 50, "padding": 10, "useMaxWidth": false}}}%%
+%% Schematic overview of MaxEntropyGraphs.jl for the JOSS paper.
+%% Black is core functionality, blue is interaction with external packages.
+%% Build instructions: see README.md in this folder.
+flowchart TB
+
+    %% ------------------------------------------------------------- input layer
+    input["<b>Graphs.jl · SimpleWeightedGraphs.jl</b><br/><code>G &lt;: AbstractGraph</code><br/><i>or plain constraint sequences</i> k, s, k→, k←, k↔, …"]
+
+    %% ------------------------------------------------------------- model layer
+    models["<b>Models</b><br/><code>M = Model(G) &lt;: AbstractMaxEntropyModel</code><table style='border-collapse:collapse;margin:6px auto 0'><tr><td style='padding:1px 8px'></td><td style='padding:1px 8px'><b>binary</b></td><td style='padding:1px 8px'><b>weighted</b></td></tr><tr><td style='padding:1px 8px;text-align:right'>undirected</td><td style='padding:1px 8px'><code>UBCM</code></td><td style='padding:1px 8px'><code>UECM</code> · <code>CReM</code></td></tr><tr><td style='padding:1px 8px;text-align:right'>directed</td><td style='padding:1px 8px'><code>DBCM</code></td><td style='padding:1px 8px'><code>DCReM</code></td></tr><tr><td style='padding:1px 8px;text-align:right'>directed, reciprocal</td><td style='padding:1px 8px'><code>RBCM</code></td><td style='padding:1px 8px'><code>CRWCM</code></td></tr><tr><td style='padding:1px 8px;text-align:right'>bipartite</td><td style='padding:1px 8px'><code>BiCM</code></td><td style='padding:1px 8px'>—</td></tr></table>"]
+
+    %% ------------------------------------------------------------- solver layer
+    solve["<b>Parameter estimation</b><br/><code>solve_model!(M)</code><br/>reduced parameter space (distinct constraints)"]
+    nlsolve["<b>NLsolve.jl</b><br/>Anderson-accelerated fixed point"]
+    optim["<b>Optimization.jl</b><br/>BFGS · L-BFGS · Newton"]
+
+    %% ------------------------------------------------------------- output lanes
+    sampling["<b>Sampling</b><br/><code>rand(M[, n])</code><br/>randomized Graphs.jl graphs,<br/>threaded &amp; reproducible"]
+    analytics["<b>Ensemble analytics</b><br/><code>Ĝ(M)</code>, <code>Ŵ(M)</code>, <code>σˣ(M)</code>, <code>σʷ(M)</code>, <code>X(M)</code>:<br/>degrees / strengths (incl. reciprocal), ANND,<br/>reciprocity r, r<sub>w</sub>, <i>exact</i> motif &amp; flux spectra;<br/><code>σ<sub>X</sub>(M, X)</code>: delta method for <i>any</i> metric X<br/>(dyadic covariances included)"]
+    signif["<b>Significance testing</b><br/>z-scores: analytical &amp; sampled<br/>(<code>motif_zscores</code>, <code>flux_zscores</code>);<br/><code>project(M)</code>: statistically validated<br/>bipartite projection"]
+
+    %% ------------------------------------------------------------- lane dependencies
+    dists["<b>Distributions.jl</b><br/>Exponential · Geometric (weights)<br/>PoissonBinomial (projection)"]
+    ad["<b>ForwardDiff.jl · ReverseDiff.jl · Zygote.jl</b><br/>automatic differentiation of<br/>user-defined metrics for σ<sub>X</sub>"]
+    mt["<b>MultipleTesting.jl</b><br/>Benjamini–Hochberg<br/>false-discovery-rate control"]
+
+    %% ------------------------------------------------------------- workflow
+    input --> models
+    models <--> solve
+    nlsolve <--> solve
+    optim <--> solve
+    solve --> sampling
+    solve --> analytics
+    solve --> signif
+    sampling -.->|"native Graphs.jl graphs"| input
+    sampling -.-> dists
+    analytics -.-> ad
+    signif -.-> mt
+    signif -.-> dists
+
+    %% ------------------------------------------------------------- styling
+    classDef core fill:#fafafa,stroke:#000000,stroke-width:1.5px,color:#111111
+    classDef ext fill:#f4f7fe,stroke:#3764d7,stroke-width:1.5px,color:#3764d7
+    class models,solve,sampling,analytics,signif core
+    class input,nlsolve,optim,dists,ad,mt ext
+
+    linkStyle default stroke:#000000,stroke-width:1.5px
+    linkStyle 2,3,7,8,9,10,11 stroke:#3764d7,stroke-width:1.5px,color:#3764d7

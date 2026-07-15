@@ -1,0 +1,4 @@
+{
+  "securityLevel": "antiscript",
+  "themeCSS": ".nodeLabel, .edgeLabel { display: inline-block; padding: 0 8px; white-space: nowrap; } .nodeLabel p, .nodeLabel td, .edgeLabel p { white-space: nowrap; } .marker, .marker path { fill: context-stroke; stroke: none; }"
+}
