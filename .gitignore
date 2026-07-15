@@ -15,6 +15,7 @@ docs/Manifest.toml
 docs/LocalPreferences.toml
 test/Manifest.toml
 validation/Manifest.toml
+logo/Manifest.toml
 
 # local scratch / prototypes / experiments (not part of the package)
 /dev/
