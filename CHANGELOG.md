@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.7.0
+
+Convergence is now expressed in the units users actually care about.
+
+### Breaking
+- **The `CReM`, `DCReM` and `CRWCM` fixed-point solves now iterate in `log θ`, so `ftol` is a
+  *relative* constraint tolerance rather than an absolute parameter-space one.** The fitted `θ` move
+  at roughly the `1e-8` level, and for the `DCReM`/`CRWCM` they may also land on a different (equally
+  valid) representative of their gauge orbit, so values compared bit-for-bit against stored 0.6.x
+  output will differ. All gauge-invariant predictions (`Ĝ`, `Ŵ`, the dyadic probabilities, every
+  metric) agree to `~1e-9`.
+
+### Fixed
+- **`ftol` silently failed to control accuracy on the two-step weighted models.** It is forwarded to
+  `NLsolve`, which bounds the fixed-point *increment* `‖G(θ) - θ‖∞` in **parameter** space. Because
+  the map obeys `Gᵢ = θᵢ⟨sᵢ⟩/sᵢ` exactly, the achieved constraint residual was
+  `≈ ftol · max(sᵢ/θᵢ)`, and since `θ` scales like `1/s` that factor grows as the **square of the
+  weight scale**. It is `~10` for the binary models (harmless) but `~5·10³` on the weighted layer of
+  the *rhesus macaques* network, and `~4.5·10⁷` once its weights are scaled by 100. Concretely, a
+  `DCReM` on a network with weights of order `10³` returned `retcode Success` with a strength
+  constraint off by **61.7** in absolute units. Iterating in `log θ` makes the increment exactly
+  `log(⟨sᵢ⟩/sᵢ)`, so the residual is now scale-invariant: measured at a constant `3.2e-9` relative
+  across a 1000× range of weight scales, where it was previously `5.3e-5`, `0.45` and `61.7`.
+  This also enforces `θ > 0` for free.
+- The `θ` accessors of the two-step models (`strength`, `outstrength`, `instrength`) rebuilt the full
+  per-node fitness vectors inside every per-node call, and their accumulator was type-unstable
+  (`zero(precision(m))` does not infer). The vector forms are **60-64× faster** with ~200× fewer
+  allocations; returned values are bit-identical.
+
+### Added
+- **`constraint_residual(m; relative=false)`**: what a solve actually achieved, in constraint units.
+  It reuses each model's existing analytical gradient, which by ERGM stationarity *is* the constraint
+  residual `⟨xᵢ⟩ - xᵢ`, so it is exact and costs well under 1% of a solve. Available for all eight
+  models; the `relative` form masks zero-valued constraints (dead channels).
+
+### Changed
+- The `ftol` and `g_tol` docstrings now say what those knobs actually bound. `ftol` bounds the
+  fixed-point increment in parameter space and is **not** the constraint residual; `g_tol` maps to
+  Optim's `g_abstol`, which is a stopping criterion rather than a guarantee, since Optim may also
+  stop on its function or parameter checks. Both point at `constraint_residual`.
+- Passing `ftol` on a path that ignores it (for example the `UECM`'s default `:BFGS`, where it was
+  silently discarded) now warns instead of doing nothing quietly.
+
 ## v0.6.0
 
 Homogenized expectation & variance machinery across all eight models

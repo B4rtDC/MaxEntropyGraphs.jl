@@ -693,6 +693,45 @@ degree(m::CReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced)
 
 
 """
+    _CReM_strength(θ, x, i::Int, n::Int)
+
+Kernel for the expected strength of node `i`, given the per-node binary fitnesses `x` and the weighted
+parameters `θ`.
+
+Split out of [`strength`](@ref) so that the vector form can materialise the fitness vector **once**
+instead of once per node: it does not depend on the node being queried, and rebuilding it inside every
+per-node call made the vector form allocate `n` vectors of length `n`.
+"""
+function _CReM_strength(θ::AbstractVector, x::AbstractVector, i::Int, n::Int)
+    res = zero(eltype(x))
+    @inbounds for j in 1:n
+        if i ≠ j
+            xixj = x[i]*x[j]
+            pij  = xixj / (1 + xixj)
+            res += pij / (θ[i] + θ[j])
+        end
+    end
+    return res
+end
+
+"""
+    _CReM_strength_adj(θ, Ĝ, i::Int, n::Int)
+
+Kernel for the expected strength of node `i` reusing the precomputed adjacency matrix `Ĝ`.
+
+See also [`_CReM_strength`](@ref).
+"""
+function _CReM_strength_adj(θ::AbstractVector, Ĝ::AbstractMatrix, i::Int, n::Int)
+    res = zero(eltype(Ĝ))
+    @inbounds for j in 1:n
+        if i ≠ j
+            res += Ĝ[i,j] / (θ[i] + θ[j])
+        end
+    end
+    return res
+end
+
+"""
     strength(m::CReM, i::Int; method=:reduced)
 
 Return the expected (unconditional) strength for node `i` of the CReM model `m`, i.e.
@@ -708,30 +747,15 @@ function strength(m::CReM, i::Int; method::Symbol=:reduced)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
 
-    θ = m.θ
+    n = m.status[:N]
     if method == :reduced || method == :full
-        x = m.xᵣ[m.dᵣ_ind]
-        res = zero(precision(m))
-        @inbounds for j in 1:m.status[:N]
-            if i ≠ j
-                xixj = x[i]*x[j]
-                pij  = xixj / (1 + xixj)
-                res += pij / (θ[i] + θ[j])
-            end
-        end
+        return _CReM_strength(m.θ, m.xᵣ[m.dᵣ_ind], i, n)
     elseif method == :adjacency
         m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
-        res = zero(precision(m))
-        @inbounds for j in 1:m.status[:N]
-            if i ≠ j
-                res += m.Ĝ[i,j] / (θ[i] + θ[j])
-            end
-        end
+        return _CReM_strength_adj(m.θ, m.Ĝ, i, n)
     else
         throw(ArgumentError("Unknown method $method"))
     end
-
-    return res
 end
 
 """
@@ -740,7 +764,23 @@ end
 Return a vector corresponding to the expected strength of each node of the CReM model `m`. If `v` is
 specified, only return strengths for nodes in `v`.
 """
-strength(m::CReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced) = [strength(m, i, method=method) for i in v]
+function strength(m::CReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced)
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    n = m.status[:N]
+    for i in v
+        i > n ? throw(ArgumentError("Attempted to access node $i in a $(n) node graph")) : nothing
+    end
+    if method == :reduced || method == :full
+        # the fitnesses do not depend on the node being queried: build them once for the whole vector
+        x = m.xᵣ[m.dᵣ_ind]
+        return [_CReM_strength(m.θ, x, i, n) for i in v]
+    elseif method == :adjacency
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
+        return [_CReM_strength_adj(m.θ, m.Ĝ, i, n) for i in v]
+    else
+        throw(ArgumentError("Unknown method $method"))
+    end
+end
 
 
 """
@@ -922,9 +962,19 @@ initial guess (the CReM fixed-point recipe is stable, unlike the UECM's).
 # Common settings
 - `maxiters::Int`: maximum number of iterations (defaults to 1000).
 - `verbose::Bool`: show log messages (defaults to false).
-- `ftol::Real`: function tolerance for the fixedpoint method (defaults to 1e-8).
+- `ftol::Union{Real, Nothing}`: tolerance for the fixedpoint method (defaults to `nothing`, i.e. 1e-8), applied to the weighted layer and to the binary layer when either is solved with `:fixedpoint` (passing it when *neither* layer uses it warns). On the weighted layer it is a **relative** strength tolerance (see below); on the binary layer it bounds the fixed-point increment in parameter space.
 - `abstol`, `reltol`: absolute/relative tolerances for the optimisation methods (default `nothing`).
-- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`).
+- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`). The gradient of the weighted layer *is* its constraint residual in strength units, but `g_abstol` is a stopping criterion rather than a guarantee: Optim can also stop on its function or parameter convergence checks and report success without the gradient ever reaching `g_tol`. Verify what was actually achieved with [`constraint_residual`](@ref).
+
+!!! note "`ftol` is a relative strength tolerance on the weighted layer"
+    The weighted layer is solved in **log-parameter** space (see `MaxEntropyGraphs._logspace_fixedpoint`).
+    The fixed-point map obeys ``G_i = θ_i⟨s_i⟩/s_i`` exactly, so the log-space increment is exactly
+    ``\\log(⟨s_i⟩/s_i)``, and `ftol` therefore bounds the **relative** strength residual
+    ``|⟨s_i⟩/s_i - 1|``. That makes it invariant under a rescaling of the weights: `ftol=1e-8` means
+    eight significant digits on every strength whatever the units. (Solving in `θ` directly would instead
+    bound ``|G_i - θ_i| = (θ_i/s_i)|⟨s_i⟩ - s_i|``, whose conversion factor ``s_i/θ_i`` grows as the
+    *square* of the weight scale.) Use [`constraint_residual`](@ref) to measure the achieved residual in
+    either absolute or relative form.
 """
 function solve_model!(m::CReM;  # weighted (CReM) layer settings
                                 method::Symbol=:fixedpoint,
@@ -940,18 +990,24 @@ function solve_model!(m::CReM;  # weighted (CReM) layer settings
                                 # common settings
                                 maxiters::Int=1000,
                                 verbose::Bool=false,
-                                ftol::Real=1e-8,
+                                ftol::Union{Real, Nothing}=nothing,
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
                                 g_tol::Union{Number, Nothing}=nothing)
     N = precision(m)
     N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
+    # `ftol` reaches the fixed point solver of either layer, so it is only truly unused when neither
+    # layer uses it: say so rather than ignoring it silently (only when it was actually passed)
+    method ≠ :fixedpoint && method_conditional ≠ :fixedpoint && !isnothing(ftol) && @warn _ftol_unused_msg(method) maxlog=1
+    ftol = isnothing(ftol) ? _DEFAULT_FTOL : ftol
 
     ## Part 1 - conditional binary layer (UBCM on the degree sequence)
     cond_model = UBCM(d = m.d, precision = N)
+    # only hand `ftol` down when the binary layer can act on it, so that it never warns on our behalf
     solve_model!(cond_model, method=method_conditional, initial=initial_conditional,
                              AD_method=AD_method_conditional, analytical_gradient=analytical_gradient_conditional,
-                             maxiters=maxiters, ftol=ftol, abstol=abstol, reltol=reltol, verbose=verbose)
+                             maxiters=maxiters, ftol=(method_conditional == :fixedpoint ? ftol : nothing),
+                             abstol=abstol, reltol=reltol, verbose=verbose)
     m.αᵣ .= cond_model.θᵣ
     m.xᵣ .= cond_model.xᵣ
     m.status[:conditional_params_computed] = true
@@ -967,10 +1023,13 @@ function solve_model!(m::CReM;  # weighted (CReM) layer settings
         G_buffer = zeros(N, length(θ₀))
         FP_model! = m.status[:G_computed] ? (θ::Vector) -> CReM_iter!(θ, m.s, m.Ĝ, G_buffer) :
                                             (θ::Vector) -> CReM_iter!(θ, m.s, x, G_buffer)
-        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters)
+        # solve in log-parameter space, where the increment is the *relative* strength residual and
+        # `ftol` is scale-invariant (see `_logspace_fixedpoint`). Every node is live: a zero-strength
+        # node has no finite θᵢ, so it is left to fail loudly rather than being masked away.
+        θ_sol, sol = _logspace_fixedpoint(FP_model!, θ₀, eachindex(θ₀), ftol, maxiters)
         if NLsolve.converged(sol)
             verbose && @info "Fixed point iteration converged after $(sol.iterations) iterations"
-            m.θ .= sol.zero
+            m.θ .= θ_sol
             m.status[:params_computed] = true
         else
             throw(ConvergenceError(method, nothing))

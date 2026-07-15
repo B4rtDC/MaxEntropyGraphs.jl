@@ -967,9 +967,9 @@ By default the parameters are computed using the BFGS method with the strength s
 - `initial::Symbol`: initial guess, `:strengths` (default), `:strengths_minor`, `:random`, or `:uniform`.
 - `maxiters::Int`: maximum number of iterations (defaults to 1000).
 - `verbose::Bool`: show log messages (defaults to false).
-- `ftol::Real`: function tolerance for the fixedpoint method (defaults to 1e-8).
+- `ftol::Union{Real, Nothing}`: tolerance for the fixedpoint method (defaults to `nothing`, i.e. 1e-8). It bounds the fixed-point *increment* ``\\|G(\\theta) - \\theta\\|_\\infty`` in **parameter** space; it is **not** the constraint residual. ❗ It applies to the `:fixedpoint` method only, and so is **ignored on this model's default `:BFGS` path** (passing it there warns). Use [`constraint_residual`](@ref) to measure how well the expected degrees and strengths actually match the observed ones.
 - `abstol`, `reltol`: absolute/relative tolerances for the optimisation methods (default `nothing`).
-- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`).
+- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`). The gradient of this model *is* its constraint residual (up to the multiplicities), and it is the tolerance to reach for on the default path, but `g_abstol` is a stopping criterion rather than a guarantee: Optim can also stop on its function or parameter convergence checks and report success without the gradient ever reaching `g_tol`. Verify what was actually achieved with [`constraint_residual`](@ref).
 - `AD_method::Symbol`: autodiff method, any of :$(join(keys(MaxEntropyGraphs.AD_methods), ", :", " and :")) (defaults to `:AutoZygote`).
 - `analytical_gradient::Bool`: use the analytical gradient instead of autodiff (defaults to `false`).
 
@@ -983,7 +983,7 @@ function solve_model!(m::UECM;  # common settings
                                 maxiters::Int=1000,
                                 verbose::Bool=false,
                                 # NLsolve.jl specific settings (fixed point method)
-                                ftol::Real=1e-8,
+                                ftol::Union{Real, Nothing}=nothing,
                                 # optimisation.jl specific settings (optimisation methods)
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
@@ -992,6 +992,10 @@ function solve_model!(m::UECM;  # common settings
                                 analytical_gradient::Bool=false)
     N = precision(m)
     N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
+    # `ftol` is accepted on every path but only ever reaches the fixed point solver: say so rather than
+    # ignoring it silently (only when it was actually passed, so a default solve stays quiet)
+    method ≠ :fixedpoint && !isnothing(ftol) && @warn _ftol_unused_msg(method) maxlog=1
+    ftol = isnothing(ftol) ? _DEFAULT_FTOL : ftol
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     # find Inf values (zero-degree/zero-strength nodes)

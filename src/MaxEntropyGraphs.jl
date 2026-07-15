@@ -41,6 +41,7 @@ module MaxEntropyGraphs
     include("Models/CReM.jl")
     include("Models/DCReM.jl")
     include("Models/CRWCM.jl")
+    include("constraints.jl")
     include("utils.jl")
     include("metrics.jl")
     include("smallnetworks.jl")
@@ -75,6 +76,7 @@ module MaxEntropyGraphs
     export degree, outdegree, indegree
     export strength, outstrength, instrength
     export Ŵ, set_Ŵ!, σʷ, set_σʷ!
+    export constraint_residual
     export AIC, AICc, BIC
     
     ## model specific types and functions
