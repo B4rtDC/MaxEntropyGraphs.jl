@@ -28,6 +28,9 @@ if get(ENV, "MEG_SKIP_SYMBOLIC", "0") != "1"
 
     # Exact multi-point zero-test for rational expressions.
     # `domains` is a vector of `var => (lo, hi)` pairs (lo/hi rationals or integers).
+    # Returns false only when a substitution provably folds to a non-zero number. If it cannot be
+    # folded to a number at all the oracle is undecided, which is a Symbolics limitation rather
+    # than a verdict on the identity — that case throws instead of silently reporting "not zero".
     function ratzero(expr, domains::AbstractVector; npoints::Int=8, seed::Int=161)
         rng = MersenneTwister(seed)
         vars = [first(d) for d in domains]
@@ -39,7 +42,14 @@ if get(ENV, "MEG_SKIP_SYMBOLIC", "0") != "1"
                 lo + (hi - lo) * (BigInt(k) // BigInt(2^20))
             end
             raw = Symbolics.value(Symbolics.substitute(expr, Dict(zip(vars, vals))))
-            raw isa Number || return false
+            # Substituting exact rationals into a rational identity must collapse to a number, so a
+            # leftover symbolic residue means the oracle is undecided — not that the identity fails.
+            # Symbolics 6.x, for one, does not fold every generating-function form that 7.x folds.
+            if !(raw isa Number)
+                error("ratzero is undecided: substituting exact rationals left the non-numeric " *
+                      "residue `$raw`. This is a limitation of the oracle on Symbolics " *
+                      "$(pkgversion(Symbolics)), not evidence that the identity is false.")
+            end
             iszero(raw) || return false
         end
         return true
