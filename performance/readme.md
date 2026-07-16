@@ -23,11 +23,11 @@ our two-step `solve_model!`.
 
 ## What is compared
 
-* **Speed** — model creation, parameter computation (fixed-point / quasi-Newton / Newton),
+* **Speed**: model creation, parameter computation (fixed-point / quasi-Newton / Newton),
   and (for the BiCM) the validated bipartite projection, using
   [`BenchmarkTools.jl`](https://github.com/JuliaCI/BenchmarkTools.jl) on the Julia side and
   [`pytest-benchmark`](https://pytest-benchmark.readthedocs.io/) on the Python side.
-* **Accuracy** — that both implementations converge to the *same, correct* maximum-likelihood
+* **Accuracy**: that both implementations converge to the *same, correct* maximum-likelihood
   solution, measured as how well the fitted model reproduces the imposed degree constraints
   (see [Accuracy comparison](#accuracy-comparison) below).
 
@@ -45,7 +45,7 @@ checkout's code, not a registry release:
 julia --project=. -e 'using Pkg; Pkg.develop(path=".."); Pkg.instantiate()'
 ```
 
-### Python environment (uv — cross-platform)
+### Python environment (uv, cross-platform)
 
 The Python side (both NEMtropy and NuMeTriS) uses the [uv](https://docs.astral.sh/uv/) package manager and works on both
 macOS and Linux. **`uv` and `julia` are assumed to be on `PATH`.** `benchmarks.sh` sets this up
@@ -90,11 +90,11 @@ For example, a fair, tractable comparison across small + medium at a single core
 The suite also times ensemble sampling, where the head-to-head shows an unusually large gap
 (~10⁴–10⁵×). **This gap is architectural rather than purely algorithmic, and should be read that
 way.** MaxEntropyGraphs.jl's `rand(model, n; rng)` generates each replicate *in memory* as a native
-`Graphs.jl` object — exactly what a downstream analysis consumes — with a tight, allocation-light
+`Graphs.jl` object (exactly what a downstream analysis consumes) with a tight, allocation-light
 sampler run thread-parallel across the `n` replicates and no I/O. NEMtropy's `ensemble_sampler`
 instead **writes every sampled graph to disk** as an edge-list file and carries a large fixed
 per-call overhead (Python/numba dispatch and array setup, plus a multiprocessing pool whose spawn
-cost *exceeds the sampling work itself* at these sizes — which is why `cpu_n=4` is measured as
+cost *exceeds the sampling work itself* at these sizes, which is why `cpu_n=4` is measured as
 *slower* than `cpu_n=1`). Measured per graph, NEMtropy is ≈0.5 s for a 34-node graph versus
 microseconds for MaxEntropyGraphs. So the reported ratio mostly reflects in-memory native-object
 generation versus disk-backed, overhead-heavy file writing; a pure compute-only comparison would be
@@ -127,7 +127,7 @@ convergence settings: a gradient tolerance of `1e-8` (`g_tol` in Julia / `tol` i
 iteration budget of `1000` (`maxiters` / `max_steps`). Without this, NEMtropy's default 100-step cap
 would let it stop at a looser solution and look faster; with matched settings the timing differences
 reflect the solvers, not their stopping criteria. (Even so, on the BiCM quasi-Newton solve NEMtropy
-stalls at a ~10⁻⁷ solution while MaxEntropyGraphs.jl converges to ~10⁻⁹ — see `accuracy_comparison.jl`.)
+stalls at a ~10⁻⁷ solution while MaxEntropyGraphs.jl converges to ~10⁻⁹. See `accuracy_comparison.jl`.)
 
 ## Solver-method correspondence
 
