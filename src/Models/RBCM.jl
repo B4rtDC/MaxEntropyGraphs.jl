@@ -642,7 +642,7 @@ function solve_model!(m::RBCM;  # common settings
     # from the CONSTRAINTS (not from the initial guess: e.g. :uniform/:random give finite values there,
     # and the likelihood is deliberately flat in those coordinates, so the solver would leave whatever
     # the guess contained). They are solved at a finite placeholder and pinned to +Inf afterwards.
-    nᵣ = m.status[:d_unique]
+    nᵣ = m.status[:d_unique]::Int
     ind_inf = vcat(findall(iszero, m.dᵣ_out), nᵣ .+ findall(iszero, m.dᵣ_in), 2*nᵣ .+ findall(iszero, m.dᵣ_rec))
     θ₀[ind_inf] .= zero(N)
     if method == :fixedpoint
@@ -822,7 +822,7 @@ matrix `Ĝ` (e.g. `⟨aᵢⱼaⱼᵢ⟩ = p⭤ᵢⱼ ≠ ĜᵢⱼĜⱼᵢ`).
 """
 function _dyadic_probability_matrices(m::RBCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:d]
+    n = m.status[:d]::Int
     P̂ = zeros(precision(m), n, n)
     R̂ = zeros(precision(m), n, n)
     Ẑ = zeros(precision(m), n, n)
@@ -860,7 +860,7 @@ function Ĝ(m::RBCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
     # get network size => this is the full size
-    n = m.status[:d]
+    n = m.status[:d]::Int
     # initiate G
     G = zeros(precision(m), n, n)
     # initiate x, y and z
@@ -909,7 +909,7 @@ function σˣ(m::RBCM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # check network size => this is the full size
-    n = m.status[:d]
+    n = m.status[:d]::Int
     # initiate σ
     σ = zeros(precision(m), n, n)
     # initiate x, y and z
@@ -954,7 +954,7 @@ Compute the within-dyad covariance matrix `C` of the RBCM model `m`, with
 """
 function _cov_dyads(m::RBCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:d]
+    n = m.status[:d]::Int
     C = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -1015,7 +1015,7 @@ function rand(m::RBCM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     o = one(precision(m))
     # generate random edges per dyad
     edges = Vector{Graphs.SimpleGraphs.SimpleEdge{Int}}()
-    n = m.status[:d]
+    n = m.status[:d]::Int
     for i = 1:n
         for j = i+1:n
             @inbounds xiyj = x[i] * y[j]
@@ -1509,7 +1509,7 @@ true
 """
 function reciprocity(m::RBCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:d]
+    n = m.status[:d]::Int
     num = zero(precision(m))
     den = zero(precision(m))
     for i = 1:n
@@ -1546,7 +1546,7 @@ true
 """
 function reciprocity(m::DBCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:d]
+    n = m.status[:d]::Int
     num = zero(precision(m))
     den = zero(precision(m))
     for i = 1:n

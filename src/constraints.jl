@@ -123,7 +123,7 @@ end
 function constraint_residual(m::DBCM; relative::Bool=false)
     m.status[:params_computed] || throw(ArgumentError("The parameters have not been computed yet"))
     N = precision(m)
-    n = m.status[:d_unique]
+    n = m.status[:d_unique]::Int
     ∇L = zeros(N, length(m.θᵣ))
     x  = zeros(N, n)
     y  = zeros(N, n)
@@ -137,7 +137,7 @@ end
 function constraint_residual(m::BiCM; relative::Bool=false)
     m.status[:params_computed] || throw(ArgumentError("The parameters have not been computed yet"))
     N = precision(m)
-    n⊥ = m.status[:d⊥_unique]
+    n⊥ = m.status[:d⊥_unique]::Int
     ∇L = zeros(N, length(m.θᵣ))
     x  = zeros(N, length(m.d⊥ᵣ))
     y  = zeros(N, length(m.d⊤ᵣ))
@@ -151,7 +151,7 @@ end
 function constraint_residual(m::RBCM; relative::Bool=false)
     m.status[:params_computed] || throw(ArgumentError("The parameters have not been computed yet"))
     N = precision(m)
-    n = m.status[:d_unique]
+    n = m.status[:d_unique]::Int
     ∇L = zeros(N, length(m.θᵣ))
     x  = zeros(N, n)
     y  = zeros(N, n)

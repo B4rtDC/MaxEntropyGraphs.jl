@@ -441,7 +441,7 @@ Note: The expected weights can be computed separately with [`Ŵ`](@ref MaxEntrop
 function Ĝ(m::CReM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     G = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     for i = 1:n
@@ -477,7 +477,7 @@ Compute the expected (unconditional) **weighted adjacency** matrix for the CReM 
 function Ŵ(m::CReM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     W = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     θ = m.θ
@@ -518,7 +518,7 @@ available via [`σʷ`](@ref MaxEntropyGraphs.σʷ). Read as "sigma star".
 function σˣ(m::CReM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     σ = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     for i = 1:n
@@ -562,7 +562,7 @@ function σʷ(m::CReM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     σ = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     θ = m.θ
@@ -747,7 +747,7 @@ function strength(m::CReM, i::Int; method::Symbol=:reduced)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     if method == :reduced || method == :full
         return _CReM_strength(m.θ, m.xᵣ[m.dᵣ_ind], i, n)
     elseif method == :adjacency
@@ -766,7 +766,7 @@ specified, only return strengths for nodes in `v`.
 """
 function strength(m::CReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     for i in v
         i > n ? throw(ArgumentError("Attempted to access node $i in a $(n) node graph")) : nothing
     end

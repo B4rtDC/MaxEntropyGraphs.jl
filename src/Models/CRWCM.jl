@@ -576,7 +576,7 @@ not characterise the dyadic joint distribution. The expected weights can be comp
 function Ĝ(m::CRWCM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     G = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -618,7 +618,7 @@ Compute the expected (unconditional) **weighted adjacency** matrix for the CRWCM
 function Ŵ(m::CRWCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     W = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -670,7 +670,7 @@ Compute the standard deviation for the elements of the (binary) adjacency matrix
 function σˣ(m::CRWCM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     σ = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -711,7 +711,7 @@ Compute the within-dyad covariance matrix of the **binary** layer of the CRWCM m
 """
 function _cov_dyads(m::CRWCM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     C = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -750,7 +750,7 @@ Compute the standard deviation for the elements of the **weighted** adjacency ma
 function σʷ(m::CRWCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     σ = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -804,7 +804,7 @@ Symmetric, zero diagonal. This term is what distinguishes the CRWCM's weighted u
 """
 function _covʷ(m::CRWCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     C = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -936,7 +936,7 @@ function nonreciprocated_outstrength(m::CRWCM, i::Int; method::Symbol=:full)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
     (method == :full || method == :reduced) || throw(ArgumentError("Unknown method $method"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θ⭢ = @view m.θ[1:n]
     θ⭠ = @view m.θ[n+1:2*n]
     res = zero(precision(m))
@@ -960,7 +960,7 @@ function nonreciprocated_instrength(m::CRWCM, i::Int; method::Symbol=:full)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
     (method == :full || method == :reduced) || throw(ArgumentError("Unknown method $method"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θ⭢ = @view m.θ[1:n]
     θ⭠ = @view m.θ[n+1:2*n]
     res = zero(precision(m))
@@ -984,7 +984,7 @@ function reciprocated_outstrength(m::CRWCM, i::Int; method::Symbol=:full)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
     (method == :full || method == :reduced) || throw(ArgumentError("Unknown method $method"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θ⭤ᵒ = @view m.θ[2*n+1:3*n]
     θ⭤ⁱ = @view m.θ[3*n+1:4*n]
     res = zero(precision(m))
@@ -1008,7 +1008,7 @@ function reciprocated_instrength(m::CRWCM, i::Int; method::Symbol=:full)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
     (method == :full || method == :reduced) || throw(ArgumentError("Unknown method $method"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θ⭤ᵒ = @view m.θ[2*n+1:3*n]
     θ⭤ⁱ = @view m.θ[3*n+1:4*n]
     res = zero(precision(m))
@@ -1130,7 +1130,7 @@ function rand(m::CRWCM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # full per-node binary fitnesses + weighted parameters
-    n = m.status[:N]
+    n = m.status[:N]::Int
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
     z = m.zᵣ[m.dᵣ_ind]
@@ -1269,7 +1269,7 @@ function solve_model!(m::CRWCM; # weighted (CRWCM) layer settings
                                 g_tol::Union{Number, Nothing}=nothing)
     N = precision(m)
     N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
-    n = m.status[:N]
+    n = m.status[:N]::Int
     # `ftol` reaches the fixed point solver of either layer, so it is only truly unused when neither
     # layer uses it: say so rather than ignoring it silently (only when it was actually passed)
     method ≠ :fixedpoint && method_conditional ≠ :fixedpoint && !isnothing(ftol) && @warn _ftol_unused_msg(method) maxlog=1

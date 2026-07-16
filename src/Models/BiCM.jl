@@ -891,7 +891,7 @@ function solve_model!(m::BiCM;  # common settings
         # on the current AD stack, Zygote's `dict_getindex` pullback errors when a Dict access sits
         # inside the AD path (this is why only the BiCM AD-gradient solve was affected).
         d⊥ᵣ, d⊤ᵣ, f⊥, f⊤, d⊥ᵣ_nz, d⊤ᵣ_nz = m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz
-        d⊥_unique = m.status[:d⊥_unique]
+        d⊥_unique = m.status[:d⊥_unique]::Int
         f = AD_method ∈ keys(AD_methods)            ? Optimization.OptimizationFunction( (θ, p) ->   -L_BiCM_reduced(θ, d⊥ᵣ, d⊤ᵣ, f⊥, f⊤, d⊥ᵣ_nz, d⊤ᵣ_nz, d⊥_unique),
                                                                                             AD_methods[AD_method],
                                                                                             grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))

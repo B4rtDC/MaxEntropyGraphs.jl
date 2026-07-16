@@ -487,7 +487,7 @@ function Ĝ(m::UBCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     
     # get network size => this is the full size
-    n = m.status[:d]
+    n = m.status[:d]::Int
     # initiate G
     G = zeros(precision(m), n, n)
     # initiate x
@@ -527,7 +527,7 @@ function σˣ(m::UBCM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # check network size => this is the full size
-    n = m.status[:d]
+    n = m.status[:d]::Int
     # initiate G
     σ = zeros(precision(m), n, n)
     # initiate x

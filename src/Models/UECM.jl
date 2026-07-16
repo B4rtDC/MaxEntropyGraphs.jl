@@ -461,7 +461,7 @@ function Ĝ(m::UECM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
     # get network size => this is the full size
-    n = m.status[:N]
+    n = m.status[:N]::Int
     # initiate G
     G = zeros(precision(m), n, n)
     # initiate x and y
@@ -504,7 +504,7 @@ function Ŵ(m::UECM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
     # get network size => this is the full size
-    n = m.status[:N]
+    n = m.status[:N]::Int
     # initiate W
     W = zeros(precision(m), n, n)
     # initiate x and y
@@ -550,7 +550,7 @@ function σˣ(m::UECM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # network size => full size
-    n = m.status[:N]
+    n = m.status[:N]::Int
     # initiate σ
     σ = zeros(precision(m), n, n)
     # initiate x and y
@@ -600,7 +600,7 @@ function σʷ(m::UECM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # network size => full size
-    n = m.status[:N]
+    n = m.status[:N]::Int
     # initiate σ
     σ = zeros(precision(m), n, n)
     # initiate x and y

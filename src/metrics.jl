@@ -1521,7 +1521,7 @@ end
 
 function motif_fluxes(m::CRWCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters of `m` must be computed before computing the triadic fluxes, see `solve_model!`"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
     z = m.zᵣ[m.dᵣ_ind]
@@ -1645,7 +1645,7 @@ ratio of expectations ``\\sum_{i≠j} f_{ij}f_{ji} / \\sum_{i≠j} f_{ij}`` (dir
 """
 function reciprocity(m::DCReM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     num = zero(precision(m))
     den = zero(precision(m))
     for i = 1:n
@@ -1668,7 +1668,7 @@ reciprocal degree sequences, this reproduces the observed reciprocity of the net
 """
 function reciprocity(m::CRWCM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     num = zero(precision(m))
     den = zero(precision(m))
     for i = 1:n
@@ -1692,7 +1692,7 @@ independent under the DBCM layer).
 """
 function weighted_reciprocity(m::DCReM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θᵒ = @view m.θ[1:n]
     θⁱ = @view m.θ[n+1:end]
     num = zero(precision(m))
@@ -1720,7 +1720,7 @@ reciprocity of the network it was fitted to.
 """
 function weighted_reciprocity(m::CRWCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θ⭢  = @view m.θ[1:n]
     θ⭠  = @view m.θ[n+1:2*n]
     θ⭤ᵒ = @view m.θ[2*n+1:3*n]

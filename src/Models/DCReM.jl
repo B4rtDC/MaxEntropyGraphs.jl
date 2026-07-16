@@ -509,7 +509,7 @@ Note: The expected weights can be computed separately with [`Ŵ`](@ref MaxEntrop
 function Ĝ(m::DCReM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     G = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -546,7 +546,7 @@ Compute the expected (unconditional) **weighted adjacency** matrix for the DCReM
 function Ŵ(m::DCReM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     W = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -589,7 +589,7 @@ available via [`σʷ`](@ref MaxEntropyGraphs.σʷ). Read as "sigma star".
 function σˣ(m::DCReM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     σ = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -632,7 +632,7 @@ Under the conditional DBCM layer the weights of distinct ordered pairs are indep
 function σʷ(m::DCReM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     σ = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -866,7 +866,7 @@ function outstrength(m::DCReM, i::Int; method::Symbol=:reduced)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θᵒ = @view m.θ[1:n]
     θⁱ = @view m.θ[n+1:end]
     if method == :reduced || method == :full
@@ -887,7 +887,7 @@ specified, only return out-strengths for nodes in `v`.
 """
 function outstrength(m::DCReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     for i in v
         i > n ? throw(ArgumentError("Attempted to access node $i in a $(n) node graph")) : nothing
     end
@@ -956,7 +956,7 @@ function instrength(m::DCReM, i::Int; method::Symbol=:reduced)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θᵒ = @view m.θ[1:n]
     θⁱ = @view m.θ[n+1:end]
     if method == :reduced || method == :full
@@ -977,7 +977,7 @@ specified, only return in-strengths for nodes in `v`.
 """
 function instrength(m::DCReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     for i in v
         i > n ? throw(ArgumentError("Attempted to access node $i in a $(n) node graph")) : nothing
     end
@@ -1086,7 +1086,7 @@ function rand(m::DCReM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
         m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
         m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
         # full per-node binary fitnesses + weighted parameters
-        n = m.status[:N]
+        n = m.status[:N]::Int
         x = m.xᵣ[m.dᵣ_ind]
         y = m.yᵣ[m.dᵣ_ind]
         θᵒ = @view m.θ[1:n]

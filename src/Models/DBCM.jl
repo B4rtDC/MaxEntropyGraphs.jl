@@ -572,7 +572,7 @@ function Ĝ(m::DBCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     
     # get network size => this is the full size
-    n = m.status[:d] 
+    n = m.status[:d]::Int 
     # initiate G
     G = zeros(precision(m), n, n)
     # initiate x and y
@@ -615,7 +615,7 @@ function σˣ(m::DBCM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # check network size => this is the full size
-    n = m.status[:d]
+    n = m.status[:d]::Int
     # initiate G
     σ = zeros(precision(m), n, n)
     # initiate x and y
