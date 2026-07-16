@@ -56,12 +56,18 @@ name_graphs = [("DECM_small",  MaxEntropyGraphs.rhesus_macaques(), Dict(:include
                ("DECM_medium", tiled_rhesus_directed(8),           Dict(:include_fixed_point => false, :include_BFGS => true, :include_newton => true)),
                ("DECM_large",  tiled_rhesus_directed(32),          Dict(:include_fixed_point => false, :include_BFGS => true, :include_newton => false))]
 
-# Scale limiter: BENCH_MAX_SCALE=small|medium|large (default large). BENCH_QUICK=1 aliases small.
-let scale = lowercase(get(ENV, "BENCH_QUICK", "0") == "1" ? "small" : get(ENV, "BENCH_MAX_SCALE", "large"))
+# Scale limiter: BENCH_MAX_SCALE=small|medium|large (default large) caps the problem size, and
+# BENCH_MIN_SCALE (default small) skips the smaller problems, so a run can target only what is
+# missing (e.g. BENCH_MIN_SCALE=large BENCH_MAX_SCALE=large). BENCH_QUICK=1 aliases small.
+let scale = lowercase(get(ENV, "BENCH_QUICK", "0") == "1" ? "small" : get(ENV, "BENCH_MAX_SCALE", "large")),
+    minscale = lowercase(get(ENV, "BENCH_MIN_SCALE", "small"))
+
     ncap = scale == "small" ? 1 : scale == "medium" ? 2 : length(name_graphs)
     ncap = min(ncap, length(name_graphs))
-    ncap < length(name_graphs) && @info "BENCH_MAX_SCALE=$(scale): restricting DECM benchmarks to the first $(ncap) problem(s)."
-    global name_graphs = name_graphs[1:ncap]
+    nfloor = minscale == "medium" ? 2 : minscale == "large" ? 3 : 1
+    nfloor = min(nfloor, ncap) # a floor above the cap degrades to the cap, never to an empty run
+    (nfloor > 1 || ncap < length(name_graphs)) && @info "BENCH_MIN_SCALE=$(minscale), BENCH_MAX_SCALE=$(scale): restricting DECM benchmarks to problem(s) $(nfloor):$(ncap)."
+    global name_graphs = name_graphs[nfloor:ncap]
 end
 
 # Write out the weighted edgelists (source, target, weight) for the reference graphs so Python uses the
@@ -82,8 +88,27 @@ end
 open(joinpath(@__DIR__, "DECM_script.sh"), "w") do f
     println(f, "#!/bin/bash")
     println(f, "source \"$(joinpath(@__DIR__, ".venv", "bin", "activate"))\"")
+    # Every pytest job runs under the process-group watchdog; BENCH_JOB_TIMEOUT=0 (the
+    # default) runs it untouched, so this changes nothing unless a budget is set.
+    watchdog = "\"$(joinpath(@__DIR__, "run_with_timeout.sh"))\" \"\${BENCH_JOB_TIMEOUT:-0}\" "
     for (name, G, _) in name_graphs
-        println(f, readlines("$(name).py")[2][3:end])
+        cmd = readlines("$(name).py")[2][3:end]
+        if name == "DECM_large"
+            # NEMtropy's decm_exp newton at N=512 (2048 parameters, dense per-iteration Hessian)
+            # has never been measured and could dwarf everything else here, while the Julia side
+            # deliberately drops Newton at this scale. Each test therefore runs as its own pytest
+            # process (riskiest last), so the watchdog can kill a slow newton without losing
+            # create/quasinewton, and the parts are merged into one result file afterwards (the
+            # plotting scripts read only the newest file per scale).
+            for nodeid in ("DECM_large.py::test_create_DECM",
+                           "DECM_large.py::test_solve_DECM[decm_exp-quasinewton-strengths]",
+                           "DECM_large.py::test_solve_DECM[decm_exp-newton-strengths]")
+                println(f, watchdog * replace(cmd, "pytest DECM_large.py" => "pytest '$(nodeid)'"))
+            end
+            println(f, "python \"$(joinpath(@__DIR__, "merge_pytest_benchmarks.py"))\" \"$(joinpath(@__DIR__, "benchmarks"))\" DECM_large")
+        else
+            println(f, watchdog * cmd)
+        end
     end
 end
 

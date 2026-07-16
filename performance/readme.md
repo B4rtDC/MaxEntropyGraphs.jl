@@ -78,10 +78,23 @@ It is controlled by environment variables:
 | --- | --- | --- |
 | `BENCH_CORES` | `4` | Core budget applied **fairly to both implementations**. Creation + parameter computation are single-threaded compute in both libraries, so this caps Julia's BLAS threads and Python's `OMP`/`OPENBLAS`/`MKL`/`NUMBA` threads to the same number (a same-core comparison); it also sets Julia's thread count and the NEMtropy sampler's `cpu_n`. Recorded as `system_info.bench_cores`/`blas_num_threads`. Run at `1` and `4` to show the comparison is fair either way. |
 | `BENCH_MAX_SCALE` | `large` | Caps the problem size: `small` \| `medium` \| `large`. `medium` drops the largest problem of every model, which is what makes a full run long, so it is a good tractable run (a bit over an hour at `BENCH_CORES=12`). |
+| `BENCH_MIN_SCALE` | `small` | Skips the problems *below* it, so a run can target only what is missing: `BENCH_MIN_SCALE=large BENCH_MAX_SCALE=large` re-runs just the large problems without redoing small/medium. |
+| `BENCH_MODELS` | all nine | Space-separated subset of `UBCM BiCM DBCM UECM DECM CReM RBCM DCReM CRWCM`; only the listed models are benchmarked and plotted. |
+| `BENCH_JOB_TIMEOUT` | `0` (off) | Per-job wall-clock budget in seconds for every generated Python benchmark job. A job over budget has its **whole process group** killed (`run_with_timeout.sh`, SIGTERM then SIGKILL, taking numba threads and multiprocessing children with it), the event is appended to `benchmarks/timeouts.log`, and the run continues with the next job. A killed job saves no results, so it is simply absent from the plots; check `timeouts.log` to see what was cut. |
 | `BENCH_QUICK` | `0` | Back-compat alias: `1` is equivalent to `BENCH_MAX_SCALE=small` (karate-scale smoke test). |
 | `BENCH_SKIP_PROJECTION` | `0` | `1` skips the (slow) BiCM projection benchmark. This is the single most expensive thing in the suite by a wide margin: at the large scale one of NEMtropy's eight projection variants alone measured 489 s per round over 30 rounds (~4 h), and the projection accounts for most of a full run's wall-clock. Setting this to `1` takes a full run from most of a day down to a few hours. |
 | `SKIP_PYTHON` | `0` | `1` skips the Python benchmarks, both NEMtropy and NuMeTriS (Julia only). |
 | `SKIP_PLOTS` | `0` | `1` skips the plotting step. |
+
+**Large-scale projection protocol.** Because of the cost quoted above, the eight NEMtropy
+projection variants of `BiCM_large` each run as their own pytest process at
+`--benchmark-min-rounds=5` (all other benchmarks keep 30 rounds), so a per-job budget can kill one
+slow variant without losing the others. The same per-test splitting is applied to `DECM_large`
+(NEMtropy's `decm_exp` newton at N=512 is unbounded, while the Julia side deliberately drops Newton
+at that scale). The per-process result files are then merged into a single file per scale by
+`merge_pytest_benchmarks.py`, because the plot scripts read only the newest result file per scale.
+Variants killed by `BENCH_JOB_TIMEOUT` are absent from the merged file and the plots, and are
+listed in `benchmarks/timeouts.log`.
 
 For example, a fair, tractable comparison across small + medium at a single core:
 `BENCH_CORES=1 BENCH_MAX_SCALE=medium ./benchmarks.sh`.

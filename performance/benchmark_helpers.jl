@@ -982,32 +982,7 @@ def coerce_sequences(m):
     return m
 
 M = coerce_sequences(DirectedGraph(edgelist=EDGE_LIST))
-# DECM ('decm_exp'), strengths initial guess; tol / max_steps matched to the Julia side (g_tol=1e-8 /
-# maxiters=1000). The dump below uses the NEWTON solution: NEMtropy's quasinewton (diagonal-hessian)
-# recipe stalls at ~3e-2 constraint violation on the DECM, and its fixed point diverges, while newton
-# reaches ~4e-9 (comparable to the Julia side).
-M.solve_tool(model="decm_exp", method="newton", initial_guess="strengths", tol=1e-8, eps=1e-8, max_steps=1000)
-
-## Dump the observed + expected degree AND strength sequences (out;in concatenated, NEMtropy's own
-## layout) for the accuracy comparison (best effort: wrapped so it can never fail the benchmark).
-## The Julia side (accuracy_comparison.jl) reads accuracy/{{scriptname}}_nemtropy.json if present.
-import json, os
-try:
-    _acc = '{{accfolder}}'
-    os.makedirs(_acc, exist_ok=True)
-    _dump = {}
-    _dump["dseq"] = [float(_v) for _v in np.concatenate((M.dseq_out, M.dseq_in))]
-    _dump["sseq"] = [float(_v) for _v in np.concatenate((M.out_strength, M.in_strength))]
-    for _key, _cands in (("expected_dseq", ("expected_dseq", "expected_degree_seq")),
-                         ("expected_sseq", ("expected_strength_seq", "expected_stregth_seq", "expected_strength_sequence"))):
-        for _a in _cands:
-            if hasattr(M, _a) and getattr(M, _a) is not None:
-                _dump[_key] = [float(_v) for _v in getattr(M, _a)]
-                break
-    with open(os.path.join(_acc, '{{scriptname}}_nemtropy.json'), 'w') as _f:
-        json.dump(_dump, _f)
-except Exception:
-    pass
+{{accuracyblock}}
 
 ## ---------------------- ##
 ## Functions to benchmark ##
@@ -1048,10 +1023,56 @@ function generate_DECM_python(name::String)
     outfolder = joinpath(@__DIR__, "benchmarks")
     accfolder = joinpath(@__DIR__, "accuracy")
 
-    out = replace(DECM_python_template, "{{scriptname}}" => name,
-                                        "{{outfolder}}"  => outfolder,
-                                        "{{accfolder}}"  => accfolder,
-                                        "{{datafilename}}"   => network_data_path)
+    # The module-level newton solve exists only to feed the accuracy dump, and the accuracy
+    # comparison (accuracy_comparison.jl) consumes the *_small dumps exclusively. The benchmark
+    # tests do not need it either: test_solve_DECM re-solves from the "strengths" initial guess
+    # every round. At N=512 that import-time newton solve is far from free and would be paid on
+    # every pytest invocation, so it is only emitted for the small problem.
+    accuracyblock = if endswith(name, "_small")
+        """
+        # DECM ('decm_exp'), strengths initial guess; tol / max_steps matched to the Julia side (g_tol=1e-8 /
+        # maxiters=1000). The dump below uses the NEWTON solution: NEMtropy's quasinewton (diagonal-hessian)
+        # recipe stalls at ~3e-2 constraint violation on the DECM, and its fixed point diverges, while newton
+        # reaches ~4e-9 (comparable to the Julia side).
+        M.solve_tool(model="decm_exp", method="newton", initial_guess="strengths", tol=1e-8, eps=1e-8, max_steps=1000)
+
+        ## Dump the observed + expected degree AND strength sequences (out;in concatenated, NEMtropy's own
+        ## layout) for the accuracy comparison (best effort: wrapped so it can never fail the benchmark).
+        ## The Julia side (accuracy_comparison.jl) reads accuracy/{{scriptname}}_nemtropy.json if present.
+        import json, os
+        try:
+            _acc = '{{accfolder}}'
+            os.makedirs(_acc, exist_ok=True)
+            _dump = {}
+            _dump["dseq"] = [float(_v) for _v in np.concatenate((M.dseq_out, M.dseq_in))]
+            _dump["sseq"] = [float(_v) for _v in np.concatenate((M.out_strength, M.in_strength))]
+            for _key, _cands in (("expected_dseq", ("expected_dseq", "expected_degree_seq")),
+                                 ("expected_sseq", ("expected_strength_seq", "expected_stregth_seq", "expected_strength_sequence"))):
+                for _a in _cands:
+                    if hasattr(M, _a) and getattr(M, _a) is not None:
+                        _dump[_key] = [float(_v) for _v in getattr(M, _a)]
+                        break
+            with open(os.path.join(_acc, '{{scriptname}}_nemtropy.json'), 'w') as _f:
+                json.dump(_dump, _f)
+        except Exception as _e:
+            # Never fail the benchmark over the accuracy dump, but never hide the miss either.
+            print("WARNING: could not dump NEMtropy DECM accuracy data: " + repr(_e))
+        """
+    else
+        """
+        # No module-level solve or accuracy dump here: the accuracy comparison only reads the
+        # *_small dumps, the solve benchmarks re-solve from their initial guess every round, and
+        # an import-time newton solve at this scale would be paid on every pytest invocation.
+        """
+    end
+
+    # Two sequential passes: a multi-pair `replace` never re-scans replaced text, so the
+    # placeholders inside the freshly inserted accuracy block would otherwise survive verbatim.
+    out = replace(DECM_python_template, "{{accuracyblock}}" => accuracyblock)
+    out = replace(out, "{{scriptname}}" => name,
+                       "{{outfolder}}"  => outfolder,
+                       "{{accfolder}}"  => accfolder,
+                       "{{datafilename}}"   => network_data_path)
 
     open(joinpath(@__DIR__, "$(name).py"), "w") do f
         write(f, out)

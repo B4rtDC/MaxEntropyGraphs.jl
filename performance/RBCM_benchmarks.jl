@@ -54,12 +54,18 @@ name_wgraphs = [("RBCM_small",  tiled_rhesus_digraph(1),  Dict(:include_fixed_po
                 ("RBCM_medium", tiled_rhesus_digraph(8),  Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => true)),
                 ("RBCM_large",  tiled_rhesus_digraph(32), Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => false))]
 
-# Scale limiter: BENCH_MAX_SCALE=small|medium|large (default large). BENCH_QUICK=1 aliases small.
-let scale = lowercase(get(ENV, "BENCH_QUICK", "0") == "1" ? "small" : get(ENV, "BENCH_MAX_SCALE", "large"))
+# Scale limiter: BENCH_MAX_SCALE=small|medium|large (default large) caps the problem size, and
+# BENCH_MIN_SCALE (default small) skips the smaller problems, so a run can target only what is
+# missing (e.g. BENCH_MIN_SCALE=large BENCH_MAX_SCALE=large). BENCH_QUICK=1 aliases small.
+let scale = lowercase(get(ENV, "BENCH_QUICK", "0") == "1" ? "small" : get(ENV, "BENCH_MAX_SCALE", "large")),
+    minscale = lowercase(get(ENV, "BENCH_MIN_SCALE", "small"))
+
     ncap = scale == "small" ? 1 : scale == "medium" ? 2 : length(name_wgraphs)
     ncap = min(ncap, length(name_wgraphs))
-    ncap < length(name_wgraphs) && @info "BENCH_MAX_SCALE=$(scale): restricting RBCM benchmarks to the first $(ncap) problem(s)."
-    global name_wgraphs = name_wgraphs[1:ncap]
+    nfloor = minscale == "medium" ? 2 : minscale == "large" ? 3 : 1
+    nfloor = min(nfloor, ncap) # a floor above the cap degrades to the cap, never to an empty run
+    (nfloor > 1 || ncap < length(name_wgraphs)) && @info "BENCH_MIN_SCALE=$(minscale), BENCH_MAX_SCALE=$(scale): restricting RBCM benchmarks to problem(s) $(nfloor):$(ncap)."
+    global name_wgraphs = name_wgraphs[nfloor:ncap]
 end
 
 # Write out the weighted edgelists (source, target, weight) for the reference graphs (Python side)
@@ -80,7 +86,9 @@ open(joinpath(@__DIR__, "RBCM_script.sh"), "w") do f
     println(f, "#!/bin/bash")
     println(f, "source \"$(joinpath(@__DIR__, ".venv", "bin", "activate"))\"")
     for (name, G, _) in name_wgraphs
-        println(f, readlines("$(name).py")[2][3:end])
+        # Wrap every pytest job in the process-group watchdog; BENCH_JOB_TIMEOUT=0 (the
+        # default) runs it untouched, so this changes nothing unless a budget is set.
+        println(f, "\"$(joinpath(@__DIR__, "run_with_timeout.sh"))\" \"\${BENCH_JOB_TIMEOUT:-0}\" " * readlines("$(name).py")[2][3:end])
     end
 end
 
