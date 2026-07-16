@@ -93,19 +93,20 @@ open(joinpath(@__DIR__, "DECM_script.sh"), "w") do f
     watchdog = "\"$(joinpath(@__DIR__, "run_with_timeout.sh"))\" \"\${BENCH_JOB_TIMEOUT:-0}\" "
     for (name, G, _) in name_graphs
         cmd = readlines("$(name).py")[2][3:end]
-        if name == "DECM_large"
-            # NEMtropy's decm_exp newton at N=512 (2048 parameters, dense per-iteration Hessian)
-            # has never been measured and could dwarf everything else here, while the Julia side
-            # deliberately drops Newton at this scale. Each test therefore runs as its own pytest
-            # process (riskiest last), so the watchdog can kill a slow newton without losing
-            # create/quasinewton, and the parts are merged into one result file afterwards (the
-            # plotting scripts read only the newest file per scale).
-            for nodeid in ("DECM_large.py::test_create_DECM",
-                           "DECM_large.py::test_solve_DECM[decm_exp-quasinewton-strengths]",
-                           "DECM_large.py::test_solve_DECM[decm_exp-newton-strengths]")
-                println(f, watchdog * replace(cmd, "pytest DECM_large.py" => "pytest '$(nodeid)'"))
+        if name in ("DECM_medium", "DECM_large")
+            # NEMtropy's decm_exp newton has never been measured beyond the small problem and its
+            # dense per-iteration Hessian (512 parameters at N=128, 2048 at N=512) could dwarf
+            # everything else here, while the Julia side deliberately drops Newton at large. Each
+            # test therefore runs as its own pytest process (riskiest last), so the watchdog can
+            # kill a slow newton without losing create/quasinewton, and the parts are merged into
+            # one result file afterwards (the plotting scripts read only the newest file per
+            # scale). The module-level solve is small-only, so the extra imports are cheap.
+            for nodeid in ("$(name).py::test_create_DECM",
+                           "$(name).py::test_solve_DECM[decm_exp-quasinewton-strengths]",
+                           "$(name).py::test_solve_DECM[decm_exp-newton-strengths]")
+                println(f, watchdog * replace(cmd, "pytest $(name).py" => "pytest '$(nodeid)'"))
             end
-            println(f, "python \"$(joinpath(@__DIR__, "merge_pytest_benchmarks.py"))\" \"$(joinpath(@__DIR__, "benchmarks"))\" DECM_large")
+            println(f, "python \"$(joinpath(@__DIR__, "merge_pytest_benchmarks.py"))\" \"$(joinpath(@__DIR__, "benchmarks"))\" $(name)")
         else
             println(f, watchdog * cmd)
         end
