@@ -77,9 +77,9 @@ It is controlled by environment variables:
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `BENCH_CORES` | `4` | Core budget applied **fairly to both implementations**. Creation + parameter computation are single-threaded compute in both libraries, so this caps Julia's BLAS threads and Python's `OMP`/`OPENBLAS`/`MKL`/`NUMBA` threads to the same number (a same-core comparison); it also sets Julia's thread count and the NEMtropy sampler's `cpu_n`. Recorded as `system_info.bench_cores`/`blas_num_threads`. Run at `1` and `4` to show the comparison is fair either way. |
-| `BENCH_MAX_SCALE` | `large` | Caps the problem size: `small` \| `medium` \| `large`. `medium` skips the >24h 250k-node UBCM graph, so `BENCH_MAX_SCALE=medium` is a good tractable run. |
+| `BENCH_MAX_SCALE` | `large` | Caps the problem size: `small` \| `medium` \| `large`. `medium` drops the largest problem of every model, which is what makes a full run long, so it is a good tractable run (a bit over an hour at `BENCH_CORES=12`). |
 | `BENCH_QUICK` | `0` | Back-compat alias: `1` is equivalent to `BENCH_MAX_SCALE=small` (karate-scale smoke test). |
-| `BENCH_SKIP_PROJECTION` | `0` | `1` skips the (slow) BiCM projection benchmark. |
+| `BENCH_SKIP_PROJECTION` | `0` | `1` skips the (slow) BiCM projection benchmark. This is the single most expensive thing in the suite by a wide margin: at the large scale one of NEMtropy's eight projection variants alone measured 489 s per round over 30 rounds (~4 h), and the projection accounts for most of a full run's wall-clock. Setting this to `1` takes a full run from most of a day down to a few hours. |
 | `SKIP_PYTHON` | `0` | `1` skips the Python benchmarks, both NEMtropy and NuMeTriS (Julia only). |
 | `SKIP_PLOTS` | `0` | `1` skips the plotting step. |
 
