@@ -9,6 +9,8 @@ using JSON
 using Dates
 using Statistics
 
+include(joinpath(@__DIR__, "plot_helpers.jl"))
+
 const UBCM_positionmapper = Dict("small" => [1], "medium" => [2], "large" => [3])
 
 """
@@ -200,6 +202,8 @@ begin
     for ext in ["pdf", "png"]
         savefig(p, joinpath(@__DIR__,"plots", "UBCM_computation_comparison ($(Dates.format(now(), "YYYY_mm_dd_HH_MM"))).$ext"))
     end
+    # This panel is figures/ubcm_benchmark.pdf in the paper (\autoref{fig:ubcm}).
+    mirror_to_figures(p, "ubcm_benchmark.pdf")
     p
 end
 

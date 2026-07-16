@@ -9,6 +9,8 @@ using JSON
 using Dates
 using Statistics
 
+include(joinpath(@__DIR__, "plot_helpers.jl"))
+
 const BiCM_positionmapper = Dict("small" => [1], "medium" => [2], "large" => [3])
 
 """
@@ -280,23 +282,26 @@ begin
 
     # finalize the plot
     plot!(p, yscale=:log10, bar_width=0.5, 
-            xlabel="Number of unique constraints\n(problem scale)", 
+            xlabel="Number of unique constraints\n(problem scale)",
             ylabel="Computation time [s]",
-            title="Median computation time (BiCM)", 
+            title="",#"Median computation time (BiCM)", # the paper caption carries this
             titlefontsize=18,
-            legendposition=:topleft, 
+            legendposition=:topleft,
             legendfontsize=12,
             tickfontsize=14,
             labelfontsize=18,
-            xticks=(1:3, ["12"; "105"; "198"]), 
-            yticks=10. .^ collect(-5:4), 
-            ylims=(1e-5,1e4), xlims=(0,4), 
-            grid=true, 
+            xticks=(1:3, ["12"; "105"; "198"]),
+            yticks=10. .^ collect(-5:4),
+            ylims=(1e-5,1e4), xlims=(0,4),
+            grid=true,
             size=(800,600))
 
     isdir(joinpath(@__DIR__,"plots")) ? nothing : mkdir(joinpath(@__DIR__,"plots"))
     for ext in ["pdf", "png"]
         savefig(p, joinpath(@__DIR__,"plots", "BiCM_computation_comparison ($(Dates.format(now(), "YYYY_mm_dd_HH_MM"))).$ext"))
     end
+    # This panel is figures/bicm_benchmark.pdf in the paper (\autoref{fig:bicm}). Generating it
+    # here replaces the hand-made copy, which carried a /Rotate 270 flag and a trimmed page box.
+    mirror_to_figures(p, "bicm_benchmark.pdf")
     p
 end

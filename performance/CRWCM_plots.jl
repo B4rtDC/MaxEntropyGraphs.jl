@@ -8,6 +8,8 @@ using JSON
 using Dates
 using Statistics
 
+include(joinpath(@__DIR__, "plot_helpers.jl"))
+
 # The CRWCM reference graphs are the rhesus network and block-diagonal tilings of it (16 → 128 → 512).
 # The Python reference is NuMeTriS (model 'RBCM+CRWCM'), which has a single solver, solves BOTH layers
 # (like the Julia two-step solve_model!) and JIT-compiles through numba. The Julia side shows the
@@ -160,10 +162,6 @@ end
 begin
     p = plot(p_create, p_solve, layout=(1,2), size=(1600,600),
              left_margin=10mm, bottom_margin=12mm, top_margin=5mm)
-    figdir = joinpath(dirname(@__DIR__), "figures")
-    if isdir(figdir)
-        savefig(p, joinpath(figdir, "crwcm_benchmark.pdf"))
-        @info "paper figure written to $(joinpath(figdir, "crwcm_benchmark.pdf"))"
-    end
+    mirror_to_figures(p, "crwcm_benchmark.pdf")
     p
 end
