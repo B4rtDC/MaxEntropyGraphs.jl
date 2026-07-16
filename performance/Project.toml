@@ -8,15 +8,15 @@ Measures = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 
-# The performance harness is pinned to the same Julia LTS baseline as the package
-# (see ../NOTES.md, which documents the 1.10 baseline used for the 0.5.0 results).
-# A reviewer reproducing the benchmarks should use Julia 1.10 to match the
-# published numbers; the harness itself runs on 1.10 - 1.12.
+# Julia 1.10 LTS is the package's minimum supported version (the CI matrix covers
+# 1.10, 1.11 and 1.12). It is the correctness floor, not the benchmark target: the
+# numbers reported in the paper were produced on Julia 1.12.6 (see ../NOTES.md), so a
+# reviewer reproducing them should use 1.12.6. The harness runs on any of 1.10 to 1.12.
 [compat]
 BenchmarkTools = "1"
 Graphs = "1.9"
 JSON = "0.21"
-MaxEntropyGraphs = "0.6"
+MaxEntropyGraphs = "0.7"
 Measures = "0.3"
 # Plots >= 1.41 is required for Julia 1.12 (earlier 1.40.x hit a Scratch.jl/GR precompile bug).
 Plots = "1.41"

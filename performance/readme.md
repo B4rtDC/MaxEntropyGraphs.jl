@@ -35,9 +35,11 @@ our two-step `solve_model!`.
 
 ### Julia environment
 
-The Julia environment is described by `Project.toml` (pinned to the Julia 1.10 LTS baseline, see
-`../NOTES.md`). The harness `dev`s the *local* package so the
-benchmarks test this checkout's code, not a registry release:
+The Julia environment is described by `Project.toml`. Julia 1.10 LTS is the package's minimum
+supported version (CI covers 1.10, 1.11 and 1.12), so it is the correctness floor rather than the
+benchmark target: the numbers in the paper were produced on Julia 1.12.6 (see `../NOTES.md`), so
+reproduce them on 1.12.6. The harness `dev`s the *local* package so the benchmarks test this
+checkout's code, not a registry release:
 
 ```bash
 julia --project=. -e 'using Pkg; Pkg.develop(path=".."); Pkg.instantiate()'

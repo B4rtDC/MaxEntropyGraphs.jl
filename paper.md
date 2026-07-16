@@ -147,7 +147,7 @@ The package is benchmarked against `NEMtropy` for model construction, parameter
 computation, ensemble sampling, bipartite-projection validation, and directed
 three-node motif computation across a
 range of problem scales, using `BenchmarkTools.jl` [@chen2016benchmarktools] on
-the Julia side and `pytest-benchmark` on the Python side, with both
+the Julia side (Julia 1.12.6) and `pytest-benchmark` on the Python side, with both
 implementations restricted to the same number of cores. `MaxEntropyGraphs.jl` is
 consistently and often substantially faster at fixed-point parameter
 computation, with the gap widening as the number of distinct constraints grows
