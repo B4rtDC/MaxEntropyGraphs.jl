@@ -64,17 +64,17 @@ begin
         python_index = findfirst(x -> x["name"] == "test_create_BiCM", py_bench[scale]["benchmarks"])
         python_index === nothing && continue # entry absent in this run (skipped benchmark)
         creation_times = Float64.(py_bench[scale]["benchmarks"][python_index]["stats"]["data"])
-        boxplot!(p, BiCM_positionmapper[scale], creation_times, label="", color=:blue, alpha=0.25, linecolor=:blue, outliers=false)
+        boxplot!(p, BiCM_positionmapper[scale], creation_times, label="", color=LIB_REFERENCE, alpha=0.25, linecolor=LIB_REFERENCE, outliers=false)
     end
-    boxplot!(p,[],[], label="NEMtropy", color=:blue, alpha=0.25, linecolor=nothing)
+    boxplot!(p,[],[], label="NEMtropy", color=LIB_REFERENCE, alpha=0.25, linecolor=nothing)
     # Julia part
     for scale in keys(ju_bench)
         julia_index = findfirst(x -> x["name"] == "test_create_BiCM", ju_bench[scale]["benchmarks"])
         julia_index === nothing && continue # entry absent in this run (skipped benchmark)
         creation_times = Float64.(ju_bench[scale]["benchmarks"][julia_index]["stats"][2]["times"]) ./ 1e9
-        boxplot!(p, BiCM_positionmapper[scale], creation_times, label="", color=:red, alpha=0.25, linecolor=:red, outliers=false)
+        boxplot!(p, BiCM_positionmapper[scale], creation_times, label="", color=LIB_MEG, alpha=0.25, linecolor=LIB_MEG, outliers=false)
     end
-    boxplot!(p,[],[], label="MaxEntropyGraphs.jl", color=:red, alpha=0.25, linecolor=nothing)
+    boxplot!(p,[],[], label="MaxEntropyGraphs.jl", color=LIB_MEG, alpha=0.25, linecolor=nothing)
 
     # finalize the plot
     #plot!(p, yscale=:log10, bar_width=0.5, xlabel="Number of unique constraints\n (scale of the problem)", ylabel="Time [s]",
@@ -106,46 +106,50 @@ end
 
 ## 3.3. Projection times
 begin
-    trans = 0.7
+    trans = 0.95
     p = plot()
 
-    # Define markers for different distributions 
+    # Define markers for different distributions
     approach_markers = Dict("Poisson" => :circle, "Poisson-Binomial" => :square)
 
-    # Python part
-    for (method, label, color, approach) in [   ("test_project_BiCM[poibin-True-1]", "NEMtropy (Poisson-Binomial, single thread)",:sienna4, "Poisson-Binomial");
-                                                ("test_project_BiCM[poibin-True-4]", "NEMtropy (Poisson-Binomial, multithreaded)",:peru, "Poisson-Binomial");
-                                                ("test_project_BiCM[poisson-True-1]", "NEMtropy (Poisson, multithreaded)",:sandybrown, "Poisson");
-                                                ("test_project_BiCM[poisson-True-4]", "NEMtropy (Poisson, multithreaded)",:chocolate2, "Poisson");
+    # Python part (the trailing -1/-4 of the key is the thread count, which is what `threaded` reads)
+    for (method, label, color, approach, threaded) in [ ("test_project_BiCM[poibin-True-1]", "NEMtropy (Poisson-Binomial, single thread)", LIB_REFERENCE, "Poisson-Binomial", false);
+                                                ("test_project_BiCM[poibin-True-4]", "NEMtropy (Poisson-Binomial, multithreaded)", LIB_REFERENCE, "Poisson-Binomial", true);
+                                                ("test_project_BiCM[poisson-True-1]", "NEMtropy (Poisson, single thread)", LIB_REFERENCE, "Poisson", false);
+                                                ("test_project_BiCM[poisson-True-4]", "NEMtropy (Poisson, multithreaded)", LIB_REFERENCE, "Poisson", true);
         ]
+        fillcolor, strokecolor = mark_fill(color, threaded)
         for scale in keys(py_bench)
             # find the benchmark containing the method
             ind = findfirst(x -> x["name"] == method, py_bench[scale]["benchmarks"])
             if ind != nothing
                 projection_times = Float64.(py_bench[scale]["benchmarks"][ind]["stats"]["data"])
-                scatter!(p, BiCM_positionmapper[scale], [median(projection_times)], label="",
-                color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color, markerstrokecolor=color, markersize=10)
+                scatter!(p, thread_x(BiCM_positionmapper[scale], color, approach, threaded), [median(projection_times)], label="",
+                color=fillcolor, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color,
+                markerstrokecolor=strokecolor, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
             end
         end
-        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=color) # Dummy scatter for legend
+        scatter!(p,[],[], label=label, color=fillcolor, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=strokecolor, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach)) # Dummy scatter for legend
     end
 
     # Julia part test_project_BiCM[cm_exp-$(layer)-$(precomputed)-$(distribution)-$(multithreaded)]
-    for (method, label, color, approach) in [   ("test_project_BiCM[cm_exp-bottom-true-PoissonBinomial-false]", "MaxEntropyGraphs (Poisson-Binomial, single thread)", :navy, "Poisson-Binomial");
-                                                ("test_project_BiCM[cm_exp-bottom-true-PoissonBinomial-true]", "MaxEntropyGraphs (Poisson-Binomial, multithreaded)", :dodgerblue4, "Poisson-Binomial");
-                                                ("test_project_BiCM[cm_exp-bottom-true-Poisson-false]", "MaxEntropyGraphs (Poisson, single thread)", :dodgerblue, "Poisson");
-                                                ("test_project_BiCM[cm_exp-bottom-true-Poisson-true]", "MaxEntropyGraphs (Poisson, multithreaded)", :deepskyblue, "Poisson")]
+    for (method, label, color, approach, threaded) in [ ("test_project_BiCM[cm_exp-bottom-true-PoissonBinomial-false]", "MaxEntropyGraphs (Poisson-Binomial, single thread)", LIB_MEG, "Poisson-Binomial", false);
+                                                ("test_project_BiCM[cm_exp-bottom-true-PoissonBinomial-true]", "MaxEntropyGraphs (Poisson-Binomial, multithreaded)", LIB_MEG, "Poisson-Binomial", true);
+                                                ("test_project_BiCM[cm_exp-bottom-true-Poisson-false]", "MaxEntropyGraphs (Poisson, single thread)", LIB_MEG, "Poisson", false);
+                                                ("test_project_BiCM[cm_exp-bottom-true-Poisson-true]", "MaxEntropyGraphs (Poisson, multithreaded)", LIB_MEG, "Poisson", true)]
+        fillcolor, strokecolor = mark_fill(color, threaded)
         for scale in keys(ju_bench)
             # find the relevant benchmarks
             benchind = findfirst(x -> x["name"] == "test_project_BiCM", ju_bench[scale]["benchmarks"])
             benchind === nothing && continue # entry absent in this run (skipped benchmark)
             if haskey(ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"], method)
                 projection_times = ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"][method][2]["times"] ./ 1e9
-                scatter!(p, BiCM_positionmapper[scale], [median(projection_times)], label="", 
-                color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color, markerstrokecolor=color, markersize=10)
+                scatter!(p, thread_x(BiCM_positionmapper[scale], color, approach, threaded), [median(projection_times)], label="",
+                color=fillcolor, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color,
+                markerstrokecolor=strokecolor, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
             end
         end
-        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=color) # Dummy scatter for legend
+        scatter!(p,[],[], label=label, color=fillcolor, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=strokecolor, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach)) # Dummy scatter for legend
     end
 
     # finalize the plot
@@ -166,51 +170,55 @@ begin
 
     isdir(joinpath(@__DIR__,"plots")) ? nothing : mkdir(joinpath(@__DIR__,"plots"))
     for ext in ["pdf", "png"]
-        savefig(p, joinpath(@__DIR__,"plots", "BiCM_projection_comparison ($(Dates.format(now(), "YYYY_mm_dd_HH_MM"))).$ext"))
+        savefig(p, joinpath(@__DIR__,"plots", "BiCM_projection_bottom_comparison ($(Dates.format(now(), "YYYY_mm_dd_HH_MM"))).$ext"))
     end
     p
 end
 begin
-    trans = 0.7
+    trans = 0.95
     p = plot()
 
-    # Define markers for different distributions 
+    # Define markers for different distributions
     approach_markers = Dict("Poisson" => :circle, "Poisson-Binomial" => :square)
 
-    # Python part
-    for (method, label, color, approach) in [   ("test_project_BiCM[poibin-False-1]", "NEMtropy (Poisson-Binomial, single thread)",:sienna4, "Poisson-Binomial");
-                                                ("test_project_BiCM[poibin-False-4]", "NEMtropy (Poisson-Binomial, multithreaded)",:peru, "Poisson-Binomial");
-                                                ("test_project_BiCM[poisson-False-1]", "NEMtropy (Poisson, multithreaded)",:sandybrown, "Poisson");
-                                                ("test_project_BiCM[poisson-False-4]", "NEMtropy (Poisson, multithreaded)",:chocolate2, "Poisson");
+    # Python part (the trailing -1/-4 of the key is the thread count, which is what `threaded` reads)
+    for (method, label, color, approach, threaded) in [ ("test_project_BiCM[poibin-False-1]", "NEMtropy (Poisson-Binomial, single thread)", LIB_REFERENCE, "Poisson-Binomial", false);
+                                                ("test_project_BiCM[poibin-False-4]", "NEMtropy (Poisson-Binomial, multithreaded)", LIB_REFERENCE, "Poisson-Binomial", true);
+                                                ("test_project_BiCM[poisson-False-1]", "NEMtropy (Poisson, single thread)", LIB_REFERENCE, "Poisson", false);
+                                                ("test_project_BiCM[poisson-False-4]", "NEMtropy (Poisson, multithreaded)", LIB_REFERENCE, "Poisson", true);
         ]
+        fillcolor, strokecolor = mark_fill(color, threaded)
         for scale in keys(py_bench)
             # find the benchmark containing the method
             ind = findfirst(x -> x["name"] == method, py_bench[scale]["benchmarks"])
             if ind != nothing
                 projection_times = Float64.(py_bench[scale]["benchmarks"][ind]["stats"]["data"])
-                scatter!(p, BiCM_positionmapper[scale], [median(projection_times)], label="",
-                color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color, markerstrokecolor=color, markersize=10)
+                scatter!(p, thread_x(BiCM_positionmapper[scale], color, approach, threaded), [median(projection_times)], label="",
+                color=fillcolor, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color,
+                markerstrokecolor=strokecolor, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
             end
         end
-        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=color) # Dummy scatter for legend
+        scatter!(p,[],[], label=label, color=fillcolor, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=strokecolor, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach)) # Dummy scatter for legend
     end
 
     # Julia part test_project_BiCM[cm_exp-$(layer)-$(precomputed)-$(distribution)-$(multithreaded)]
-    for (method, label, color, approach) in [   ("test_project_BiCM[cm_exp-top-true-PoissonBinomial-false]", "MaxEntropyGraphs (Poisson-Binomial, single thread)", :navy, "Poisson-Binomial");
-                                                ("test_project_BiCM[cm_exp-top-true-PoissonBinomial-true]", "MaxEntropyGraphs (Poisson-Binomial, multithreaded)", :dodgerblue4, "Poisson-Binomial");
-                                                ("test_project_BiCM[cm_exp-top-true-Poisson-false]", "MaxEntropyGraphs (Poisson, single thread)", :dodgerblue, "Poisson");
-                                                ("test_project_BiCM[cm_exp-top-true-Poisson-true]", "MaxEntropyGraphs (Poisson, multithreaded)", :deepskyblue, "Poisson")]
+    for (method, label, color, approach, threaded) in [ ("test_project_BiCM[cm_exp-top-true-PoissonBinomial-false]", "MaxEntropyGraphs (Poisson-Binomial, single thread)", LIB_MEG, "Poisson-Binomial", false);
+                                                ("test_project_BiCM[cm_exp-top-true-PoissonBinomial-true]", "MaxEntropyGraphs (Poisson-Binomial, multithreaded)", LIB_MEG, "Poisson-Binomial", true);
+                                                ("test_project_BiCM[cm_exp-top-true-Poisson-false]", "MaxEntropyGraphs (Poisson, single thread)", LIB_MEG, "Poisson", false);
+                                                ("test_project_BiCM[cm_exp-top-true-Poisson-true]", "MaxEntropyGraphs (Poisson, multithreaded)", LIB_MEG, "Poisson", true)]
+        fillcolor, strokecolor = mark_fill(color, threaded)
         for scale in keys(ju_bench)
             # find the relevant benchmarks
             benchind = findfirst(x -> x["name"] == "test_project_BiCM", ju_bench[scale]["benchmarks"])
             benchind === nothing && continue # entry absent in this run (skipped benchmark)
             if haskey(ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"], method)
                 projection_times = ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"][method][2]["times"] ./ 1e9
-                scatter!(p, BiCM_positionmapper[scale], [median(projection_times)], label="", 
-                color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color, markerstrokecolor=color, markersize=10)
+                scatter!(p, thread_x(BiCM_positionmapper[scale], color, approach, threaded), [median(projection_times)], label="",
+                color=fillcolor, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color,
+                markerstrokecolor=strokecolor, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
             end
         end
-        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=color) # Dummy scatter for legend
+        scatter!(p,[],[], label=label, color=fillcolor, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=strokecolor, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach)) # Dummy scatter for legend
     end
 
     # finalize the plot
@@ -233,7 +241,7 @@ begin
 
     isdir(joinpath(@__DIR__,"plots")) ? nothing : mkdir(joinpath(@__DIR__,"plots"))
     for ext in ["pdf", "png"]
-        savefig(p, joinpath(@__DIR__,"plots", "BiCM_projection_comparison ($(Dates.format(now(), "YYYY_mm_dd_HH_MM"))).$ext"))
+        savefig(p, joinpath(@__DIR__,"plots", "BiCM_projection_top_comparison ($(Dates.format(now(), "YYYY_mm_dd_HH_MM"))).$ext"))
     end
     p
 end
@@ -241,43 +249,45 @@ end
 
 ## 3.2. Computation times
 begin
-    trans = 0.7
+    trans = 0.95
     p = plot()
 
-    # Define markers for different solution approaches
-    approach_markers = Dict("fixed point" => :circle, "quasi-newton" => :square, "newton" => :star5)
+    # Colour is the library, marker shape is the solver method (see plot_helpers.jl).
+    approach_markers = METHOD_MARKERS
 
     # Python part
-    for (method, label, color, approach) in [ ("test_solve_BiCM[fixed-point-degrees]", "NEMtropy (fixed point)", :sienna4, "fixed point");
-                                              ("test_solve_BiCM[quasinewton-degrees]", "NEMtropy (quasi-newton)", :peru, "quasi-newton");
-                                              ("test_solve_BiCM[newton-degrees]", "NEMtropy (newton)", :sandybrown, "newton")]
+    for (method, label, color, approach) in [ ("test_solve_BiCM[fixed-point-degrees]", "NEMtropy (fixed point)", LIB_REFERENCE, "fixed point");
+                                              ("test_solve_BiCM[quasinewton-degrees]", "NEMtropy (quasi-newton)", LIB_REFERENCE, "quasi-newton");
+                                              ("test_solve_BiCM[newton-degrees]", "NEMtropy (newton)", LIB_REFERENCE, "newton")]
         for scale in keys(py_bench)
             # find the benchmark containing the method
             ind = findfirst(x -> x["name"] == method, py_bench[scale]["benchmarks"])
             if ind != nothing
                 solution_times = Float64.(py_bench[scale]["benchmarks"][ind]["stats"]["data"])
-                scatter!(p, BiCM_positionmapper[scale], [median(solution_times)], label="", 
-                color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color, markerstrokecolor=color, markersize=10)
+                scatter!(p, mark_x(BiCM_positionmapper[scale], color, approach), [median(solution_times)], label="",
+                color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color,
+                markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
             end
         end
-        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=color) # Dummy scatter for legend
+        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach)) # Dummy scatter for legend
     end
-    
+
     # Julia part
-    for (method, label, color, approach) in [ ("test_solve_BiCM[cm_exp-FP]", "MaxEntropyGraphs (fixed point)", :navy, "fixed point");
-                                              ("test_solve_BiCM[cm_exp-QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", :dodgerblue4, "quasi-newton");
-                                              ("test_solve_BiCM[cm_exp-Newton-ADF]", "MaxEntropyGraphs (newton)", :dodgerblue, "newton")]
+    for (method, label, color, approach) in [ ("test_solve_BiCM[cm_exp-FP]", "MaxEntropyGraphs (fixed point)", LIB_MEG, "fixed point");
+                                              ("test_solve_BiCM[cm_exp-QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", LIB_MEG, "quasi-newton");
+                                              ("test_solve_BiCM[cm_exp-Newton-ADF]", "MaxEntropyGraphs (newton)", LIB_MEG, "newton")]
         for scale in keys(ju_bench)
             # find the relevant benchmarks
             benchind = findfirst(x -> x["name"] == "test_solve_BiCM", ju_bench[scale]["benchmarks"])
             benchind === nothing && continue # entry absent in this run (skipped benchmark)
             if haskey(ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"], method)
                 solution_times = ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"][method][2]["times"] ./ 1e9
-                scatter!(p, BiCM_positionmapper[scale], [median(solution_times)], label="", 
-                color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color, markerstrokecolor=color, markersize=10)
+                scatter!(p, mark_x(BiCM_positionmapper[scale], color, approach), [median(solution_times)], label="",
+                color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color,
+                markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
             end
         end
-        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=color) # Dummy scatter for legend
+        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach)) # Dummy scatter for legend
     end
 
     # finalize the plot

@@ -62,6 +62,10 @@ performance/plots/*
 performance/samples/*
 !performance/plots/readme.md
 !performance/samples/readme.md
+# the run log the readme tells you to create (`nohup ./benchmarks.sh >> benchmark.log`).
+# It reaches hundreds of MB: a medium run emits ~190k lines, nearly all of them the same
+# repeated solver warning.
+performance/benchmark.log
 # performance is a separate environment; don't track its lockfiles
 performance/Manifest.toml
 performance/LocalPreferences.toml

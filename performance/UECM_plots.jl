@@ -8,6 +8,8 @@ using JSON
 using Dates
 using Statistics
 
+include(joinpath(@__DIR__, "plot_helpers.jl"))
+
 # The UECM reference graphs are the (symmetrised) rhesus network and block-diagonal tilings of it, so
 # the number of distinct {degree, strength} pairs stays constant (16) while N grows (16 → 128 → 512).
 # The x-axis therefore shows N (the problem scale) rather than the unique-constraint count.
@@ -56,16 +58,16 @@ begin
     for scale in keys(py_bench)
         python_index = findfirst(x -> x["name"] == "test_create_UECM", py_bench[scale]["benchmarks"])
         creation_times = Float64.(py_bench[scale]["benchmarks"][python_index]["stats"]["data"])
-        boxplot!(p, UECM_positionmapper[scale], creation_times, label="", color=:blue, alpha=0.25, linecolor=:blue, outliers=false)
+        boxplot!(p, UECM_positionmapper[scale], creation_times, label="", color=LIB_REFERENCE, alpha=0.25, linecolor=LIB_REFERENCE, outliers=false)
     end
-    boxplot!(p,[],[], label="NEMtropy", color=:blue, alpha=0.25, linecolor=nothing)
+    boxplot!(p,[],[], label="NEMtropy", color=LIB_REFERENCE, alpha=0.25, linecolor=nothing)
     # Julia part
     for scale in keys(ju_bench)
         julia_index = findfirst(x -> x["name"] == "test_create_UECM", ju_bench[scale]["benchmarks"])
         creation_times = Float64.(ju_bench[scale]["benchmarks"][julia_index]["stats"][2]["times"]) ./ 1e9
-        boxplot!(p, UECM_positionmapper[scale], creation_times, label="", color=:red, alpha=0.25, linecolor=:red, outliers=false)
+        boxplot!(p, UECM_positionmapper[scale], creation_times, label="", color=LIB_MEG, alpha=0.25, linecolor=LIB_MEG, outliers=false)
     end
-    boxplot!(p,[],[], label="MaxEntropyGraphs", color=:red, alpha=0.25, linecolor=nothing)
+    boxplot!(p,[],[], label="MaxEntropyGraphs", color=LIB_MEG, alpha=0.25, linecolor=nothing)
 
     plot!(p, yscale=:log10, bar_width=0.5,
         xlabel="Number of nodes\n(problem scale)",
@@ -97,8 +99,8 @@ begin
     trans = 0.5
     p = plot()
     # Python part
-    for (method, label, color) in [ ("test_solve_UECM[ecm_exp-quasinewton-strengths]", "NEMtropy (quasi-newton)", :peru);
-                                    ("test_solve_UECM[ecm_exp-newton-strengths]", "NEMtropy (newton)", :sandybrown)]
+    for (method, label, color) in [ ("test_solve_UECM[ecm_exp-quasinewton-strengths]", "NEMtropy (quasi-newton)", LIB_REFERENCE);
+                                    ("test_solve_UECM[ecm_exp-newton-strengths]", "NEMtropy (newton)", LIB_REFERENCE)]
         for scale in keys(py_bench)
             ind = findfirst(x -> x["name"] == method, py_bench[scale]["benchmarks"])
             ind === nothing && continue
@@ -109,8 +111,8 @@ begin
     end
 
     # Julia part
-    for (method, label, color) in [ ("test_solve_UECM[ecm_exp-QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", :dodgerblue4);
-                                    ("test_solve_UECM[ecm_exp-Newton-ADF]", "MaxEntropyGraphs (newton)", :deepskyblue)]
+    for (method, label, color) in [ ("test_solve_UECM[ecm_exp-QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", LIB_MEG);
+                                    ("test_solve_UECM[ecm_exp-Newton-ADF]", "MaxEntropyGraphs (newton)", LIB_MEG)]
         for scale in keys(ju_bench)
             benchind = findfirst(x -> x["name"] == "test_solve_UECM", ju_bench[scale]["benchmarks"])
             if haskey(ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"], method)
@@ -129,36 +131,39 @@ end
 
 ## 3.3. Median solve times (scatter)
 begin
-    trans = 0.7
+    trans = 0.95
     p = plot()
 
-    approach_markers = Dict("quasi-newton" => :square, "newton" => :star5)
+    # Colour is the library, marker shape is the solver method (see plot_helpers.jl).
+    approach_markers = METHOD_MARKERS
 
     # Python part
-    for (method, label, color, approach) in [ ("test_solve_UECM[ecm_exp-quasinewton-strengths]", "NEMtropy (quasi-newton)", :peru, "quasi-newton");
-                                              ("test_solve_UECM[ecm_exp-newton-strengths]", "NEMtropy (newton)", :sandybrown, "newton")]
+    for (method, label, color, approach) in [ ("test_solve_UECM[ecm_exp-quasinewton-strengths]", "NEMtropy (quasi-newton)", LIB_REFERENCE, "quasi-newton");
+                                              ("test_solve_UECM[ecm_exp-newton-strengths]", "NEMtropy (newton)", LIB_REFERENCE, "newton")]
         for scale in keys(py_bench)
             ind = findfirst(x -> x["name"] == method, py_bench[scale]["benchmarks"])
             ind === nothing && continue
             solution_times = Float64.(py_bench[scale]["benchmarks"][ind]["stats"]["data"])
-            scatter!(p, UECM_positionmapper[scale], [median(solution_times)], label="",
-            color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color, markerstrokecolor=color, markersize=10)
+            scatter!(p, mark_x(UECM_positionmapper[scale], color, approach), [median(solution_times)], label="",
+            color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color,
+            markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
         end
-        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=color)
+        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
     end
 
     # Julia part
-    for (method, label, color, approach) in [ ("test_solve_UECM[ecm_exp-QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", :dodgerblue4, "quasi-newton");
-                                              ("test_solve_UECM[ecm_exp-Newton-ADF]", "MaxEntropyGraphs (newton)", :dodgerblue, "newton")]
+    for (method, label, color, approach) in [ ("test_solve_UECM[ecm_exp-QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", LIB_MEG, "quasi-newton");
+                                              ("test_solve_UECM[ecm_exp-Newton-ADF]", "MaxEntropyGraphs (newton)", LIB_MEG, "newton")]
         for scale in keys(ju_bench)
             benchind = findfirst(x -> x["name"] == "test_solve_UECM", ju_bench[scale]["benchmarks"])
             if haskey(ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"], method)
                 solution_times = ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"][method][2]["times"] ./ 1e9
-                scatter!(p, UECM_positionmapper[scale], [median(solution_times)], label="",
-                color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color, markerstrokecolor=color, markersize=10)
+                scatter!(p, mark_x(UECM_positionmapper[scale], color, approach), [median(solution_times)], label="",
+                color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color,
+                markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
             end
         end
-        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=color)
+        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
     end
 
     plot!(p, yscale=:log10, bar_width=0.5,
