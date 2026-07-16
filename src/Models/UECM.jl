@@ -944,17 +944,6 @@ end
 
 
 
-# The UECM feasible region is `yᵢyⱼ < 1` (`βᵢ + βⱼ > 0`); outside it the likelihood is not
-# defined (it evaluates to `NaN`). The default HagerZhang / (Strong)Wolfe line searches cannot
-# cope with that barrier and stall almost immediately, whereas a BackTracking line search (halve
-# the step until the objective is finite and satisfies the Armijo condition) stays in the feasible
-# interior and converges — this is exactly the backtracking recipe of Vallarano et al. (2021).
-# We therefore give the UECM its own optimizer instances (the other models keep the package-wide
-# `optimization_methods`, which work well for their unconstrained domain).
-const UECM_optimization_methods = Dict( :LBFGS  => OptimizationOptimJL.LBFGS( linesearch = OptimizationOptimJL.Optim.LineSearches.BackTracking()),
-                                        :BFGS   => OptimizationOptimJL.BFGS(  linesearch = OptimizationOptimJL.Optim.LineSearches.BackTracking()),
-                                        :Newton => OptimizationOptimJL.Newton(linesearch = OptimizationOptimJL.Optim.LineSearches.BackTracking()))
-
 """
     solve_model!(m::UECM; kwargs...)
 
@@ -1039,9 +1028,9 @@ function solve_model!(m::UECM;  # common settings
         prob = Optimization.OptimizationProblem(f, θ₀);
         # obtain solution
         method ∈ keys(optimization_methods) || throw(ArgumentError("The method $(method) is not supported (yet)"))
-        # use the BackTracking-line-search variants (see `UECM_optimization_methods` above), falling
-        # back to the package-wide optimizer for any method without a BackTracking variant.
-        opt = get(UECM_optimization_methods, method, optimization_methods[method])
+        # use the BackTracking-line-search variants (see `backtracking_optimization_methods` in
+        # models.jl), falling back to the package-wide optimizer for any method without a BackTracking variant.
+        opt = get(backtracking_optimization_methods, method, optimization_methods[method])
         # `maxiters` is forwarded (it was previously silently ignored); `g_tol` (when set) maps to
         # Optim's gradient tolerance so the solve can stop before over-converging.
         solve_kwargs = isnothing(g_tol) ? (; maxiters = maxiters, abstol = abstol, reltol = reltol) :

@@ -3,7 +3,7 @@
 This folder lets a third party reproduce the performance and accuracy claims for
 `MaxEntropyGraphs.jl`, comparing it against two Python packages: `NEMtropy` and `NuMeTriS`.
 
-All eight models are benchmarked, each against the Python package that implements it:
+All nine models are benchmarked, each against the Python package that implements it:
 
 | Model | Comparator | Model string in the comparator |
 | --- | --- | --- |
@@ -11,6 +11,7 @@ All eight models are benchmarked, each against the Python package that implement
 | `DBCM` | `NEMtropy` | `dcm_exp` (plus `expected_dcm_3motif_*` for the motif spectra) |
 | `BiCM` | `NEMtropy` | `BipartiteGraph` |
 | `UECM` | `NEMtropy` | `ecm_exp` |
+| `DECM` | `NEMtropy` | `decm_exp` |
 | `CReM` | `NEMtropy` | `crema` |
 | `RBCM` | `NuMeTriS` | `RBCM` |
 | `DCReM` | `NuMeTriS` | `DBCM+CReMa` |

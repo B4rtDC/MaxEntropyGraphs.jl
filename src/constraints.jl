@@ -49,6 +49,7 @@ sequences the answer is the worst case across all of them:
 | `BiCM`  | ⊥-layer degree, ⊤-layer degree                                            |
 | `RBCM`  | non-reciprocated out-degree, non-reciprocated in-degree, reciprocated degree |
 | `UECM`  | degree, strength                                                          |
+| `DECM`  | out-degree, in-degree, out-strength, in-strength                          |
 | `CReM`  | strength                                                                  |
 | `DCReM` | out-strength, in-strength                                                 |
 | `CRWCM` | non-reciprocated out/in-strength, reciprocated out/in-strength            |
@@ -175,6 +176,22 @@ function constraint_residual(m::UECM; relative::Bool=false)
     # undo the multiplicity weighting on the degree- and the strength-block
     r = vcat(∇L[1:n] ./ m.f, ∇L[n+1:2*n] ./ m.f)
     return _constraint_residual(r, vcat(m.dᵣ, m.sᵣ), relative)
+end
+
+
+function constraint_residual(m::DECM; relative::Bool=false)
+    m.status[:params_computed] || throw(ArgumentError("The parameters have not been computed yet"))
+    N = precision(m)
+    n = length(m.dᵣ_out)
+    ∇L    = zeros(N, length(m.θᵣ))
+    x_out = zeros(N, n)
+    x_in  = zeros(N, n)
+    y_out = zeros(N, n)
+    y_in  = zeros(N, n)
+    ∇L_DECM_reduced!(∇L, m.θᵣ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f, x_out, x_in, y_out, y_in, n)
+    # undo the multiplicity weighting on the out/in degree- and strength-blocks
+    r = vcat(∇L[1:n] ./ m.f, ∇L[n+1:2*n] ./ m.f, ∇L[2*n+1:3*n] ./ m.f, ∇L[3*n+1:4*n] ./ m.f)
+    return _constraint_residual(r, vcat(m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in), relative)
 end
 
 

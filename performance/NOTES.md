@@ -172,6 +172,36 @@ Conventions:
   whereas the shipped AD path handles arbitrary user metrics. Recorded in `performance.md` as the recommended
   route for large-n variance.
 
+### EXP-014  DECM added with NEMtropy `decm_exp` cross-validation (0.7.0)
+- Hypothesis: the DECM (directed twin of the UECM: out/in-degrees + integer out/in-strengths, jointly)
+  transfers the UECM recipe — NaN feasibility barrier + BackTracking BFGS, reduced quadruple
+  compression — with DBCM-style ordered-pair sums, and reproduces NEMtropy's `DirectedGraph`/`decm_exp`
+  solution on identical CSV edge lists.
+- Change / config: `DECM_benchmarks.jl` (rhesus unsymmetrised + directed block-diagonal tilings,
+  16 → 128 → 512 nodes), `generate_DECM_python` (weighted 3-tuple edge list, `decm_exp`,
+  quasinewton/newton, `strengths` initial guess), `constraint_violation(::DECM)` + `DECM_small`
+  reference entry in `accuracy_comparison.jl`. The NEMtropy dump stores the observed/expected
+  sequences out;in-concatenated under the same `dseq`/`sseq` keys the UECM reader already handles.
+- Correctness: analytic ∇L ≡ Zygote to 2e-13; default BFGS solve residual 3.7e-7 (Newton 3e-11) on
+  rhesus; all four sequences recovered via Ĝ/Ŵ row AND column sums (rtol 1e-6); σʷ and the
+  covariance-FREE directed σₓ validated by `validation/symbolic/decm.jl` (37 checks) and
+  `validation/numeric/decm_weighted_sigma.jl` (33 checks, 10k samples).
+- NEMtropy quirks (recorded for future readers, all NEMtropy 3.0.3, measured on `DECM_small`):
+  1. A `DirectedGraph` built from a *weighted* edge list leaves `dseq_out`/`dseq_in` as **object-dtype**
+     numpy arrays, and the numba `nopython` kernels (`loglikelihood_hessian_diag_decm_exp`) refuse
+     them with a `TypingError`. The generated script coerces the four constraint sequences to
+     `float64` right after construction (`coerce_sequences`), which fixes the typing.
+  2. NEMtropy's `decm_exp` **quasinewton** (diagonal-hessian) recipe stalls at a `3.2e-2` max
+     constraint violation on this graph, and its **fixed point diverges** (violation ≈ 49) — the
+     latter consistent with the orientation bug below. Full **newton** reaches `3.7e-9`, so the
+     accuracy dump uses the newton solution (the pytest timings still cover newton + quasinewton).
+  3. `iterative_decm_exp` (the fixed-point map, `models_functions.py:3236`) computes its `fa_in`
+     accumulator with `x[j + n]` (= a_in,j) where the in-degree equation requires `x[j]` (= a_out,j) —
+     compare `iterative_decm_exp_2` (line 3312), which uses the correct orientation. Our
+     `DECM_reduced_iter!` follows the mathematically consistent form (`iterative_decm_exp_2`'s).
+- Decision: keep. DECM slots into `benchmarks.sh` between UECM and CReM at all three stages
+  (Julia driver, Python wrapper, plots).
+
 <!-- Template:
 ### EXP-NNN  <short title>
 - Hypothesis:

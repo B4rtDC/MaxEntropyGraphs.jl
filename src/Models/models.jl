@@ -15,6 +15,17 @@ const AD_methods = Dict(:AutoZygote         => Optimization.AutoZygote(),
                         :AutoReverseDiff    => Optimization.AutoReverseDiff(),
                         :AutoFiniteDiff     => Optimization.AutoFiniteDiff())
 
+# The enhanced models (UECM/DECM) have a feasible region `yᵢyⱼ < 1` (`βᵢ + βⱼ > 0`); outside it the
+# likelihood is not defined (it evaluates to `NaN`). The default HagerZhang / (Strong)Wolfe line searches
+# cannot cope with that barrier and stall almost immediately, whereas a BackTracking line search (halve
+# the step until the objective is finite and satisfies the Armijo condition) stays in the feasible
+# interior and converges — this is exactly the backtracking recipe of Vallarano et al. (2021).
+# The enhanced models therefore use these optimizer instances (the other models keep the package-wide
+# `optimization_methods`, which work well for their unconstrained domain).
+const backtracking_optimization_methods = Dict( :LBFGS  => OptimizationOptimJL.LBFGS( linesearch = OptimizationOptimJL.Optim.LineSearches.BackTracking()),
+                                                :BFGS   => OptimizationOptimJL.BFGS(  linesearch = OptimizationOptimJL.Optim.LineSearches.BackTracking()),
+                                                :Newton => OptimizationOptimJL.Newton(linesearch = OptimizationOptimJL.Optim.LineSearches.BackTracking()))
+
 
 """
     _DEFAULT_FTOL

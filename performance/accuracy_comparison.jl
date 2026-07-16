@@ -1,8 +1,8 @@
 ##############################################################################################
 #  Accuracy comparison: MaxEntropyGraphs.jl vs. NEMtropy and NuMeTriS
 #
-#  NEMtropy is the comparator for UBCM, DBCM, BiCM, UECM and CReM; NuMeTriS is the comparator
-#  for the reciprocity-aware models (RBCM, DCReM and CRWCM).
+#  NEMtropy is the comparator for UBCM, DBCM, BiCM, UECM, DECM and CReM; NuMeTriS is the
+#  comparator for the reciprocity-aware models (RBCM, DCReM and CRWCM).
 #
 #  The timing benchmarks only show how *fast* each implementation is; this script validates
 #  that they converge to the *same, correct* solution. The relevant quantity is how well the
@@ -62,6 +62,18 @@ function constraint_violation(model::UECM)
     Δd = abs.(vec(sum(A, dims = 2)) .- model.d)
     Δs = abs.(vec(sum(W, dims = 2)) .- model.s)
     Δ = vcat(Δd, Δs)
+    return (maximum(Δ), sum(Δ) / length(Δ))
+end
+
+# The DECM constrains the out/in-degree AND the (integer) out/in-strength sequences, so the violation
+# combines the expected-adjacency row/column sums (degrees) and the expected-weight row/column sums (strengths).
+function constraint_violation(model::DECM)
+    A = MaxEntropyGraphs.Ĝ(model)        # expected adjacency
+    W = MaxEntropyGraphs.Ŵ(model)        # expected (unconditional) weights
+    Δ = vcat(abs.(vec(sum(A, dims = 2)) .- model.d_out),
+             abs.(vec(sum(A, dims = 1)) .- model.d_in),
+             abs.(vec(sum(W, dims = 2)) .- model.s_out),
+             abs.(vec(sum(W, dims = 1)) .- model.s_in))
     return (maximum(Δ), sum(Δ) / length(Δ))
 end
 
@@ -236,6 +248,7 @@ const reference_models = [
     ("DBCM_small", () -> DBCM(MaxEntropyGraphs.maspalomas())),
     ("BiCM_small", () -> BiCM(MaxEntropyGraphs.corporateclub())),
     ("UECM_small", () -> UECM(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques()))),
+    ("DECM_small", () -> DECM(MaxEntropyGraphs.rhesus_macaques())),
     ("CReM_small", () -> CReM(MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques()))),
     ("RBCM_small", () -> RBCM(Graphs.SimpleDiGraph(MaxEntropyGraphs.rhesus_macaques()))),
     ("DCReM_small", () -> DCReM(MaxEntropyGraphs.rhesus_macaques())),

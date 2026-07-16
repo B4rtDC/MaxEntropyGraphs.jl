@@ -67,6 +67,7 @@ julia --project=. -t "${JULIA_NUM_THREADS}" ./UBCM_benchmarks.jl
 julia --project=. -t "${JULIA_NUM_THREADS}" ./BiCM_benchmarks.jl
 julia --project=. -t "${JULIA_NUM_THREADS}" ./DBCM_benchmarks.jl
 julia --project=. -t "${JULIA_NUM_THREADS}" ./UECM_benchmarks.jl
+julia --project=. -t "${JULIA_NUM_THREADS}" ./DECM_benchmarks.jl
 julia --project=. -t "${JULIA_NUM_THREADS}" ./CReM_benchmarks.jl
 julia --project=. -t "${JULIA_NUM_THREADS}" ./RBCM_benchmarks.jl
 julia --project=. -t "${JULIA_NUM_THREADS}" ./DCReM_benchmarks.jl
@@ -83,6 +84,7 @@ if [ "${SKIP_PYTHON:-0}" != "1" ]; then
     bash ./BiCM_script.sh
     bash ./DBCM_script.sh
     bash ./UECM_script.sh
+    bash ./DECM_script.sh
     bash ./CReM_script.sh
     bash ./RBCM_script.sh
     bash ./DCReM_script.sh
@@ -96,16 +98,16 @@ julia --project=. -t "${JULIA_NUM_THREADS}" ./accuracy_comparison.jl || \
     echo "WARNING: accuracy comparison did not complete (NEMtropy dumps may be missing)."
 
 ## --- Plots ------------------------------------------------------------------
+## Each plot script is guarded the same way the accuracy step is: the scripts `error()` out
+## when a model has no results for one of the two languages, and under `set -e` a single such
+## failure would abort the run before the later scripts write their paper figures. A missing
+## plot must not cost the ones that come after it.
 if [ "${SKIP_PLOTS:-0}" != "1" ]; then
     echo "$(date) - Generating the plots"
-    julia --project=. ./UBCM_plots.jl
-    julia --project=. ./BiCM_plots.jl
-    julia --project=. ./UECM_plots.jl
-    julia --project=. ./CReM_plots.jl
-    julia --project=. ./DBCM_plots.jl
-    julia --project=. ./RBCM_plots.jl
-    julia --project=. ./DCReM_plots.jl
-    julia --project=. ./CRWCM_plots.jl
+    for model in UBCM BiCM UECM DECM CReM DBCM RBCM DCReM CRWCM; do
+        julia --project=. "./${model}_plots.jl" || \
+            echo "WARNING: ${model}_plots.jl did not complete (benchmark results for ${model} may be missing)."
+    done
 fi
 
 echo "$(date) - Finished benchmarks"

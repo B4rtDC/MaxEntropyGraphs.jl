@@ -882,6 +882,188 @@ end
 
 
 ##############################################################################################
+#  DECM (Directed Enhanced Configuration Model) helpers.
+#
+#  The DECM constrains the out/in-degree AND the (integer) out/in-strength sequences of a weighted,
+#  directed network — the directed counterpart of the UECM. NEMtropy solves it through the same
+#  `DirectedGraph` class as the DBCM, but with the `decm`/`decm_exp` model name and a strengths-based
+#  initial guess. Because the likelihood is only defined on the feasible region (yᵢ_out·yⱼ_in < 1),
+#  the fixed-point recipe is unstable, so the Julia side benchmarks BFGS/Newton only (matching the
+#  paper and the UECM setup).
+##############################################################################################
+
+"""
+    test_create_DECM(G)
+
+Benchmark the creation of the DECM model for the given weighted, directed graph `G`.
+"""
+function test_create_DECM(G)
+    b = @benchmarkable DECM($(G))
+    tune!(b)
+    res = run(b)
+    return Dict("name" => "test_create_DECM", "stats" => res)
+end
+
+"""
+    test_solve_DECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+
+Benchmark solving the DECM for the given weighted, directed graph `G` (settings matched to the Python side).
+The fixed point recipe is unstable for the DECM, so it is excluded by default.
+"""
+function test_solve_DECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+    model = DECM(G)
+    solve_model!(model, method=:BFGS)
+    suite = BenchmarkGroup()
+    if include_fixed_point
+        suite["test_solve_DECM[decm_exp-FP]"] =          @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=1000, ftol=1e-8)
+    end
+    if include_BFGS
+        suite["test_solve_DECM[decm_exp-QN-BFGS-AG]"] =  @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=true)
+        suite["test_solve_DECM[decm_exp-QN-BFGS-ADF]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+    end
+    if include_LBFGS
+        suite["test_solve_DECM[decm_exp-QN-LBFGS-AG]"] = @benchmarkable solve_model!($(model), method=:LBFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=true)
+    end
+    if include_newton
+        suite["test_solve_DECM[decm_exp-Newton-ADF]"] =  @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+    end
+    tune!(suite)
+    res = run(suite)
+    return Dict("name" => "test_solve_DECM", "stats" => res)
+end
+
+"""
+    test_sample_DECM(G, n::Int)
+
+Benchmark drawing `n` samples from the DECM ensemble for `G`, seeded for reproducibility.
+"""
+function test_sample_DECM(G, n::Int)
+    model = DECM(G)
+    solve_model!(model, method=:BFGS)
+    b = @benchmarkable rand($(model), $(n); rng = MaxEntropyGraphs.Xoshiro(161))
+    tune!(b)
+    res = run(b)
+    return Dict("name" => "test_sample_DECM", "stats" => res)
+end
+
+DECM_python_template = """
+# run in folder as:
+# pytest {{scriptname}}.py --benchmark-save={{scriptname}} --benchmark-min-rounds=30 --benchmark-warmup-iterations=2 --benchmark-save-data --benchmark-storage='{{outfolder}}'
+
+import numpy as np
+from NEMtropy import DirectedGraph
+import pytest
+import csv
+
+# set the path
+NETPATH = '{{datafilename}}'
+
+# loader function (weighted edge list: source, target, weight)
+def load_csv_file(filepath):
+    with open(filepath, 'r') as csvfile:
+        csvreader = csv.reader(csvfile)
+        for row in csvreader:
+            yield tuple(map(int, row))
+
+
+## -------------- ##
+## Objects to use ##
+## -------------- ##
+# NEMtropy auto-detects the weighted (3-tuple) edge list and builds both the out/in-degree and
+# out/in-strength sequences.
+EDGE_LIST = [t for t in load_csv_file(NETPATH)]
+
+def coerce_sequences(m):
+    # NEMtropy 3.0.3 leaves dseq_out/dseq_in as object-dtype arrays when a DirectedGraph is built
+    # from a weighted edge list, and numba's nopython kernels (the decm_exp hessians) refuse
+    # object arrays. Coercing the four constraint sequences to float64 fixes the typing.
+    for a in ("dseq_out", "dseq_in", "out_strength", "in_strength"):
+        setattr(m, a, np.asarray(getattr(m, a), dtype=np.float64))
+    return m
+
+M = coerce_sequences(DirectedGraph(edgelist=EDGE_LIST))
+# DECM ('decm_exp'), strengths initial guess; tol / max_steps matched to the Julia side (g_tol=1e-8 /
+# maxiters=1000). The dump below uses the NEWTON solution: NEMtropy's quasinewton (diagonal-hessian)
+# recipe stalls at ~3e-2 constraint violation on the DECM, and its fixed point diverges, while newton
+# reaches ~4e-9 (comparable to the Julia side).
+M.solve_tool(model="decm_exp", method="newton", initial_guess="strengths", tol=1e-8, eps=1e-8, max_steps=1000)
+
+## Dump the observed + expected degree AND strength sequences (out;in concatenated, NEMtropy's own
+## layout) for the accuracy comparison (best effort: wrapped so it can never fail the benchmark).
+## The Julia side (accuracy_comparison.jl) reads accuracy/{{scriptname}}_nemtropy.json if present.
+import json, os
+try:
+    _acc = '{{accfolder}}'
+    os.makedirs(_acc, exist_ok=True)
+    _dump = {}
+    _dump["dseq"] = [float(_v) for _v in np.concatenate((M.dseq_out, M.dseq_in))]
+    _dump["sseq"] = [float(_v) for _v in np.concatenate((M.out_strength, M.in_strength))]
+    for _key, _cands in (("expected_dseq", ("expected_dseq", "expected_degree_seq")),
+                         ("expected_sseq", ("expected_strength_seq", "expected_stregth_seq", "expected_strength_sequence"))):
+        for _a in _cands:
+            if hasattr(M, _a) and getattr(M, _a) is not None:
+                _dump[_key] = [float(_v) for _v in getattr(M, _a)]
+                break
+    with open(os.path.join(_acc, '{{scriptname}}_nemtropy.json'), 'w') as _f:
+        json.dump(_dump, _f)
+except Exception:
+    pass
+
+## ---------------------- ##
+## Functions to benchmark ##
+## ---------------------- ##
+def create_DECM(edgelist):
+    # Create the DECM object (weighted directed graph)
+    return coerce_sequences(DirectedGraph(edgelist=edgelist))
+
+def solve_DECM(m, model, method, initial_guess):
+    # tol / max_steps matched to the Julia side (g_tol=1e-8 / maxiters=1000) for a fair comparison.
+    m.solve_tool(model=model, method=method, initial_guess=initial_guess, tol=1e-8, eps=1e-8, max_steps=1000)
+
+
+## ---------------------- ##
+## Pytest benchmark tests ##
+## ---------------------- ##
+def test_create_DECM(benchmark):
+    benchmark(create_DECM, EDGE_LIST)
+
+# Parameterize the test to run with different sets of arguments
+@pytest.mark.parametrize("model,method,initial_guess", [
+    ("decm_exp", "newton",      "strengths"),
+    ("decm_exp", "quasinewton", "strengths"),
+])
+def test_solve_DECM(benchmark, model, method, initial_guess):
+    benchmark(solve_DECM, M, model, method, initial_guess)
+
+"""
+
+
+"""
+    generate_DECM_python(name::String)
+
+Generate a python (pytest-benchmark) script for the DECM model with the given `name`.
+"""
+function generate_DECM_python(name::String)
+    network_data_path = joinpath(@__DIR__, "data", "$(name).csv")
+    outfolder = joinpath(@__DIR__, "benchmarks")
+    accfolder = joinpath(@__DIR__, "accuracy")
+
+    out = replace(DECM_python_template, "{{scriptname}}" => name,
+                                        "{{outfolder}}"  => outfolder,
+                                        "{{accfolder}}"  => accfolder,
+                                        "{{datafilename}}"   => network_data_path)
+
+    open(joinpath(@__DIR__, "$(name).py"), "w") do f
+        write(f, out)
+    end
+
+    @info "Python script for $(name) generated."
+
+    return
+end
+
+
+##############################################################################################
 #  CReM (Conditional Reconstruction Method) helpers.
 #
 #  The CReM is a two-step model for weighted, undirected networks with CONTINUOUS positive weights:

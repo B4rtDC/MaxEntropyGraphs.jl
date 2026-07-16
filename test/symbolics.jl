@@ -166,6 +166,39 @@ if get(ENV, "MEG_SKIP_SYMBOLIC", "0") != "1"
         @test ratzero((aw - p_code * w1) - w1_code * (1 - p_code), doms)
     end
 
+    @testset "DECM" begin
+        # directed Bernoulli–geometric channel i→j with composite parameters x = xᵢ_out·xⱼ_in and
+        # y = yᵢ_out·yⱼ_in: the per-channel PGF identities coincide with the UECM's per-dyad ones
+        x, y, t, x1, y1, x2, y2, s = svars(:x, :y, :t, :x1, :y1, :x2, :y2, :s)
+        doms = [x => (1//10, 5), y => (1//100, 9//10)]
+        Z  = 1 + x * y / (1 - y)
+        Gt = (1 + x * t * y / (1 - t * y)) / Z
+        p_code = (x * y) / (1 - y + x * y)                  # f_DECM / Ĝ code form
+        # p = P(w>0) = 1 − G(0)
+        p_pgf = 1 - Symbolics.substitute(Gt, Dict(t => 0))
+        @test ratzero(p_pgf - p_code, doms)
+        # ⟨w⟩ = G'(1) equals the Ŵ code form p/(1−y)
+        dG = Symbolics.derivative(Gt, t)
+        w1 = Symbolics.substitute(dG, Dict(t => 1))
+        w1_code = p_code / (1 - y)
+        @test ratzero(w1 - w1_code, doms)
+        # Var[w] = G''(1) + G'(1) − G'(1)² equals the σʷ form p(1+y−p)/(1−y)²
+        w2 = Symbolics.substitute(Symbolics.derivative(dG, t), Dict(t => 1)) + w1
+        @test ratzero((w2 - w1^2) - p_code * (1 + y - p_code) / (1 - y)^2, doms)
+        # independence across the two directions of a dyad (the defining difference with the UECM,
+        # whose w_ij ≡ w_ji): the joint PGF factorizes, G(s,t) = G_ij(s)·G_ji(t), with the two
+        # channels carrying distinct composite parameters ⇒ ⟨w_ij·w_ji⟩ = ⟨w_ij⟩⟨w_ji⟩ (Cov = 0)
+        doms2 = [x1 => (1//10, 5), y1 => (1//100, 9//10),
+                 x2 => (1//10, 5), y2 => (1//100, 9//10)]
+        G1(u) = (1 + x1 * u * y1 / (1 - u * y1)) / (1 + x1 * y1 / (1 - y1))
+        G2(u) = (1 + x2 * u * y2 / (1 - u * y2)) / (1 + x2 * y2 / (1 - y2))
+        Gjoint = G1(s) * G2(t)
+        E_prod = Symbolics.substitute(Symbolics.derivative(Symbolics.derivative(Gjoint, s), t), Dict(s => 1, t => 1))
+        E_wij  = Symbolics.substitute(Symbolics.derivative(G1(s), s), Dict(s => 1))
+        E_wji  = Symbolics.substitute(Symbolics.derivative(G2(t), t), Dict(t => 1))
+        @test ratzero(E_prod - E_wij * E_wji, doms2)
+    end
+
     @testset "CReM" begin
         # zero-inflated exponential weight via the MGF M(t) = (1−f) + f·ts/(ts−t), ts = θ_i+θ_j
         f, ti, tj, t = svars(:f, :ti, :tj, :t)

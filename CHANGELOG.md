@@ -30,9 +30,20 @@ Convergence is now expressed in the units users actually care about.
   allocations; returned values are bit-identical.
 
 ### Added
+- **`DECM`** — the Directed Enhanced Configuration Model (constrains the out-/in-degree **and** the
+  integer out-/in-strength sequences, jointly — the directed counterpart of the `UECM`). Numerically-
+  stable log-likelihood over the ordered pairs, branch-free SIMD gradient (verified against Zygote),
+  reduction on unique `(k^out, k^in, s^out, s^in)` quadruples, seeded reproducible sampling
+  (Bernoulli–geometric per directed channel), the full accessor/variance/information-criterion API
+  (`k = 4N` parameters, `n = N(N-1)` observations), a NEMtropy (`decm_exp`) performance/accuracy
+  comparison, and documentation. Because the likelihood is only defined on the feasible region
+  `β^out_i + β^in_j > 0`, the solver uses a `BackTracking` line search (`BFGS` default; the fixed
+  point is unstable for this model, as for the `UECM`). The delta-method `σₓ` carries **no**
+  within-dyad covariance term: the two directions of a dyad are independent random variables
+  (validated symbolically and by a 10k-sample Monte-Carlo gate in `validation/`).
 - **`constraint_residual(m; relative=false)`**: what a solve actually achieved, in constraint units.
   It reuses each model's existing analytical gradient, which by ERGM stationarity *is* the constraint
-  residual `⟨xᵢ⟩ - xᵢ`, so it is exact and costs well under 1% of a solve. Available for all eight
+  residual `⟨xᵢ⟩ - xᵢ`, so it is exact and costs well under 1% of a solve. Available for all nine
   models; the `relative` form masks zero-valued constraints (dead channels).
 
 ### Changed
@@ -42,6 +53,9 @@ Convergence is now expressed in the units users actually care about.
   stop on its function or parameter checks. Both point at `constraint_residual`.
 - Passing `ftol` on a path that ignores it (for example the `UECM`'s default `:BFGS`, where it was
   silently discarded) now warns instead of doing nothing quietly.
+- The `UECM`'s BackTracking optimizer instances were hoisted from `UECM.jl` into
+  `backtracking_optimization_methods` (`src/Models/models.jl`) so the enhanced models (`UECM`/`DECM`)
+  share them. Internal rename only; behaviour is unchanged.
 
 ## v0.6.0
 
