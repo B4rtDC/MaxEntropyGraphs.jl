@@ -202,6 +202,36 @@ Conventions:
 - Decision: keep. DECM slots into `benchmarks.sh` between UECM and CReM at all three stages
   (Julia driver, Python wrapper, plots).
 
+### EXP-015  First full-scale campaign on the M4 Max (0.7.0): all nine models, three scales
+
+- Date: 2026-07-16/17, Julia 1.12.6 (aarch64-apple-darwin), CPython 3.12.13, BENCH_CORES=12.
+  All published `figures/*_benchmark.pdf` now come from this single machine, toolchain and palette
+  (previously: ubcm 2024/Julia 1.9.3, bicm 2024 hand-edited in Preview, crwcm 2026 medium-only).
+- Protocol: selective runs via BENCH_MIN_SCALE/BENCH_MODELS; every Python job under a per-job
+  wall-clock budget (BENCH_JOB_TIMEOUT, process-group kill, logged in `benchmarks/timeouts.log`).
+  The BiCM_large projection variants run at min-rounds=5 (all eight measured, slowest 362 s/round);
+  UBCM_large and DECM_medium/large Python run per-test so a slow solver cannot take the rest of its
+  file's results with it.
+- Two jobs exceeded their budget and are reported as such, not plotted:
+  1. NEMtropy `decm_exp` quasinewton at N=512 (over 2 h; its newton finished in 15 min).
+  2. The original single-file UBCM_large Python run (the split rerun then measured every method:
+     create 8.9 s, fixed point 90.8 s, quasinewton 95.4 s, newton 87.5 s median over 30 rounds).
+- The first execution of the large problems on the modern stack surfaced two real solver issues,
+  both fixed in src (see commits a896b04, c17564f):
+  1. UBCM at 250k nodes: exp overflow in x/(1+xy)-shaped terms made the Anderson fixed point throw
+     IsFiniteException and made BFGS report a false success at constraint residual ~4e4 (caught by
+     `constraint_residual`). Overflow-safe reformulation + damped-Anderson retry; the default solve
+     now reaches relative residual 9.1e-9 in 0.18 s.
+  2. CReM/DCReM/CRWCM BFGS at N=512 needs 1000-5000 iterations (converges in ~3 s at 5000); the
+     large-scale rows now carry `:maxiters => 5000`.
+- UBCM_large plots no quasi-newton row on either side: neither implementation converges there
+  within the matched budget, and a non-converging solver's time is meaningless. The 2024 figure's
+  BFGS point at 1051 constraints predates any residual check and was likely such an artifact.
+- Headline at the largest scales, both sides honest: UBCM 1051 constraints, NEMtropy ~90 s per
+  solve vs MaxEntropyGraphs fixed point ~0.03 s; CRWCM N=512, NuMeTriS ~1.3 s vs fixed point ~0.02 s.
+- Decision: keep. Rerun cost after fixes: R1 (three weighted Julia larges) 9 min, R2 (UBCM Julia +
+  split Python) ~2 h 40 m, zero kills.
+
 <!-- Template:
 ### EXP-NNN  <short title>
 - Hypothesis:
