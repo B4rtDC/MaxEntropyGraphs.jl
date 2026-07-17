@@ -16,7 +16,7 @@ authors:
 affiliations:
   - name: Royal Military Academy, Brussels, Belgium
     index: 1
-date: 15 July 2026
+date: 17 July 2026
 bibliography: paper.bib
 ---
 
