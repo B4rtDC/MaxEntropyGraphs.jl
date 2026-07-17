@@ -268,21 +268,24 @@ julia> MaxEntropyGraphs.Optimization.solve(prob, method); # solve it
 ```
 """
 function ∇L_UBCM_reduced!(∇L::AbstractVector, θ::AbstractVector, K::Vector, F::Vector, x::AbstractVector)
-    @simd for i in eachindex(x) # to avoid the allocation of exp.(-θ)
-        @inbounds x[i] = exp(-θ[i])
+    @simd for i in eachindex(x) # to avoid the allocation of exp.(θ)
+        @inbounds x[i] = exp(θ[i])
     end
 
     for i in eachindex(K)
-        @inbounds xᵢ = x[i]
-        # branch-free inner sum (SIMD-friendly reduction): Σⱼ F[j]·xᵢxⱼ/(1+xᵢxⱼ)
+        @inbounds yᵢ = x[i]
+        # branch-free inner sum (SIMD-friendly reduction): Σⱼ F[j]·xᵢxⱼ/(1+xᵢxⱼ), with
+        # xᵢxⱼ/(1+xᵢxⱼ) written as 1/(1 + exp(θᵢ)exp(θⱼ)): the naive form gives
+        # Inf/Inf = NaN as soon as θᵢ+θⱼ drops below about -710 (exp overflow), which a
+        # line search does probe on large problems; the NaN gradient then aborts the line
+        # search and the optimizer reports success on a garbage solution. This form maps
+        # overflow to a clean 0 and underflow to a clean 1.
         acc = zero(eltype(∇L))
         @inbounds @simd for j in eachindex(K)
-            aux = xᵢ * x[j]
-            acc += F[j] * (aux / (1 + aux))
+            acc += F[j] / (1 + yᵢ * x[j])
         end
         # the j==i term above used F[i] rather than (F[i]-1); subtract one self term to correct
-        @inbounds auxᵢᵢ = xᵢ * xᵢ
-        acc -= auxᵢᵢ / (1 + auxᵢᵢ)
+        @inbounds acc -= inv(1 + yᵢ * yᵢ)
         @inbounds ∇L[i] = -F[i] * K[i] + F[i] * acc
     end
 
@@ -327,7 +330,7 @@ The function will update pre-allocated vectors (`G` and `x`) for speed.
 - `θ`: the maximum likelihood parameters of the model
 - `K`: the reduced degree sequence
 - `F`: the frequency of each degree in the degree sequence
-- `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-θᵢ) ) (pre-allocated)
+- `x`: buffer for the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(θᵢ) ) (pre-allocated)
 - `G`: the next fixed-point iteration for the UBCM model (pre-allocated)
 
 
@@ -346,21 +349,29 @@ julia> UBCM_FP!(initial_guess(model));
 ```
 """
 function UBCM_reduced_iter!(θ::AbstractVector, K::AbstractVector, F::AbstractVector, x::AbstractVector, G::AbstractVector)
-    @simd for i in eachindex(θ) # to avoid the allocation of exp.(-θ)
-        @inbounds x[i] = exp(-θ[i])
+    @simd for i in eachindex(θ) # to avoid the allocation of exp.(θ)
+        @inbounds x[i] = exp(θ[i])
     end
     G .= zero(eltype(G))
-    @simd for i in eachindex(K)
-        for j in eachindex(K)
+    @inbounds for i in eachindex(K)
+        # xⱼ/(1 + xⱼxᵢ) written as 1/(exp(θⱼ) + exp(-θᵢ)), which stays finite for ANY θ:
+        # the naive form gives Inf/Inf = NaN as soon as one θ drops below about -710
+        # (exp overflow), and Anderson acceleration does propose such iterates on large,
+        # ill-scaled problems (first seen on a 250k-node graph, where one poisoned entry
+        # turned every equation non-finite and killed the solve). exp(-θᵢ) is loop-invariant
+        # in j, so it is hoisted as 1/xᵢ (identical up to 1 ulp, and 1/Inf = 0 keeps the
+        # safety property).
+        xinvᵢ = inv(x[i])
+        @simd for j in eachindex(K)
             if i == j
-                @inbounds G[i] += (F[j] - 1) * (x[j] / (1 + x[j] * x[i]))
+                G[i] += (F[j] - 1) / (x[j] + xinvᵢ)
             else
-                @inbounds G[i] += (F[j]) *     (x[j] / (1 + x[j] * x[i]))
+                G[i] += (F[j])     / (x[j] + xinvᵢ)
             end
         end
 
         if !iszero(G[i])
-            @inbounds G[i] = -log(K[i] / G[i])
+            G[i] = -log(K[i] / G[i])
         end
     end
     return G
@@ -700,8 +711,17 @@ function solve_model!(m::UBCM;  # common settings
         G_buffer = zeros(N,length(m.dᵣ)); # buffer for G(x)
         # define fixed point function
         FP_model! = (θ::Vector) -> UBCM_reduced_iter!(θ, m.dᵣ, m.f, x_buffer, G_buffer);
-        # obtain solution
-        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        # obtain solution. Undamped Anderson can diverge on large, ill-scaled problems (its
+        # internal least-squares then emits NaN and NLsolve throws IsFiniteException; first
+        # seen on a 250k-node graph): retry once with damped mixing, which trades a few extra
+        # iterations on well-behaved problems for stability on the hard ones.
+        sol = try
+            NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        catch e
+            e isa NLsolve.IsFiniteException || rethrow()
+            verbose && @info "Anderson acceleration diverged to non-finite values; retrying with damped mixing (beta=0.5)"
+            NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, m=5, beta=0.5, ftol=ftol, iterations=maxiters);
+        end
         if NLsolve.converged(sol)
             if verbose 
                 @info "Fixed point iteration converged after $(sol.iterations) iterations"
