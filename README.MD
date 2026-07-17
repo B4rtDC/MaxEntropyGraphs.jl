@@ -8,7 +8,7 @@
 The goal of the *MaxEntropyGraphs.jl* package is to group the various maximum-entropy null models for network randomization and make them available to the Julia community in a single package. This work was in part inspired by the [Maximum Entropy Hub](https://meh.imtlucca.it), but unlike the latter, this package works in an integrated way with the existing Julia ecosystem for handling graphs, optimization tools and numerical solvers and groups all models in a single framework.
 
 The package provides the following functionalities:
-* Computing the likelihood maximizing parameters for a broad set of network models — binary and weighted, undirected, directed, bipartite and reciprocity-aware.
+* Computing the likelihood maximizing parameters for a broad set of network models: binary and weighted, undirected, directed, bipartite and reciprocity-aware.
 * Sampling of networks from a network ensemble once the parameters have been computed.
 * Analytically computing ensemble averages and their standard deviations, for every model, via the delta method on the expected (bi)adjacency matrix.
 * Running motif based analysis: the thirteen directed three-node motifs, their weighted fluxes and intensities, and the bipartite motif families.

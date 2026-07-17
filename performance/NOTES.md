@@ -1,4 +1,4 @@
-# Performance & experiment log — MaxEntropyGraphs.jl
+# Performance & experiment log: MaxEntropyGraphs.jl
 
 This file tracks the iterative performance / precision experiments for the 0.5.0
 modernization effort (branch `modernize-0.5.0`). Each entry records the hypothesis,
@@ -23,7 +23,7 @@ Conventions:
 - Deps held at compat caps: Optimization v3.28, ForwardDiff v0.10.39, Zygote v0.6.77,
   OptimizationOptimJL v0.1.14, OptimizationNLopt v0.1.8.
 - Finding: current `Project.toml` **resolves cleanly on 1.10** (old majors held by `[compat]`).
-- Test-suite status: _(pending — baseline run in progress)_
+- Test-suite status: _(pending, baseline run in progress)_
 
 ---
 
@@ -48,12 +48,12 @@ Conventions:
   DBCM/BiCM gradients (different nz-index loop structure).
 
 ### EXP-002  Debranch/factor the DBCM + BiCM gradients (follow-up to EXP-001)
-- Change: DBCM — fold the `if i≠j` diagonal correction into arithmetic `(F[j]-(i==j))` (branch-free)
-  and factor `F[i]` out of the α-part inner loop. BiCM — already branch-free (bipartite, no diagonal);
+- Change: DBCM: fold the `if i≠j` diagonal correction into arithmetic `(F[j]-(i==j))` (branch-free)
+  and factor `F[i]` out of the α-part inner loop. BiCM: already branch-free (bipartite, no diagonal);
   factor the outer-constant `f·x` / `f·y` out of the inner reduction. `_minus!` variants mirrored.
 - Correctness: exact vs the original branchy code (max rel diff DBCM 3e-15, BiCM 5e-16); full test
   suite (Zygote-vs-analytical) green.
-- Result: DBCM ≈1.03× (494 unique pairs), BiCM ≈1.17×. **Marginal** — unlike UBCM these loops are
+- Result: DBCM ≈1.03× (494 unique pairs), BiCM ≈1.17×. **Marginal**: unlike UBCM these loops are
   division-bound, and the DBCM `(i==j)` compare still blocks full SIMD vectorization.
 - Decision: KEEP (correct, branch-free, cleaner, not slower). Future: a true SIMD debranch for DBCM
   would need the diagonal self-correction handled outside the inner loop (membership of nz_out∩nz_in),
@@ -62,7 +62,7 @@ Conventions:
 ### EXP-003  Matrix-free Ĝ audit (Phase 6c)
 - Question: the dense expected-adjacency matrix is O(n²) (~500 GB at n=250k Float64). How much of
   the package forces materializing it?
-- Finding (code audit + measurement): **metric values and sampling are already matrix-free** — they
+- Finding (code audit + measurement): **metric values and sampling are already matrix-free**: they
   use the element accessors `A(m,i,j)` / `f_UBCM`/`f_DBCM`/`f_BiCM` over the reduced parameters, never
   the matrix. Measured at n=8000: `degree(m)` allocates 0.25 MB, one `A(m,i,j)` call allocates 0 bytes
   (a dense Ĝ would be 512 MB). The dense path is hit ONLY by the opt-in `Ĝ(m)`/`set_Ĝ!`, `σˣ(m)`/
@@ -87,22 +87,22 @@ Conventions:
 - Empirically verified NuMeTriS conventions (cost ~an hour; don't relearn):
   * `dseq_right/dseq_left/dseq_rec` == our k→/k←/k↔ and `stseq_*` == our reciprocal strengths (same
     node order, same definitions);
-  * the binary Lagrange multipliers match ours exactly (exp(-γ_NuMeTriS) == our zᵣ to ~1e-5 —
+  * the binary Lagrange multipliers match ours exactly (exp(-γ_NuMeTriS) == our zᵣ to ~1e-5;
     identical MLE, identical parameterisation); weighted blocks are ordered [β→; β←; β↔out; β↔in]
-    (direct rates), identified only up to a per-block gauge (θᵒ+c, θⁱ−c) — never compare raw values;
+    (direct rates), identified only up to a per-block gauge (θᵒ+c, θⁱ−c), so never compare raw values;
   * the NuMeTriS solver is NOT re-entrant (re-solving a solved `Graph` can raise
     `numpy.linalg.LinAlgError`), so the pytest solve benchmark solves a fresh Graph per round
     (pedantic + setup, setup excluded from timing);
   * triadic conventions differ deterministically: we count LABELED ordered triples (× |Aut(m)|, the
-    Squartini/NEMtropy convention — NEMtropy's DBCM motifs match ours to 1.6e-8) and total flux per
+    Squartini/NEMtropy convention; NEMtropy's DBCM motifs match ours to 1.6e-8) and total flux per
     occurrence; NuMeTriS counts each occurrence once and divides the flux by the motif's link count.
     Per-motif factors: Nm ×[2,1,1,2,1,2,1,2,3,1,2,1,6], Fm additionally ×#links [2,2,3,2,3,4,3,4,3,4,4,5,6].
 - Result (rhesus, small problems; accuracy/accuracy_summary.json):
-  * max constraint violation — RBCM: MEG 4.5e-8 vs NuMeTriS 8.7e-9; DCReM: MEG 5.3e-5 (fixed point at
+  * max constraint violation. RBCM: MEG 4.5e-8 vs NuMeTriS 8.7e-9; DCReM: MEG 5.3e-5 (fixed point at
     ftol=1e-8 on strengths summing to ~1300, rel ~1e-8) vs NuMeTriS 8.4e-9; CRWCM: MEG 2.1e-5 vs
-    NuMeTriS 9.4e-9 — every implementation reproduces its constraints at its own solver tolerance;
+    NuMeTriS 9.4e-9. Every implementation reproduces its constraints at its own solver tolerance;
   * empirical triadic statistics after convention alignment: Nm max rel.diff = 0.0 (exact),
-    Fm max rel.diff = 1.9e-16 (machine epsilon) — both motif/flux implementations agree exactly.
+    Fm max rel.diff = 1.9e-16 (machine epsilon): both motif/flux implementations agree exactly.
 - Decision: keep. Full-scale timing runs happen via `benchmarks.sh` (the three new models are wired
   in); the small-scale runs here only validate the pipeline end-to-end.
 
@@ -111,15 +111,15 @@ Conventions:
 - Question: after adding the reciprocity metrics (EXP-004 models), do the new kernels leave gains on
   the table, in the spirit of EXP-001..003?
 - Audit: `motifs(m::RBCM)` already uses the shared-base-matrix BLAS form (13 matmuls, same as the DBCM
-  path — nothing to gain); the O(N²) kernels (reciprocal sequences, reciprocity, Ĝ/Ŵ/σ/covariances)
+  path, nothing to gain); the O(N²) kernels (reciprocal sequences, reciprocity, Ĝ/Ŵ/σ/covariances)
   are loop-bound and fine. Two kernels had headroom:
-- Change 1 — `_motif_fluxes` (`src/metrics.jl`): the flux term with the weighted factor at position q
+- Change 1, `_motif_fluxes` (`src/metrics.jl`): the flux term with the weighted factor at position q
   is rewritten by trace cyclicity as tr(W_q · F_a F_b) = dot(W_q, (F_a F_b)ᵀ), so only BINARY pair
   products appear as matrix multiplications, and they repeat across motifs/positions → computed once
   in a shared cache (≤12 distinct products serve all 33 weighted terms, vs one matmul per term
   before); the zpos diagonal corrections reduce to dots as well. Trade-off: the product cache
   (mutation) makes the value path non-Zygote-differentiable; flux z-scores are sampling-based anyway.
-- Change 2 — `motif_intensities` (`src/metrics.jl`): the per-triple `Dict` lookup + symbol branching
+- Change 2, `motif_intensities` (`src/metrics.jl`): the per-triple `Dict` lookup + symbol branching
   is replaced by precomputed per-pair state codes / weight products / link counts (O(N²)) and a
   constant 4×4×4 state→motif lookup table, so the O(N³) triple loop only reads arrays.
 - Correctness: exact vs the previous implementations (rtol 1e-10 inline check for the fluxes; the
@@ -148,34 +148,34 @@ Conventions:
 - Result (representative rows; time / allocation):
   * **AD backend choice.** For the **matmul metrics** (`triangles`, motifs) **ReverseDiff is the only
     viable backend**: UBCM triangles at N=100 is 188 µs / 0.8 MiB (ReverseDiff) vs 2.5 ms / 48 MiB
-    (Zygote) vs **1.97 s / 835 MiB (ForwardDiff)**; Zygote's BLAS pullback then explodes —
+    (Zygote) vs **1.97 s / 835 MiB (ForwardDiff)**; Zygote's BLAS pullback then explodes:
     5.9 s / **44.8 GiB** at N=1000 and 241 s / **1.38 TiB** at N=3162. For **linear metrics**
     (`sum`, degree, ANND) all three agree and Zygote is ~1.5–2× faster than ReverseDiff (e.g. UBCM
     sum N=3162: 22 ms / 153 MiB Zygote vs 30 ms / 305 MiB ReverseDiff), while ForwardDiff is still
     ~1000× slower even at N=100. ⇒ the shipped default `:ReverseDiff` is correct across both classes.
   * **Dense materialization wall.** `setup` (`set_Ĝ!`+`set_σ!`) is O(n²): 152 MiB / 0.16 s at N=1000,
-    2.16 GiB / 2.5 s at N=3162, **16.2 GiB / 17.7 s at N=10 000** — the practical ceiling for the
+    2.16 GiB / 2.5 s at N=3162, **16.2 GiB / 17.7 s at N=10 000**, the practical ceiling for the
     stored path is ≈ n = 5–8 k on a 16 GB machine (two dense matrices + the AD tape).
   * **stored vs fresh.** Reusing the materialized matrices is ~100× faster per call than rebuilding
     them (UBCM sum N=1000: 2.4 ms stored vs 160 ms fresh). Materialize once if you evaluate `σₓ` for
     more than one or two metrics.
   * **Matrix-free analytic streaming wins decisively on memory** for closed-form-gradient metrics:
     UBCM `sum` **0 bytes** at N=3162; BiCM `sum` **0 bytes** at every N; UBCM `triangles`
-    896 B (N=100) → 8 KiB (N=1000) → **28 KiB (N=3162)** — i.e. O(n) memory and O(n³) time, versus
+    896 B (N=100) → 8 KiB (N=1000) → **28 KiB (N=3162)**, i.e. O(n) memory and O(n³) time, versus
     Zygote's 1.38 TiB at the same size. (The DBCM/DCReM analytic variants call the package accessor
-    `A(m,i,j)` and still allocate ≈ n²·8 B because that accessor is not allocation-free — an
+    `A(m,i,j)` and still allocate ≈ n²·8 B because that accessor is not allocation-free (an
     independent minor follow-up.)
 - Decision: **keep `:ReverseDiff` as the σₓ default** (documented in `docs/src/performance.md`). Ship the
   materialized path as-is for n ≲ 5 k. A **matrix-free `σₓ` fast path** (closed-form `∂X/∂g_ij` for
-  degree / edge-count / ANND / triangles) is now benchmark-justified — it lifts the size ceiling by
-  ~2 orders of magnitude — but is deferred to a follow-up because the gradients are metric-specific
+  degree / edge-count / ANND / triangles) is now benchmark-justified (it lifts the size ceiling by
+  ~2 orders of magnitude) but is deferred to a follow-up because the gradients are metric-specific
   whereas the shipped AD path handles arbitrary user metrics. Recorded in `performance.md` as the recommended
   route for large-n variance.
 
 ### EXP-014  DECM added with NEMtropy `decm_exp` cross-validation (0.7.0)
 - Hypothesis: the DECM (directed twin of the UECM: out/in-degrees + integer out/in-strengths, jointly)
-  transfers the UECM recipe — NaN feasibility barrier + BackTracking BFGS, reduced quadruple
-  compression — with DBCM-style ordered-pair sums, and reproduces NEMtropy's `DirectedGraph`/`decm_exp`
+  transfers the UECM recipe (NaN feasibility barrier + BackTracking BFGS, reduced quadruple
+  compression) with DBCM-style ordered-pair sums, and reproduces NEMtropy's `DirectedGraph`/`decm_exp`
   solution on identical CSV edge lists.
 - Change / config: `DECM_benchmarks.jl` (rhesus unsymmetrised + directed block-diagonal tilings,
   16 → 128 → 512 nodes), `generate_DECM_python` (weighted 3-tuple edge list, `decm_exp`,
@@ -192,11 +192,11 @@ Conventions:
      them with a `TypingError`. The generated script coerces the four constraint sequences to
      `float64` right after construction (`coerce_sequences`), which fixes the typing.
   2. NEMtropy's `decm_exp` **quasinewton** (diagonal-hessian) recipe stalls at a `3.2e-2` max
-     constraint violation on this graph, and its **fixed point diverges** (violation ≈ 49) — the
+     constraint violation on this graph, and its **fixed point diverges** (violation ≈ 49); the
      latter consistent with the orientation bug below. Full **newton** reaches `3.7e-9`, so the
      accuracy dump uses the newton solution (the pytest timings still cover newton + quasinewton).
   3. `iterative_decm_exp` (the fixed-point map, `models_functions.py:3236`) computes its `fa_in`
-     accumulator with `x[j + n]` (= a_in,j) where the in-degree equation requires `x[j]` (= a_out,j) —
+     accumulator with `x[j + n]` (= a_in,j) where the in-degree equation requires `x[j]` (= a_out,j);
      compare `iterative_decm_exp_2` (line 3312), which uses the correct orientation. Our
      `DECM_reduced_iter!` follows the mathematically consistent form (`iterative_decm_exp_2`'s).
 - Decision: keep. DECM slots into `benchmarks.sh` between UECM and CReM at all three stages
