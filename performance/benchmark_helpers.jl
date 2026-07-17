@@ -432,17 +432,40 @@ try:
     os.makedirs(_acc, exist_ok=True)
     _dump = {}
     for _key, _cands in (("rows_deg", ("rows_deg",)),
-                         ("cols_deg", ("cols_deg",)),
-                         ("expected_dseq_rows", ("avg_rows_deg", "expected_rows_deg", "expected_dseq_rows")),
-                         ("expected_dseq_cols", ("avg_cols_deg", "expected_cols_deg", "expected_dseq_cols"))):
+                         ("cols_deg", ("cols_deg",))):
         for _a in _cands:
             if hasattr(M, _a):
                 _dump[_key] = [float(_v) for _v in getattr(M, _a)]
                 break
+    # NEMtropy 3.0.3 exposes no expected-degree attribute at all: the expected biadjacency
+    # matrix is the only route. Earlier revisions probed avg_rows_deg / expected_rows_deg /
+    # expected_dseq_rows, none of which exist, so the dump silently lost both expected
+    # sequences and the Julia side then skipped the BiCM comparison entirely.
+    _avg = None
+    if hasattr(M, "get_bicm_matrix"):
+        _avg = M.get_bicm_matrix()
+    elif getattr(M, "avg_mat", None) is not None:
+        _avg = M.avg_mat
+    if _avg is not None:
+        _avg = np.asarray(_avg, dtype=float)
+        _dump["expected_dseq_rows"] = [float(_v) for _v in _avg.sum(axis=1)]
+        _dump["expected_dseq_cols"] = [float(_v) for _v in _avg.sum(axis=0)]
+    # Also record the quasi-Newton solution. The reported bipartite accuracy comparison is scoped to
+    # that solver, so the harness has to produce the very pairing that is quoted, not just the
+    # fixed-point one. A separate object is used so the benchmarked M is left untouched.
+    _Mq = BipartiteGraph(edgelist=EDGE_LIST)
+    _Mq.solve_tool(method="quasinewton", initial_guess="degrees", tol=1e-8, eps=1e-8, max_steps=1000)
+    _avgq = _Mq.get_bicm_matrix() if hasattr(_Mq, "get_bicm_matrix") else None
+    if _avgq is not None:
+        _avgq = np.asarray(_avgq, dtype=float)
+        _dump["expected_dseq_rows_quasinewton"] = [float(_v) for _v in _avgq.sum(axis=1)]
+        _dump["expected_dseq_cols_quasinewton"] = [float(_v) for _v in _avgq.sum(axis=0)]
     with open(os.path.join(_acc, '{{scriptname}}_nemtropy.json'), 'w') as _f:
         json.dump(_dump, _f)
-except Exception:
-    pass
+except Exception as _e:
+    # Never fail the benchmark over the accuracy dump, but never hide the miss either:
+    # a bare `pass` here is precisely why the BiCM comparison went missing unnoticed.
+    print("WARNING: could not dump NEMtropy BiCM accuracy data: " + repr(_e))
 
 ## ---------------------- ##
 ## Functions to benchmark ##
@@ -859,6 +882,209 @@ end
 
 
 ##############################################################################################
+#  DECM (Directed Enhanced Configuration Model) helpers.
+#
+#  The DECM constrains the out/in-degree AND the (integer) out/in-strength sequences of a weighted,
+#  directed network — the directed counterpart of the UECM. NEMtropy solves it through the same
+#  `DirectedGraph` class as the DBCM, but with the `decm`/`decm_exp` model name and a strengths-based
+#  initial guess. Because the likelihood is only defined on the feasible region (yᵢ_out·yⱼ_in < 1),
+#  the fixed-point recipe is unstable, so the Julia side benchmarks BFGS/Newton only (matching the
+#  paper and the UECM setup).
+##############################################################################################
+
+"""
+    test_create_DECM(G)
+
+Benchmark the creation of the DECM model for the given weighted, directed graph `G`.
+"""
+function test_create_DECM(G)
+    b = @benchmarkable DECM($(G))
+    tune!(b)
+    res = run(b)
+    return Dict("name" => "test_create_DECM", "stats" => res)
+end
+
+"""
+    test_solve_DECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+
+Benchmark solving the DECM for the given weighted, directed graph `G` (settings matched to the Python side).
+The fixed point recipe is unstable for the DECM, so it is excluded by default.
+"""
+function test_solve_DECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+    model = DECM(G)
+    solve_model!(model, method=:BFGS)
+    suite = BenchmarkGroup()
+    if include_fixed_point
+        suite["test_solve_DECM[decm_exp-FP]"] =          @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=1000, ftol=1e-8)
+    end
+    if include_BFGS
+        suite["test_solve_DECM[decm_exp-QN-BFGS-AG]"] =  @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=true)
+        suite["test_solve_DECM[decm_exp-QN-BFGS-ADF]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+    end
+    if include_LBFGS
+        suite["test_solve_DECM[decm_exp-QN-LBFGS-AG]"] = @benchmarkable solve_model!($(model), method=:LBFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=true)
+    end
+    if include_newton
+        suite["test_solve_DECM[decm_exp-Newton-ADF]"] =  @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+    end
+    tune!(suite)
+    res = run(suite)
+    return Dict("name" => "test_solve_DECM", "stats" => res)
+end
+
+"""
+    test_sample_DECM(G, n::Int)
+
+Benchmark drawing `n` samples from the DECM ensemble for `G`, seeded for reproducibility.
+"""
+function test_sample_DECM(G, n::Int)
+    model = DECM(G)
+    solve_model!(model, method=:BFGS)
+    b = @benchmarkable rand($(model), $(n); rng = MaxEntropyGraphs.Xoshiro(161))
+    tune!(b)
+    res = run(b)
+    return Dict("name" => "test_sample_DECM", "stats" => res)
+end
+
+DECM_python_template = """
+# run in folder as:
+# pytest {{scriptname}}.py --benchmark-save={{scriptname}} --benchmark-min-rounds=30 --benchmark-warmup-iterations=2 --benchmark-save-data --benchmark-storage='{{outfolder}}'
+
+import numpy as np
+from NEMtropy import DirectedGraph
+import pytest
+import csv
+
+# set the path
+NETPATH = '{{datafilename}}'
+
+# loader function (weighted edge list: source, target, weight)
+def load_csv_file(filepath):
+    with open(filepath, 'r') as csvfile:
+        csvreader = csv.reader(csvfile)
+        for row in csvreader:
+            yield tuple(map(int, row))
+
+
+## -------------- ##
+## Objects to use ##
+## -------------- ##
+# NEMtropy auto-detects the weighted (3-tuple) edge list and builds both the out/in-degree and
+# out/in-strength sequences.
+EDGE_LIST = [t for t in load_csv_file(NETPATH)]
+
+def coerce_sequences(m):
+    # NEMtropy 3.0.3 leaves dseq_out/dseq_in as object-dtype arrays when a DirectedGraph is built
+    # from a weighted edge list, and numba's nopython kernels (the decm_exp hessians) refuse
+    # object arrays. Coercing the four constraint sequences to float64 fixes the typing.
+    for a in ("dseq_out", "dseq_in", "out_strength", "in_strength"):
+        setattr(m, a, np.asarray(getattr(m, a), dtype=np.float64))
+    return m
+
+M = coerce_sequences(DirectedGraph(edgelist=EDGE_LIST))
+{{accuracyblock}}
+
+## ---------------------- ##
+## Functions to benchmark ##
+## ---------------------- ##
+def create_DECM(edgelist):
+    # Create the DECM object (weighted directed graph)
+    return coerce_sequences(DirectedGraph(edgelist=edgelist))
+
+def solve_DECM(m, model, method, initial_guess):
+    # tol / max_steps matched to the Julia side (g_tol=1e-8 / maxiters=1000) for a fair comparison.
+    m.solve_tool(model=model, method=method, initial_guess=initial_guess, tol=1e-8, eps=1e-8, max_steps=1000)
+
+
+## ---------------------- ##
+## Pytest benchmark tests ##
+## ---------------------- ##
+def test_create_DECM(benchmark):
+    benchmark(create_DECM, EDGE_LIST)
+
+# Parameterize the test to run with different sets of arguments
+@pytest.mark.parametrize("model,method,initial_guess", [
+    ("decm_exp", "newton",      "strengths"),
+    ("decm_exp", "quasinewton", "strengths"),
+])
+def test_solve_DECM(benchmark, model, method, initial_guess):
+    benchmark(solve_DECM, M, model, method, initial_guess)
+
+"""
+
+
+"""
+    generate_DECM_python(name::String)
+
+Generate a python (pytest-benchmark) script for the DECM model with the given `name`.
+"""
+function generate_DECM_python(name::String)
+    network_data_path = joinpath(@__DIR__, "data", "$(name).csv")
+    outfolder = joinpath(@__DIR__, "benchmarks")
+    accfolder = joinpath(@__DIR__, "accuracy")
+
+    # The module-level newton solve exists only to feed the accuracy dump, and the accuracy
+    # comparison (accuracy_comparison.jl) consumes the *_small dumps exclusively. The benchmark
+    # tests do not need it either: test_solve_DECM re-solves from the "strengths" initial guess
+    # every round. At N=512 that import-time newton solve is far from free and would be paid on
+    # every pytest invocation, so it is only emitted for the small problem.
+    accuracyblock = if endswith(name, "_small")
+        """
+        # DECM ('decm_exp'), strengths initial guess; tol / max_steps matched to the Julia side (g_tol=1e-8 /
+        # maxiters=1000). The dump below uses the NEWTON solution: NEMtropy's quasinewton (diagonal-hessian)
+        # recipe stalls at ~3e-2 constraint violation on the DECM, and its fixed point diverges, while newton
+        # reaches ~4e-9 (comparable to the Julia side).
+        M.solve_tool(model="decm_exp", method="newton", initial_guess="strengths", tol=1e-8, eps=1e-8, max_steps=1000)
+
+        ## Dump the observed + expected degree AND strength sequences (out;in concatenated, NEMtropy's own
+        ## layout) for the accuracy comparison (best effort: wrapped so it can never fail the benchmark).
+        ## The Julia side (accuracy_comparison.jl) reads accuracy/{{scriptname}}_nemtropy.json if present.
+        import json, os
+        try:
+            _acc = '{{accfolder}}'
+            os.makedirs(_acc, exist_ok=True)
+            _dump = {}
+            _dump["dseq"] = [float(_v) for _v in np.concatenate((M.dseq_out, M.dseq_in))]
+            _dump["sseq"] = [float(_v) for _v in np.concatenate((M.out_strength, M.in_strength))]
+            for _key, _cands in (("expected_dseq", ("expected_dseq", "expected_degree_seq")),
+                                 ("expected_sseq", ("expected_strength_seq", "expected_stregth_seq", "expected_strength_sequence"))):
+                for _a in _cands:
+                    if hasattr(M, _a) and getattr(M, _a) is not None:
+                        _dump[_key] = [float(_v) for _v in getattr(M, _a)]
+                        break
+            with open(os.path.join(_acc, '{{scriptname}}_nemtropy.json'), 'w') as _f:
+                json.dump(_dump, _f)
+        except Exception as _e:
+            # Never fail the benchmark over the accuracy dump, but never hide the miss either.
+            print("WARNING: could not dump NEMtropy DECM accuracy data: " + repr(_e))
+        """
+    else
+        """
+        # No module-level solve or accuracy dump here: the accuracy comparison only reads the
+        # *_small dumps, the solve benchmarks re-solve from their initial guess every round, and
+        # an import-time newton solve at this scale would be paid on every pytest invocation.
+        """
+    end
+
+    # Two sequential passes: a multi-pair `replace` never re-scans replaced text, so the
+    # placeholders inside the freshly inserted accuracy block would otherwise survive verbatim.
+    out = replace(DECM_python_template, "{{accuracyblock}}" => accuracyblock)
+    out = replace(out, "{{scriptname}}" => name,
+                       "{{outfolder}}"  => outfolder,
+                       "{{accfolder}}"  => accfolder,
+                       "{{datafilename}}"   => network_data_path)
+
+    open(joinpath(@__DIR__, "$(name).py"), "w") do f
+        write(f, out)
+    end
+
+    @info "Python script for $(name) generated."
+
+    return
+end
+
+
+##############################################################################################
 #  CReM (Conditional Reconstruction Method) helpers.
 #
 #  The CReM is a two-step model for weighted, undirected networks with CONTINUOUS positive weights:
@@ -886,22 +1112,22 @@ end
 Benchmark solving the CReM for the given weighted, undirected graph `G` (settings matched to the Python
 side). The two-step solve includes the internal binary (UBCM) layer, as it does on the NEMtropy side.
 """
-function test_solve_CReM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
+function test_solve_CReM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true, maxiters=1000)
     model = CReM(G)
     solve_model!(model)
     suite = BenchmarkGroup()
     if include_fixed_point
-        suite["test_solve_CReM[crema-FP]"] =           @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=1000, ftol=1e-8)
+        suite["test_solve_CReM[crema-FP]"] =           @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=$(maxiters), ftol=1e-8)
     end
     if include_BFGS
-        suite["test_solve_CReM[crema-QN-BFGS-AG]"] =   @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=true)
-        suite["test_solve_CReM[crema-QN-BFGS-ADF]"] =  @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+        suite["test_solve_CReM[crema-QN-BFGS-AG]"] =   @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, ftol=1e-8, analytical_gradient=true)
+        suite["test_solve_CReM[crema-QN-BFGS-ADF]"] =  @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, ftol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
     end
     if include_LBFGS
-        suite["test_solve_CReM[crema-QN-LBFGS-AG]"] =  @benchmarkable solve_model!($(model), method=:LBFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=true)
+        suite["test_solve_CReM[crema-QN-LBFGS-AG]"] =  @benchmarkable solve_model!($(model), method=:LBFGS, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, ftol=1e-8, analytical_gradient=true)
     end
     if include_newton
-        suite["test_solve_CReM[crema-Newton-ADF]"] =   @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+        suite["test_solve_CReM[crema-Newton-ADF]"] =   @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, ftol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
     end
     tune!(suite)
     res = run(suite)
@@ -1127,18 +1353,18 @@ end
 
 Benchmark solving the DCReM (two-step: internal DBCM + weighted layer, as on the NuMeTriS side).
 """
-function test_solve_DCReM(G; include_fixed_point=true, include_BFGS=true, include_newton=true)
+function test_solve_DCReM(G; include_fixed_point=true, include_BFGS=true, include_newton=true, maxiters=1000)
     model = DCReM(G)
     solve_model!(model)
     suite = BenchmarkGroup()
     if include_fixed_point
-        suite["test_solve_DCReM[FP]"] =         @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=1000, ftol=1e-8)
+        suite["test_solve_DCReM[FP]"] =         @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=$(maxiters), ftol=1e-8)
     end
     if include_BFGS
-        suite["test_solve_DCReM[QN-BFGS-AG]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=true)
+        suite["test_solve_DCReM[QN-BFGS-AG]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, analytical_gradient=true)
     end
     if include_newton
-        suite["test_solve_DCReM[Newton-ADF]"] = @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+        suite["test_solve_DCReM[Newton-ADF]"] = @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
     end
     tune!(suite)
     res = run(suite)
@@ -1171,18 +1397,18 @@ end
 
 Benchmark solving the CRWCM (two-step: internal RBCM + the 4N weighted layer, as on the NuMeTriS side).
 """
-function test_solve_CRWCM(G; include_fixed_point=true, include_BFGS=true, include_newton=true)
+function test_solve_CRWCM(G; include_fixed_point=true, include_BFGS=true, include_newton=true, maxiters=1000)
     model = CRWCM(G)
     solve_model!(model)
     suite = BenchmarkGroup()
     if include_fixed_point
-        suite["test_solve_CRWCM[FP]"] =         @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=1000, ftol=1e-8)
+        suite["test_solve_CRWCM[FP]"] =         @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=$(maxiters), ftol=1e-8)
     end
     if include_BFGS
-        suite["test_solve_CRWCM[QN-BFGS-AG]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=true)
+        suite["test_solve_CRWCM[QN-BFGS-AG]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, analytical_gradient=true)
     end
     if include_newton
-        suite["test_solve_CRWCM[Newton-ADF]"] = @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+        suite["test_solve_CRWCM[Newton-ADF]"] = @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
     end
     tune!(suite)
     res = run(suite)
@@ -1299,10 +1525,23 @@ try:
             "Nm_emp": [float(v) for v in np.asarray(G.Nm_emp).ravel()]}
     if hasattr(G, 'Fm_emp'):
         dump["Fm_emp"] = [float(v) for v in np.asarray(G.Fm_emp).ravel()]
+    # Gauge-invariant dyadic connection probabilities. The fitted multipliers are defined only up to
+    # a global gauge (scaling the out- and in-fitnesses by a reciprocal constant leaves every dyadic
+    # probability, and hence the likelihood, unchanged), so the two packages settle in different
+    # gauges and their raw parameters are NOT comparable. These matrices are, so they are what the
+    # cross-package agreement is measured on. Dumped as nested lists to keep the row/column order
+    # explicit, and only for the small networks, which is all the Julia comparison reads.
+    if n <= 64:
+        if MODEL in ('RBCM', 'RBCM+CRWCM'):
+            dump["p_nonrec"] = Pf.tolist()
+            dump["p_rec"] = Rf.tolist()
+        elif MODEL == 'DBCM+CReMa':
+            dump["p_link"] = F.tolist()
     with open(os.path.join(_acc, '{{scriptname}}_numetris.json'), 'w') as f:
         json.dump(dump, f)
-except Exception:
-    pass
+except Exception as _e:
+    # Never fail the benchmark over the accuracy dump, but never hide the miss either.
+    print("WARNING: could not dump NuMeTriS accuracy data: " + repr(_e))
 
 ## ---------------------- ##
 ## Functions to benchmark ##

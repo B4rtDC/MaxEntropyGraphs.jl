@@ -268,21 +268,24 @@ julia> MaxEntropyGraphs.Optimization.solve(prob, method); # solve it
 ```
 """
 function ∇L_UBCM_reduced!(∇L::AbstractVector, θ::AbstractVector, K::Vector, F::Vector, x::AbstractVector)
-    @simd for i in eachindex(x) # to avoid the allocation of exp.(-θ)
-        @inbounds x[i] = exp(-θ[i])
+    @simd for i in eachindex(x) # to avoid the allocation of exp.(θ)
+        @inbounds x[i] = exp(θ[i])
     end
 
     for i in eachindex(K)
-        @inbounds xᵢ = x[i]
-        # branch-free inner sum (SIMD-friendly reduction): Σⱼ F[j]·xᵢxⱼ/(1+xᵢxⱼ)
+        @inbounds yᵢ = x[i]
+        # branch-free inner sum (SIMD-friendly reduction): Σⱼ F[j]·xᵢxⱼ/(1+xᵢxⱼ), with
+        # xᵢxⱼ/(1+xᵢxⱼ) written as 1/(1 + exp(θᵢ)exp(θⱼ)): the naive form gives
+        # Inf/Inf = NaN as soon as θᵢ+θⱼ drops below about -710 (exp overflow), which a
+        # line search does probe on large problems; the NaN gradient then aborts the line
+        # search and the optimizer reports success on a garbage solution. This form maps
+        # overflow to a clean 0 and underflow to a clean 1.
         acc = zero(eltype(∇L))
         @inbounds @simd for j in eachindex(K)
-            aux = xᵢ * x[j]
-            acc += F[j] * (aux / (1 + aux))
+            acc += F[j] / (1 + yᵢ * x[j])
         end
         # the j==i term above used F[i] rather than (F[i]-1); subtract one self term to correct
-        @inbounds auxᵢᵢ = xᵢ * xᵢ
-        acc -= auxᵢᵢ / (1 + auxᵢᵢ)
+        @inbounds acc -= inv(1 + yᵢ * yᵢ)
         @inbounds ∇L[i] = -F[i] * K[i] + F[i] * acc
     end
 
@@ -327,7 +330,7 @@ The function will update pre-allocated vectors (`G` and `x`) for speed.
 - `θ`: the maximum likelihood parameters of the model
 - `K`: the reduced degree sequence
 - `F`: the frequency of each degree in the degree sequence
-- `x`: the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(-θᵢ) ) (pre-allocated)
+- `x`: buffer for the exponentiated maximum likelihood parameters of the model ( xᵢ = exp(θᵢ) ) (pre-allocated)
 - `G`: the next fixed-point iteration for the UBCM model (pre-allocated)
 
 
@@ -346,21 +349,29 @@ julia> UBCM_FP!(initial_guess(model));
 ```
 """
 function UBCM_reduced_iter!(θ::AbstractVector, K::AbstractVector, F::AbstractVector, x::AbstractVector, G::AbstractVector)
-    @simd for i in eachindex(θ) # to avoid the allocation of exp.(-θ)
-        @inbounds x[i] = exp(-θ[i])
+    @simd for i in eachindex(θ) # to avoid the allocation of exp.(θ)
+        @inbounds x[i] = exp(θ[i])
     end
     G .= zero(eltype(G))
-    @simd for i in eachindex(K)
-        for j in eachindex(K)
+    @inbounds for i in eachindex(K)
+        # xⱼ/(1 + xⱼxᵢ) written as 1/(exp(θⱼ) + exp(-θᵢ)), which stays finite for ANY θ:
+        # the naive form gives Inf/Inf = NaN as soon as one θ drops below about -710
+        # (exp overflow), and Anderson acceleration does propose such iterates on large,
+        # ill-scaled problems (first seen on a 250k-node graph, where one poisoned entry
+        # turned every equation non-finite and killed the solve). exp(-θᵢ) is loop-invariant
+        # in j, so it is hoisted as 1/xᵢ (identical up to 1 ulp, and 1/Inf = 0 keeps the
+        # safety property).
+        xinvᵢ = inv(x[i])
+        @simd for j in eachindex(K)
             if i == j
-                @inbounds G[i] += (F[j] - 1) * (x[j] / (1 + x[j] * x[i]))
+                G[i] += (F[j] - 1) / (x[j] + xinvᵢ)
             else
-                @inbounds G[i] += (F[j]) *     (x[j] / (1 + x[j] * x[i]))
+                G[i] += (F[j])     / (x[j] + xinvᵢ)
             end
         end
 
         if !iszero(G[i])
-            @inbounds G[i] = -log(K[i] / G[i])
+            G[i] = -log(K[i] / G[i])
         end
     end
     return G
@@ -487,7 +498,7 @@ function Ĝ(m::UBCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     
     # get network size => this is the full size
-    n = m.status[:d]
+    n = m.status[:d]::Int
     # initiate G
     G = zeros(precision(m), n, n)
     # initiate x
@@ -527,7 +538,7 @@ function σˣ(m::UBCM)
     # check if possible
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # check network size => this is the full size
-    n = m.status[:d]
+    n = m.status[:d]::Int
     # initiate G
     σ = zeros(precision(m), n, n)
     # initiate x
@@ -646,10 +657,10 @@ Compute the likelihood maximising parameters of the UBCM model `m`.
 - `initial::Symbol`: initial guess for the parameters ``\\Theta``, can be :degrees, :degrees_minor, :random, :uniform, or :chung_lu.
 - `maxiters::Int`: maximum number of iterations for the solver (defaults to 1000). 
 - `verbose::Bool`: set to show log messages (defaults to false).
-- `ftol::Real`: function tolerance for convergence with the fixedpoint method (defaults to 1e-8).
+- `ftol::Union{Real, Nothing}`: tolerance for the fixedpoint method (defaults to `nothing`, i.e. 1e-8). It bounds the fixed-point *increment* ``\\|G(\\theta) - \\theta\\|_\\infty`` in **parameter** space; it is **not** the constraint residual, and it is ignored by every other method. Use [`constraint_residual`](@ref) to measure how well the expected degrees actually match the observed ones.
 - `abstol::Union{Number, Nothing}`: absolute function tolerance for convergence with the other methods (defaults to `nothing`).
 - `reltol::Union{Number, Nothing}`: relative function tolerance for convergence with the other methods (defaults to `nothing`).
-- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`); set e.g. `1e-5` to stop before over-converging (defaults to `nothing`, i.e. Optim's tight default).
+- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`); set e.g. `1e-5` to stop before over-converging (defaults to `nothing`, i.e. Optim's tight default). The gradient of this model *is* its constraint residual (up to the degree multiplicities), but `g_abstol` is a stopping criterion rather than a guarantee: Optim can also stop on its function or parameter convergence checks and report success without the gradient ever reaching `g_tol`. Verify what was actually achieved with [`constraint_residual`](@ref).
 - `AD_method::Symbol`: autodiff method to use, can be any of :$(join(keys(MaxEntropyGraphs.AD_methods), ", :", " and :")). Performance depends on the size of the problem (defaults to `:AutoZygote`),
 - `analytical_gradient::Bool`: set the use the analytical gradient instead of the one generated with autodiff (defaults to `false`)
 
@@ -679,7 +690,7 @@ function solve_model!(m::UBCM;  # common settings
                                 maxiters::Int=1000, 
                                 verbose::Bool=false,
                                 # NLsolve.jl specific settings (fixed point method)
-                                ftol::Real=1e-8,
+                                ftol::Union{Real, Nothing}=nothing,
                                 # optimisation.jl specific settings (optimisation methods)
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
@@ -688,6 +699,10 @@ function solve_model!(m::UBCM;  # common settings
                                 analytical_gradient::Bool=false)
     N = precision(m)
     N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
+    # `ftol` is accepted on every path but only ever reaches the fixed point solver: say so rather than
+    # ignoring it silently (only when it was actually passed, so a default solve stays quiet)
+    method ≠ :fixedpoint && !isnothing(ftol) && @warn _ftol_unused_msg(method) maxlog=1
+    ftol = isnothing(ftol) ? _DEFAULT_FTOL : ftol
     # initial guess
     θ₀ = initial_guess(m, method=initial)
     if method==:fixedpoint
@@ -696,8 +711,17 @@ function solve_model!(m::UBCM;  # common settings
         G_buffer = zeros(N,length(m.dᵣ)); # buffer for G(x)
         # define fixed point function
         FP_model! = (θ::Vector) -> UBCM_reduced_iter!(θ, m.dᵣ, m.f, x_buffer, G_buffer);
-        # obtain solution
-        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        # obtain solution. Undamped Anderson can diverge on large, ill-scaled problems (its
+        # internal least-squares then emits NaN and NLsolve throws IsFiniteException; first
+        # seen on a 250k-node graph): retry once with damped mixing, which trades a few extra
+        # iterations on well-behaved problems for stability on the hard ones.
+        sol = try
+            NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        catch e
+            e isa NLsolve.IsFiniteException || rethrow()
+            verbose && @info "Anderson acceleration diverged to non-finite values; retrying with damped mixing (beta=0.5)"
+            NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, m=5, beta=0.5, ftol=ftol, iterations=maxiters);
+        end
         if NLsolve.converged(sol)
             if verbose 
                 @info "Fixed point iteration converged after $(sol.iterations) iterations"

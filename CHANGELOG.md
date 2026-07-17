@@ -1,5 +1,73 @@
 # Changelog
 
+## v0.7.0
+
+Convergence is now expressed in the units users actually care about.
+
+### Breaking
+- **The `CReM`, `DCReM` and `CRWCM` fixed-point solves now iterate in `log θ`, so `ftol` is a
+  *relative* constraint tolerance rather than an absolute parameter-space one.** The fitted `θ` move
+  at roughly the `1e-8` level, and for the `DCReM`/`CRWCM` they may also land on a different (equally
+  valid) representative of their gauge orbit, so values compared bit-for-bit against stored 0.6.x
+  output will differ. All gauge-invariant predictions (`Ĝ`, `Ŵ`, the dyadic probabilities, every
+  metric) agree to `~1e-9`.
+
+### Fixed
+- **`ftol` silently failed to control accuracy on the two-step weighted models.** It is forwarded to
+  `NLsolve`, which bounds the fixed-point *increment* `‖G(θ) - θ‖∞` in **parameter** space. Because
+  the map obeys `Gᵢ = θᵢ⟨sᵢ⟩/sᵢ` exactly, the achieved constraint residual was
+  `≈ ftol · max(sᵢ/θᵢ)`, and since `θ` scales like `1/s` that factor grows as the **square of the
+  weight scale**. It is `~10` for the binary models (harmless) but `~5·10³` on the weighted layer of
+  the *rhesus macaques* network, and `~4.5·10⁷` once its weights are scaled by 100. Concretely, a
+  `DCReM` on a network with weights of order `10³` returned `retcode Success` with a strength
+  constraint off by **61.7** in absolute units. Iterating in `log θ` makes the increment exactly
+  `log(⟨sᵢ⟩/sᵢ)`, so the residual is now scale-invariant: measured at a constant `3.2e-9` relative
+  across a 1000× range of weight scales, where it was previously `5.3e-5`, `0.45` and `61.7`.
+  This also enforces `θ > 0` for free.
+- **The `UBCM` was unsolvable at large scale: `exp` overflow made the default fixed point crash and
+  the quasi-Newton path report false convergence.** Both kernels evaluated terms of the form
+  `x/(1 + x·y)` with `x = exp(-θ)`, which overflows to `Inf/Inf = NaN` once a fitted parameter
+  passes `θ < -710` (hub nodes on graphs with more than a few hundred distinct degrees). The fixed
+  point then crashed with an `NLsolve.IsFiniteException`, while `BFGS` aborted its line search on
+  the `NaN` gradient and reported `Success` at a garbage point (constraint residual `~4·10⁴`).
+  The kernels now use the algebraically identical, overflow-safe forms `1/(exp(θⱼ) + exp(-θᵢ))`
+  (fixed-point map) and `1/(1 + yᵢ·xⱼ)` (gradient) at the same cost, and the fixed-point solve
+  retries once with damped Anderson acceleration (`m = 5`, `β = 0.5`) if the accelerator itself
+  diverges. A 250,000-node scale-free graph (1,044 distinct degrees) now solves in ~0.2 s with a
+  relative constraint residual of `9·10⁻⁹`; results on small graphs are bit-identical.
+- The `θ` accessors of the two-step models (`strength`, `outstrength`, `instrength`) rebuilt the full
+  per-node fitness vectors inside every per-node call, and their accumulator was type-unstable
+  (`zero(precision(m))` does not infer). The vector forms are **60-64× faster** with ~200× fewer
+  allocations; returned values are bit-identical.
+
+### Added
+- **`DECM`** — the Directed Enhanced Configuration Model (constrains the out-/in-degree **and** the
+  integer out-/in-strength sequences, jointly — the directed counterpart of the `UECM`). Numerically-
+  stable log-likelihood over the ordered pairs, branch-free SIMD gradient (verified against Zygote),
+  reduction on unique `(k^out, k^in, s^out, s^in)` quadruples, seeded reproducible sampling
+  (Bernoulli–geometric per directed channel), the full accessor/variance/information-criterion API
+  (`k = 4N` parameters, `n = N(N-1)` observations), a NEMtropy (`decm_exp`) performance/accuracy
+  comparison, and documentation. Because the likelihood is only defined on the feasible region
+  `β^out_i + β^in_j > 0`, the solver uses a `BackTracking` line search (`BFGS` default; the fixed
+  point is unstable for this model, as for the `UECM`). The delta-method `σₓ` carries **no**
+  within-dyad covariance term: the two directions of a dyad are independent random variables
+  (validated symbolically and by a 10k-sample Monte-Carlo gate in `validation/`).
+- **`constraint_residual(m; relative=false)`**: what a solve actually achieved, in constraint units.
+  It reuses each model's existing analytical gradient, which by ERGM stationarity *is* the constraint
+  residual `⟨xᵢ⟩ - xᵢ`, so it is exact and costs well under 1% of a solve. Available for all nine
+  models; the `relative` form masks zero-valued constraints (dead channels).
+
+### Changed
+- The `ftol` and `g_tol` docstrings now say what those knobs actually bound. `ftol` bounds the
+  fixed-point increment in parameter space and is **not** the constraint residual; `g_tol` maps to
+  Optim's `g_abstol`, which is a stopping criterion rather than a guarantee, since Optim may also
+  stop on its function or parameter checks. Both point at `constraint_residual`.
+- Passing `ftol` on a path that ignores it (for example the `UECM`'s default `:BFGS`, where it was
+  silently discarded) now warns instead of doing nothing quietly.
+- The `UECM`'s BackTracking optimizer instances were hoisted from `UECM.jl` into
+  `backtracking_optimization_methods` (`src/Models/models.jl`) so the enhanced models (`UECM`/`DECM`)
+  share them. Internal rename only; behaviour is unchanged.
+
 ## v0.6.0
 
 Homogenized expectation & variance machinery across all eight models

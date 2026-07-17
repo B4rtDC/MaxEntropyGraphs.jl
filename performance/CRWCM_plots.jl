@@ -8,6 +8,8 @@ using JSON
 using Dates
 using Statistics
 
+include(joinpath(@__DIR__, "plot_helpers.jl"))
+
 # The CRWCM reference graphs are the rhesus network and block-diagonal tilings of it (16 → 128 → 512).
 # The Python reference is NuMeTriS (model 'RBCM+CRWCM'), which has a single solver, solves BOTH layers
 # (like the Julia two-step solve_model!) and JIT-compiles through numba. The Julia side shows the
@@ -63,20 +65,20 @@ p_create = begin
         ind = py_index(py_bench[scale], "test_create_")
         ind === nothing && continue
         creation_times = Float64.(py_bench[scale]["benchmarks"][ind]["stats"]["data"])
-        boxplot!(p, CRWCM_positionmapper[scale], creation_times, label="", color=:blue, alpha=0.25, linecolor=:blue, outliers=false)
+        boxplot!(p, CRWCM_positionmapper[scale], creation_times, label="", color=LIB_REFERENCE, alpha=0.25, linecolor=LIB_REFERENCE, outliers=false)
     end
-    boxplot!(p,[],[], label="NuMeTriS", color=:blue, alpha=0.25, linecolor=nothing)
+    boxplot!(p,[],[], label="NuMeTriS", color=LIB_REFERENCE, alpha=0.25, linecolor=nothing)
     # Julia part
     for scale in keys(ju_bench)
         julia_index = findfirst(x -> x["name"] == "test_create_CRWCM", ju_bench[scale]["benchmarks"])
         creation_times = Float64.(ju_bench[scale]["benchmarks"][julia_index]["stats"][2]["times"]) ./ 1e9
-        boxplot!(p, CRWCM_positionmapper[scale], creation_times, label="", color=:red, alpha=0.25, linecolor=:red, outliers=false)
+        boxplot!(p, CRWCM_positionmapper[scale], creation_times, label="", color=LIB_MEG, alpha=0.25, linecolor=LIB_MEG, outliers=false)
     end
-    boxplot!(p,[],[], label="MaxEntropyGraphs", color=:red, alpha=0.25, linecolor=nothing)
+    boxplot!(p,[],[], label="MaxEntropyGraphs", color=LIB_MEG, alpha=0.25, linecolor=nothing)
 
     plot!(p, yscale=:log10, bar_width=0.5,
         xlabel="Number of nodes\n(problem scale)",
-        ylabel="Time [s]",
+        ylabel="Creation time [s]",
         title="",
         titlefontsize=18,
         legendposition=:topleft,
@@ -85,8 +87,10 @@ p_create = begin
         top_margin = 5mm,
         labelfontsize=18,
         xticks=(1:3, CRWCM_xticklabels),
-        yticks=10. .^ collect(-7:3),
-        ylims=(1e-7,1e2), xlims=(0,4),
+        # Same limits as the computation panel: the two are drawn side by side at the same
+        # pixel height in the paper figure, so a mark at a given height must mean the same time.
+        yticks=10. .^ collect(-5:4),
+        ylims=(1e-5,1e4), xlims=(0,4),
         grid=true,
         size=(800,400),
         left_margin = 5mm,
@@ -102,34 +106,39 @@ end
 # 3.2. Median solve times (scatter). NuMeTriS has one solver for 'RBCM+CRWCM' (both layers);
 #      the Julia two-step solve is shown for its three weighted-layer methods.
 p_solve = begin
-    trans = 0.7
+    trans = 0.95
     p = plot()
 
-    approach_markers = Dict("fixed-point" => :circle, "quasi-newton" => :square, "newton" => :star5)
+    # Colour is the library, marker shape is the solver method (see plot_helpers.jl).
+    approach_markers = METHOD_MARKERS
 
-    # Python part (single solver)
+    # Python part (single solver). NuMeTriS solves both layers with one solver, which is none of
+    # the three methods in METHOD_MARKERS, so it keeps its own diamond; the "solver" key is not in
+    # METHOD_DODGE/METHOD_SIZE and therefore falls back to the neutral slot and the base size.
     for scale in keys(py_bench)
         ind = py_index(py_bench[scale], "test_solve_")
         ind === nothing && continue
         solution_times = Float64.(py_bench[scale]["benchmarks"][ind]["stats"]["data"])
-        scatter!(p, CRWCM_positionmapper[scale], [median(solution_times)], label="",
-        color=:peru, alpha=trans, marker=:diamond, linecolor=:peru, markerstrokecolor=:peru, markersize=10)
+        scatter!(p, mark_x(CRWCM_positionmapper[scale], LIB_REFERENCE, "solver"), [median(solution_times)], label="",
+        color=LIB_REFERENCE, alpha=trans, marker=:diamond, linecolor=LIB_REFERENCE,
+        markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size("solver"))
     end
-    scatter!(p,[],[], label="NuMeTriS (RBCM+CRWCM)", color=:peru, alpha=trans, marker=:diamond, linecolor=nothing, markerstrokecolor=:peru)
+    scatter!(p,[],[], label="NuMeTriS (RBCM+CRWCM)", color=LIB_REFERENCE, alpha=trans, marker=:diamond, linecolor=nothing, markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size("solver"))
 
     # Julia part
-    for (method, label, color, approach) in [ ("test_solve_CRWCM[FP]", "MaxEntropyGraphs (fixed-point)", :green4, "fixed-point");
-                                              ("test_solve_CRWCM[QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", :dodgerblue4, "quasi-newton");
-                                              ("test_solve_CRWCM[Newton-ADF]", "MaxEntropyGraphs (newton)", :dodgerblue, "newton")]
+    for (method, label, color, approach) in [ ("test_solve_CRWCM[FP]", "MaxEntropyGraphs (fixed point)", LIB_MEG, "fixed point");
+                                              ("test_solve_CRWCM[QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", LIB_MEG, "quasi-newton");
+                                              ("test_solve_CRWCM[Newton-ADF]", "MaxEntropyGraphs (newton)", LIB_MEG, "newton")]
         for scale in keys(ju_bench)
             benchind = findfirst(x -> x["name"] == "test_solve_CRWCM", ju_bench[scale]["benchmarks"])
             if haskey(ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"], method)
                 solution_times = ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"][method][2]["times"] ./ 1e9
-                scatter!(p, CRWCM_positionmapper[scale], [median(solution_times)], label="",
-                color=color, alpha=trans, marker=approach_markers[approach], linecolor=color, markerstrokecolor=color, markersize=10)
+                scatter!(p, mark_x(CRWCM_positionmapper[scale], color, approach), [median(solution_times)], label="",
+                color=color, alpha=trans, marker=approach_markers[approach], linecolor=color,
+                markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
             end
         end
-        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=color)
+        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
     end
 
     plot!(p, yscale=:log10, bar_width=0.5,
@@ -160,10 +169,6 @@ end
 begin
     p = plot(p_create, p_solve, layout=(1,2), size=(1600,600),
              left_margin=10mm, bottom_margin=12mm, top_margin=5mm)
-    figdir = joinpath(dirname(@__DIR__), "figures")
-    if isdir(figdir)
-        savefig(p, joinpath(figdir, "crwcm_benchmark.pdf"))
-        @info "paper figure written to $(joinpath(figdir, "crwcm_benchmark.pdf"))"
-    end
+    mirror_to_figures(p, "crwcm_benchmark.pdf")
     p
 end

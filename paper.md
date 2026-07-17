@@ -16,7 +16,7 @@ authors:
 affiliations:
   - name: Royal Military Academy, Brussels, Belgium
     index: 1
-date: 15 July 2026
+date: 17 July 2026
 bibliography: paper.bib
 ---
 
@@ -42,10 +42,10 @@ are standard objects from the Julia graph ecosystem [@graphs2021], so models
 integrate directly with existing tooling. The currently supported models are the
 Undirected, Directed and Bipartite Binary Configuration Models (UBCM, DBCM,
 BiCM), the Reciprocal Binary Configuration Model (RBCM)
-[@squartini2011analytical], the Undirected Enhanced Configuration Model (UECM),
-the undirected and directed Conditional Reconstruction Methods (CReM, DCReM)
-[@parisi2020faster], and the Conditionally Reciprocal Weighted Configuration
-Model (CRWCM) [@divece2024commodity]. The reciprocity-aware models (RBCM, CRWCM)
+[@squartini2011analytical], the Undirected and Directed Enhanced Configuration
+Models (UECM, DECM), the undirected and directed Conditional Reconstruction
+Methods (CReM, DCReM) [@parisi2020faster], and the Conditionally Reciprocal
+Weighted Configuration Model (CRWCM) [@divece2024commodity]. The reciprocity-aware models (RBCM, CRWCM)
 preserve the dyadic structure of directed networks, that is the numbers of
 reciprocated and non-reciprocated links and the weights they carry, which is
 essential for higher-order (motif-based) analyses of directed networks.
@@ -147,16 +147,30 @@ The package is benchmarked against `NEMtropy` for model construction, parameter
 computation, ensemble sampling, bipartite-projection validation, and directed
 three-node motif computation across a
 range of problem scales, using `BenchmarkTools.jl` [@chen2016benchmarktools] on
-the Julia side and `pytest-benchmark` on the Python side, with both
+the Julia side (Julia 1.12.6) and `pytest-benchmark` on the Python side, with both
 implementations restricted to the same number of cores. `MaxEntropyGraphs.jl` is
-consistently and often substantially faster at model construction and at
-fixed-point parameter computation, with the gap widening as the number of
-distinct constraints grows (\autoref{fig:ubcm}, \autoref{fig:bicm}). For the
-gradient-based (quasi-Newton) solver it is faster on the binary configuration
-models; for the bipartite model it is somewhat slower, but converges to a
-markedly tighter solution, recovering the imposed degree sequence to within
-$\sim\!10^{-9}$ against `NEMtropy`'s $\sim\!10^{-7}$ (both under matched solver
-tolerances). Ensemble
+consistently and often substantially faster at fixed-point parameter
+computation, with the gap widening as the number of distinct constraints grows
+(\autoref{fig:ubcm}, \autoref{fig:bicm}), and at model construction
+(\autoref{fig:crwcm}). At the largest undirected benchmark (250,000 nodes, 1,044
+distinct degrees) the fixed point solves the model in tens of milliseconds
+versus $\sim\!90$ s for each of `NEMtropy`'s routines; the quasi-Newton
+comparison is omitted at that scale because neither implementation's
+quasi-Newton routine converges there within the shared iteration budget, and
+reporting a time for a solver that has not converged would be meaningless. For
+the gradient-based (quasi-Newton) solver it is faster on the binary
+configuration models at the remaining scales. For the bipartite model it is somewhat slower, but returns a markedly
+more accurate solution: given identical solver settings (a $10^{-8}$ tolerance,
+at most 1000 iterations, and a degree-based initial guess), `MaxEntropyGraphs.jl`
+reproduces the imposed degree sequence to a maximum error of $\sim\!10^{-9}$ on
+all three bipartite benchmarks, while `NEMtropy`'s `quasinewton` routine stops
+between $\sim\!10^{-7}$ and $\sim\!10^{-6}$ away from it. The gap is not a
+tolerance mismatch. `MaxEntropyGraphs.jl` attains its requested gradient
+tolerance, whereas `NEMtropy`'s `quasinewton` terminates early on a line-search
+stall and does not improve under a tighter tolerance, a larger iteration budget,
+or a different initial guess. This concerns that routine specifically rather than
+the package as a whole, since `NEMtropy`'s `newton` routine converges to between
+$\sim\!10^{-12}$ and $\sim\!10^{-9}$ on the same networks. Ensemble
 sampling, which `MaxEntropyGraphs.jl` performs in memory as native graph objects,
 is orders of magnitude faster than `NEMtropy`'s disk-based sampler. For the
 analytical directed three-node motif spectrum, `MaxEntropyGraphs.jl` evaluates
@@ -166,9 +180,9 @@ per-motif triple loops, and the two implementations agree to
 $\sim\!10^{-8}$ on the *maspalomas* food web. That agreement is a direct
 cross-package validation of correctness, with both solved to a matched $10^{-8}$
 tolerance. The weighted models
-(UECM, CReM) are benchmarked against `NEMtropy`'s `ecm` and `crema` solvers in
-the same harness, with both implementations reproducing their imposed
-degree/strength sequences at comparable accuracy.
+(UECM, DECM, CReM) are benchmarked against `NEMtropy`'s `ecm`, `decm` and
+`crema` solvers in the same harness, with both implementations reproducing their
+imposed degree/strength sequences at comparable accuracy.
 
 The reciprocity-aware models are benchmarked against `NuMeTriS` [@numetris], the
 reference implementation accompanying @divece2024commodity, under the same
@@ -182,12 +196,23 @@ profiting from the reduced parameter space; for the larger weighted problems the
 gradient-based alternatives are slower than `NuMeTriS`'s compiled solver, but
 the fixed point remains the fastest option overall (\autoref{fig:crwcm}). The
 comparison again doubles as a cross-package validation: both implementations
-converge to the same maximum-likelihood solution (identical binary Lagrange
-multipliers to $\sim\!10^{-5}$, with each implementation reproducing its
-constraint sequences at its own $10^{-8}$ solver tolerance), and, after
-aligning the deterministic counting conventions of the two packages, the
-empirical triadic motif counts agree exactly and the triadic fluxes to machine
-precision. Beyond parity, `MaxEntropyGraphs.jl` evaluates the *exact* expected
+converge to the same maximum-likelihood solution. The binary Lagrange multipliers
+themselves are not comparable across the two packages, since they are defined only
+up to a global gauge (rescaling the out- and in-fitnesses by a reciprocal constant
+leaves every dyadic probability, and hence the likelihood, unchanged) and the two
+solvers settle in different gauges. The gauge-invariant dyadic connection
+probabilities, which are what the models actually predict, agree to
+$\sim\!10^{-8}$ on the *rhesus macaques* network. On the constraints, `NuMeTriS`
+reproduces its imposed sequences to $\sim\!10^{-8}$, in line with a solver
+tolerance that is set on the constraint residual itself, whereas
+`MaxEntropyGraphs.jl`'s default fixed-point tolerance is set on the parameter
+increment, so at its default of $10^{-8}$ it reproduces the binary sequences to
+$\sim\!10^{-7}$ but the weighted sequences of the two-step models only to
+$\sim\!10^{-5}$. Tightening that tolerance to $10^{-12}$ brings all sequences to
+$\sim\!10^{-9}$, confirming that the residual reflects the stopping rule rather
+than a different optimum. After aligning the deterministic counting conventions of
+the two packages, the empirical triadic motif counts agree exactly and the triadic
+fluxes to machine precision. Beyond parity, `MaxEntropyGraphs.jl` evaluates the *exact* expected
 motif and flux spectra under these models from the dyadic probabilities (within
 a dyad the two link directions are correlated, so these expectations cannot be
 formed from the expected adjacency matrix alone) and propagates the
@@ -202,13 +227,14 @@ functionality; blue indicates interaction with external packages. Arrows show
 possible directions of the workflow.\label{fig:schematic}](figures/schematic.pdf)
 
 ![Performance comparison between `NEMtropy` and `MaxEntropyGraphs.jl` for the
-UBCM model at different problem scales: model creation time (left) and median
-parameter-computation time (right) as a function of the number of unique
-constraints.\label{fig:ubcm}](figures/ubcm_benchmark.pdf)
+UBCM model: parameter-computation time for each of the three solvers (fixed
+point, quasi-Newton and Newton) at three problem scales, as a function of the
+number of unique constraints.\label{fig:ubcm}](figures/ubcm_benchmark.pdf)
 
 ![Performance comparison between `NEMtropy` and `MaxEntropyGraphs.jl` for the
-BiCM model at different problem scales, including the validated bipartite
-projection.\label{fig:bicm}](figures/bicm_benchmark.pdf)
+BiCM model: parameter-computation time for each of the three solvers (fixed
+point, quasi-Newton and Newton) at three problem scales, as a function of the
+number of unique constraints.\label{fig:bicm}](figures/bicm_benchmark.pdf)
 
 ![Performance comparison between `NuMeTriS` and `MaxEntropyGraphs.jl` for the
 CRWCM model (binary and weighted layers solved jointly) at different problem
@@ -218,8 +244,9 @@ scales: model creation time (left) and median parameter-computation time
 # AI usage disclosure
 
 During the preparation of this submission, the author used generative AI
-assistance, specifically Anthropic's Claude (Opus 4.8), in three places: to help
-draft and edit the manuscript text, to refactor and modernize parts of the
+assistance, specifically Anthropic's Claude models (Opus 4.8 and Fable 5), in
+three places: to help draft and edit the manuscript text, to refactor and
+modernize parts of the
 codebase, and to prepare benchmarking, validation and testing scaffolding. The
 research problem, the choice of models to implement, the design of the package
 and its interfaces, and the interpretation of all results are the author's own.

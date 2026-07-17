@@ -55,13 +55,18 @@ performance/.venv/
 # .venv and benchmark store, so they must never be tracked (all eight models emit one).
 performance/*.py
 performance/*_script.sh
-# ...but keep the hand-written reproducibility check (not a generated script)
+# ...but keep the hand-written helpers (not generated scripts)
 !performance/reproducibility_check.py
+!performance/merge_pytest_benchmarks.py
 # generated outputs (plots and sampled networks) are not tracked; keep any readme
 performance/plots/*
 performance/samples/*
 !performance/plots/readme.md
 !performance/samples/readme.md
+# the run log the readme tells you to create (`nohup ./benchmarks.sh >> benchmark.log`).
+# It reaches hundreds of MB: a medium run emits ~190k lines, nearly all of them the same
+# repeated solver warning.
+performance/benchmark.log
 # performance is a separate environment; don't track its lockfiles
 performance/Manifest.toml
 performance/LocalPreferences.toml

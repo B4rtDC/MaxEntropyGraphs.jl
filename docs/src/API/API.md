@@ -12,6 +12,21 @@ MaxEntropyGraphs.ConvergenceError
 
 ```
 
+## Convergence diagnostics
+A solved model reproduces its imposed constraints only up to the solver's stopping rule, and the
+solver tolerances are *not* expressed in constraint units. `ftol` bounds the fixed-point increment in
+parameter space, and `g_tol` is a stopping criterion for the gradient-based methods rather than a
+guarantee. `constraint_residual` reports what a solve actually achieved, in the units of the
+constraints themselves.
+
+This matters most for the two-step weighted models (`CReM`, `DCReM`, `CRWCM`), whose parameters carry
+units of one over weight: there the constraint residual is bounded by roughly `ftol * max(sᵢ/θᵢ)`,
+which grows as the *square* of the weight scale.
+
+```@docs
+constraint_residual
+```
+
 ## Utility fuctions
 Some specific utility functions are made available:
 

@@ -38,9 +38,11 @@ module MaxEntropyGraphs
     include("Models/RBCM.jl")
     include("Models/BiCM.jl")
     include("Models/UECM.jl")
+    include("Models/DECM.jl")
     include("Models/CReM.jl")
     include("Models/DCReM.jl")
     include("Models/CRWCM.jl")
+    include("constraints.jl")
     include("utils.jl")
     include("metrics.jl")
     include("smallnetworks.jl")
@@ -75,6 +77,7 @@ module MaxEntropyGraphs
     export degree, outdegree, indegree
     export strength, outstrength, instrength
     export Ŵ, set_Ŵ!, σʷ, set_σʷ!
+    export constraint_residual
     export AIC, AICc, BIC
     
     ## model specific types and functions
@@ -83,6 +86,7 @@ module MaxEntropyGraphs
     export RBCM, L_RBCM_reduced, ∇L_RBCM_reduced!, RBCM_reduced_iter!
     export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
     export UECM, L_UECM_reduced, ∇L_UECM_reduced!, UECM_reduced_iter!
+    export DECM, L_DECM_reduced, ∇L_DECM_reduced!, DECM_reduced_iter!
     export CReM, L_CReM, ∇L_CReM!, CReM_iter!
     export DCReM, L_DCReM, ∇L_DCReM!, DCReM_iter!
     export CRWCM, L_CRWCM, ∇L_CRWCM!, CRWCM_iter!
@@ -196,6 +200,26 @@ module MaxEntropyGraphs
             @compile_workload begin
                 # model building and solving
                 model = UECM(G)
+                solve_model!(model, method=:BFGS)
+                solve_model!(model, method=:BFGS, analytical_gradient=true)
+                solve_model!(model, method=:Newton)
+                solve_model!(model, method=:Newton, analytical_gradient=true)
+                # sampling
+                rand(model, 10)
+                # metrics
+                set_Ĝ!(model)
+                set_σ!(model)
+                set_Ŵ!(model)
+                set_σʷ!(model)
+            end
+        end
+
+        # DECM workload (fixed point is unstable for the DECM, so only BFGS/Newton are exercised)
+        @setup_workload begin
+            G = MaxEntropyGraphs.rhesus_macaques()
+            @compile_workload begin
+                # model building and solving
+                model = DECM(G)
                 solve_model!(model, method=:BFGS)
                 solve_model!(model, method=:BFGS, analytical_gradient=true)
                 solve_model!(model, method=:Newton)

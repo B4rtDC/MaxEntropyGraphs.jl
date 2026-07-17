@@ -8,7 +8,7 @@
 The goal of the *MaxEntropyGraphs.jl* package is to group the various maximum-entropy null models for network randomization and make them available to the Julia community in a single package. This work was in part inspired by the [Maximum Entropy Hub](https://meh.imtlucca.it), but unlike the latter, this package works in an integrated way with the existing Julia ecosystem for handling graphs, optimization tools and numerical solvers and groups all models in a single framework.
 
 The package provides the following functionalities:
-* Computing the likelihood maximizing parameters for a broad set of network models — binary and weighted, undirected, directed, bipartite and reciprocity-aware.
+* Computing the likelihood maximizing parameters for a broad set of network models: binary and weighted, undirected, directed, bipartite and reciprocity-aware.
 * Sampling of networks from a network ensemble once the parameters have been computed.
 * Analytically computing ensemble averages and their standard deviations, for every model, via the delta method on the expected (bi)adjacency matrix.
 * Running motif based analysis: the thirteen directed three-node motifs, their weighted fluxes and intensities, and the bipartite motif families.
@@ -77,6 +77,7 @@ The package currently implements the following models (see the [Models](https://
 | **RBCM** | directed, binary | non-reciprocated out-/in-degree and reciprocated degree sequences |
 | **BiCM** | bipartite, binary | degree sequences of both layers |
 | **UECM** | undirected, weighted (integer) | degree and strength sequences |
+| **DECM** | directed, weighted (integer) | out-/in-degree and out-/in-strength sequences |
 | **CReM** | undirected, weighted (continuous) | strength sequence, conditional on a UBCM topology |
 | **DCReM** | directed, weighted (continuous) | out-/in-strength sequences, conditional on a DBCM topology |
 | **CRWCM** | directed, weighted (continuous) | reciprocal strength sequences, conditional on an RBCM topology |
@@ -103,7 +104,7 @@ When using this package in your scientific research, please cite it. The canonic
   title        = {{MaxEntropyGraphs.jl}},
   year         = {2026},
   publisher    = {Zenodo},
-  version      = {v0.6.0},
+  version      = {v0.7.0},
   doi          = {10.5281/zenodo.8314609},
   url          = {https://github.com/B4rtDC/MaxEntropyGraphs.jl}
 }

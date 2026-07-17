@@ -10,11 +10,11 @@ using Statistics
 
 include(joinpath(@__DIR__, "plot_helpers.jl"))
 
-# The UECM reference graphs are the (symmetrised) rhesus network and block-diagonal tilings of it, so
-# the number of distinct {degree, strength} pairs stays constant (16) while N grows (16 → 128 → 512).
+# The DECM reference graphs are the (directed, unsymmetrised) rhesus network and block-diagonal tilings of it, so
+# the number of distinct constraint quadruples stays constant (16) while N grows (16 → 128 → 512).
 # The x-axis therefore shows N (the problem scale) rather than the unique-constraint count.
-const UECM_positionmapper = Dict("small" => [1], "medium" => [2], "large" => [3])
-const UECM_xticklabels = ["16"; "128"; "512"]
+const DECM_positionmapper = Dict("small" => [1], "medium" => [2], "large" => [3])
+const DECM_xticklabels = ["16"; "128"; "512"]
 
 """
     find_latest_files(path, model, language)
@@ -46,8 +46,8 @@ function find_latest_files(path::String, model, language)
 end
 
 # 2. Load the benchmark files
-py_bench = find_latest_files(joinpath(@__DIR__,"benchmarks"), "UECM", "Python")
-ju_bench = find_latest_files(joinpath(@__DIR__,"benchmarks"), "UECM", "Julia")
+py_bench = find_latest_files(joinpath(@__DIR__,"benchmarks"), "DECM", "Python")
+ju_bench = find_latest_files(joinpath(@__DIR__,"benchmarks"), "DECM", "Julia")
 
 
 # 3. Try to extract the relevant information
@@ -56,16 +56,16 @@ begin
     p = plot()
     # Python part
     for scale in keys(py_bench)
-        python_index = findfirst(x -> x["name"] == "test_create_UECM", py_bench[scale]["benchmarks"])
+        python_index = findfirst(x -> x["name"] == "test_create_DECM", py_bench[scale]["benchmarks"])
         creation_times = Float64.(py_bench[scale]["benchmarks"][python_index]["stats"]["data"])
-        boxplot!(p, UECM_positionmapper[scale], creation_times, label="", color=LIB_REFERENCE, alpha=0.25, linecolor=LIB_REFERENCE, outliers=false)
+        boxplot!(p, DECM_positionmapper[scale], creation_times, label="", color=LIB_REFERENCE, alpha=0.25, linecolor=LIB_REFERENCE, outliers=false)
     end
     boxplot!(p,[],[], label="NEMtropy", color=LIB_REFERENCE, alpha=0.25, linecolor=nothing)
     # Julia part
     for scale in keys(ju_bench)
-        julia_index = findfirst(x -> x["name"] == "test_create_UECM", ju_bench[scale]["benchmarks"])
+        julia_index = findfirst(x -> x["name"] == "test_create_DECM", ju_bench[scale]["benchmarks"])
         creation_times = Float64.(ju_bench[scale]["benchmarks"][julia_index]["stats"][2]["times"]) ./ 1e9
-        boxplot!(p, UECM_positionmapper[scale], creation_times, label="", color=LIB_MEG, alpha=0.25, linecolor=LIB_MEG, outliers=false)
+        boxplot!(p, DECM_positionmapper[scale], creation_times, label="", color=LIB_MEG, alpha=0.25, linecolor=LIB_MEG, outliers=false)
     end
     boxplot!(p,[],[], label="MaxEntropyGraphs", color=LIB_MEG, alpha=0.25, linecolor=nothing)
 
@@ -79,7 +79,7 @@ begin
         tickfontsize=14,
         top_margin = 5mm,
         labelfontsize=18,
-        xticks=(1:3, UECM_xticklabels),
+        xticks=(1:3, DECM_xticklabels),
         yticks=10. .^ collect(-5:3),
         ylims=(1e-6,1e2), xlims=(0,4),
         grid=true,
@@ -89,42 +89,42 @@ begin
 
     isdir(joinpath(@__DIR__,"plots")) ? nothing : mkdir(joinpath(@__DIR__,"plots"))
     for ext in ["pdf", "png"]
-        savefig(p, joinpath(@__DIR__,"plots", "UECM_creation_comparison ($(Dates.format(now(), "YYYY_mm_dd_HH_MM"))).$ext"))
+        savefig(p, joinpath(@__DIR__,"plots", "DECM_creation_comparison ($(Dates.format(now(), "YYYY_mm_dd_HH_MM"))).$ext"))
     end
     p
 end
 
-## 3.2. Solve times (the UECM has no fixed-point recipe, so only quasi-newton and newton are shown)
+## 3.2. Solve times (the DECM has no fixed-point recipe, so only quasi-newton and newton are shown)
 begin
     trans = 0.5
     p = plot()
     # Python part
-    for (method, label, color) in [ ("test_solve_UECM[ecm_exp-quasinewton-strengths]", "NEMtropy (quasi-newton)", LIB_REFERENCE);
-                                    ("test_solve_UECM[ecm_exp-newton-strengths]", "NEMtropy (newton)", LIB_REFERENCE)]
+    for (method, label, color) in [ ("test_solve_DECM[decm_exp-quasinewton-strengths]", "NEMtropy (quasi-newton)", LIB_REFERENCE);
+                                    ("test_solve_DECM[decm_exp-newton-strengths]", "NEMtropy (newton)", LIB_REFERENCE)]
         for scale in keys(py_bench)
             ind = findfirst(x -> x["name"] == method, py_bench[scale]["benchmarks"])
             ind === nothing && continue
             solution_times = Float64.(py_bench[scale]["benchmarks"][ind]["stats"]["data"])
-            boxplot!(p, UECM_positionmapper[scale], solution_times, label="", color=color, alpha=trans, outliers=false, linecolor=color)
+            boxplot!(p, DECM_positionmapper[scale], solution_times, label="", color=color, alpha=trans, outliers=false, linecolor=color)
         end
         boxplot!(p,[],[], label=label, color=color, alpha=trans, linecolor=nothing)
     end
 
     # Julia part
-    for (method, label, color) in [ ("test_solve_UECM[ecm_exp-QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", LIB_MEG);
-                                    ("test_solve_UECM[ecm_exp-Newton-ADF]", "MaxEntropyGraphs (newton)", LIB_MEG)]
+    for (method, label, color) in [ ("test_solve_DECM[decm_exp-QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", LIB_MEG);
+                                    ("test_solve_DECM[decm_exp-Newton-ADF]", "MaxEntropyGraphs (newton)", LIB_MEG)]
         for scale in keys(ju_bench)
-            benchind = findfirst(x -> x["name"] == "test_solve_UECM", ju_bench[scale]["benchmarks"])
+            benchind = findfirst(x -> x["name"] == "test_solve_DECM", ju_bench[scale]["benchmarks"])
             if haskey(ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"], method)
                 solution_times = ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"][method][2]["times"] ./ 1e9
-                boxplot!(p, UECM_positionmapper[scale], solution_times, label="", color=color, alpha=trans, outliers=false, linecolor=color)
+                boxplot!(p, DECM_positionmapper[scale], solution_times, label="", color=color, alpha=trans, outliers=false, linecolor=color)
             end
         end
         boxplot!(p,[],[], label=label, color=color, alpha=trans, linecolor=nothing)
     end
 
     plot!(p, yscale=:log10, bar_width=0.5, xlabel="Number of nodes\n (problem scale)", ylabel="Time [s]",
-            legendposition=:topleft, xticks=(1:3, UECM_xticklabels), title="Parameter computation (UECM)", yticks=10. .^ collect(-5:4), ylims=(1e-5,1e4))
+            legendposition=:topleft, xticks=(1:3, DECM_xticklabels), title="Parameter computation (DECM)", yticks=10. .^ collect(-5:4), ylims=(1e-5,1e4))
     p
 end
 
@@ -138,13 +138,13 @@ begin
     approach_markers = METHOD_MARKERS
 
     # Python part
-    for (method, label, color, approach) in [ ("test_solve_UECM[ecm_exp-quasinewton-strengths]", "NEMtropy (quasi-newton)", LIB_REFERENCE, "quasi-newton");
-                                              ("test_solve_UECM[ecm_exp-newton-strengths]", "NEMtropy (newton)", LIB_REFERENCE, "newton")]
+    for (method, label, color, approach) in [ ("test_solve_DECM[decm_exp-quasinewton-strengths]", "NEMtropy (quasi-newton)", LIB_REFERENCE, "quasi-newton");
+                                              ("test_solve_DECM[decm_exp-newton-strengths]", "NEMtropy (newton)", LIB_REFERENCE, "newton")]
         for scale in keys(py_bench)
             ind = findfirst(x -> x["name"] == method, py_bench[scale]["benchmarks"])
             ind === nothing && continue
             solution_times = Float64.(py_bench[scale]["benchmarks"][ind]["stats"]["data"])
-            scatter!(p, mark_x(UECM_positionmapper[scale], color, approach), [median(solution_times)], label="",
+            scatter!(p, mark_x(DECM_positionmapper[scale], color, approach), [median(solution_times)], label="",
             color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color,
             markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
         end
@@ -152,13 +152,13 @@ begin
     end
 
     # Julia part
-    for (method, label, color, approach) in [ ("test_solve_UECM[ecm_exp-QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", LIB_MEG, "quasi-newton");
-                                              ("test_solve_UECM[ecm_exp-Newton-ADF]", "MaxEntropyGraphs (newton)", LIB_MEG, "newton")]
+    for (method, label, color, approach) in [ ("test_solve_DECM[decm_exp-QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", LIB_MEG, "quasi-newton");
+                                              ("test_solve_DECM[decm_exp-Newton-ADF]", "MaxEntropyGraphs (newton)", LIB_MEG, "newton")]
         for scale in keys(ju_bench)
-            benchind = findfirst(x -> x["name"] == "test_solve_UECM", ju_bench[scale]["benchmarks"])
+            benchind = findfirst(x -> x["name"] == "test_solve_DECM", ju_bench[scale]["benchmarks"])
             if haskey(ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"], method)
                 solution_times = ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"][method][2]["times"] ./ 1e9
-                scatter!(p, mark_x(UECM_positionmapper[scale], color, approach), [median(solution_times)], label="",
+                scatter!(p, mark_x(DECM_positionmapper[scale], color, approach), [median(solution_times)], label="",
                 color=color, alpha=trans, marker=approach_markers[approach], outliers=false, linecolor=color,
                 markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
             end
@@ -175,7 +175,7 @@ begin
             legendfontsize=12,
             tickfontsize=14,
             labelfontsize=18,
-            xticks=(1:3, UECM_xticklabels),
+            xticks=(1:3, DECM_xticklabels),
             yticks=10. .^ collect(-5:4),
             ylims=(1e-5,1e4), xlims=(0,4),
             grid=true,
@@ -184,7 +184,7 @@ begin
 
     isdir(joinpath(@__DIR__,"plots")) ? nothing : mkdir(joinpath(@__DIR__,"plots"))
     for ext in ["pdf", "png"]
-        savefig(p, joinpath(@__DIR__,"plots", "UECM_computation_comparison ($(Dates.format(now(), "YYYY_mm_dd_HH_MM"))).$ext"))
+        savefig(p, joinpath(@__DIR__,"plots", "DECM_computation_comparison ($(Dates.format(now(), "YYYY_mm_dd_HH_MM"))).$ext"))
     end
     p
 end

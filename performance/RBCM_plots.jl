@@ -8,6 +8,8 @@ using JSON
 using Dates
 using Statistics
 
+include(joinpath(@__DIR__, "plot_helpers.jl"))
+
 # The RBCM reference graphs are the (binarised) rhesus network and block-diagonal tilings of it
 # (16 → 128 → 512). The Python reference is NuMeTriS (model 'RBCM'), which has a single solver and
 # JIT-compiles through numba. The Julia side shows the fixed-point, quasi-newton (analytical gradient)
@@ -63,16 +65,16 @@ p_create = begin
         ind = py_index(py_bench[scale], "test_create_")
         ind === nothing && continue
         creation_times = Float64.(py_bench[scale]["benchmarks"][ind]["stats"]["data"])
-        boxplot!(p, RBCM_positionmapper[scale], creation_times, label="", color=:blue, alpha=0.25, linecolor=:blue, outliers=false)
+        boxplot!(p, RBCM_positionmapper[scale], creation_times, label="", color=LIB_REFERENCE, alpha=0.25, linecolor=LIB_REFERENCE, outliers=false)
     end
-    boxplot!(p,[],[], label="NuMeTriS", color=:blue, alpha=0.25, linecolor=nothing)
+    boxplot!(p,[],[], label="NuMeTriS", color=LIB_REFERENCE, alpha=0.25, linecolor=nothing)
     # Julia part
     for scale in keys(ju_bench)
         julia_index = findfirst(x -> x["name"] == "test_create_RBCM", ju_bench[scale]["benchmarks"])
         creation_times = Float64.(ju_bench[scale]["benchmarks"][julia_index]["stats"][2]["times"]) ./ 1e9
-        boxplot!(p, RBCM_positionmapper[scale], creation_times, label="", color=:red, alpha=0.25, linecolor=:red, outliers=false)
+        boxplot!(p, RBCM_positionmapper[scale], creation_times, label="", color=LIB_MEG, alpha=0.25, linecolor=LIB_MEG, outliers=false)
     end
-    boxplot!(p,[],[], label="MaxEntropyGraphs", color=:red, alpha=0.25, linecolor=nothing)
+    boxplot!(p,[],[], label="MaxEntropyGraphs", color=LIB_MEG, alpha=0.25, linecolor=nothing)
 
     plot!(p, yscale=:log10, bar_width=0.5,
         xlabel="Number of nodes\n(problem scale)",
@@ -102,34 +104,39 @@ end
 # 3.2. Median solve times (scatter). NuMeTriS has one solver for 'RBCM+RBCM' (both layers);
 #      the Julia two-step solve is shown for its three weighted-layer methods.
 p_solve = begin
-    trans = 0.7
+    trans = 0.95
     p = plot()
 
-    approach_markers = Dict("fixed-point" => :circle, "quasi-newton" => :square, "newton" => :star5)
+    # Colour is the library, marker shape is the solver method (see plot_helpers.jl).
+    approach_markers = METHOD_MARKERS
 
-    # Python part (single solver)
+    # Python part (single solver). NuMeTriS exposes one solver for 'RBCM+RBCM' rather than a
+    # choice of the three methods the shapes encode, so it keeps its own diamond and sits in the
+    # centre of the reference cluster (an unknown approach dodges by 0.0).
     for scale in keys(py_bench)
         ind = py_index(py_bench[scale], "test_solve_")
         ind === nothing && continue
         solution_times = Float64.(py_bench[scale]["benchmarks"][ind]["stats"]["data"])
-        scatter!(p, RBCM_positionmapper[scale], [median(solution_times)], label="",
-        color=:peru, alpha=trans, marker=:diamond, linecolor=:peru, markerstrokecolor=:peru, markersize=10)
+        scatter!(p, mark_x(RBCM_positionmapper[scale], LIB_REFERENCE, "single"), [median(solution_times)], label="",
+        color=LIB_REFERENCE, alpha=trans, marker=:diamond, linecolor=LIB_REFERENCE,
+        markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size("single"))
     end
-    scatter!(p,[],[], label="NuMeTriS (RBCM)", color=:peru, alpha=trans, marker=:diamond, linecolor=nothing, markerstrokecolor=:peru)
+    scatter!(p,[],[], label="NuMeTriS (RBCM)", color=LIB_REFERENCE, alpha=trans, marker=:diamond, linecolor=nothing, markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size("single"))
 
     # Julia part
-    for (method, label, color, approach) in [ ("test_solve_RBCM[FP]", "MaxEntropyGraphs (fixed-point)", :green4, "fixed-point");
-                                              ("test_solve_RBCM[QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", :dodgerblue4, "quasi-newton");
-                                              ("test_solve_RBCM[Newton-ADF]", "MaxEntropyGraphs (newton)", :dodgerblue, "newton")]
+    for (method, label, color, approach) in [ ("test_solve_RBCM[FP]", "MaxEntropyGraphs (fixed-point)", LIB_MEG, "fixed point");
+                                              ("test_solve_RBCM[QN-BFGS-AG]", "MaxEntropyGraphs (quasi-newton)", LIB_MEG, "quasi-newton");
+                                              ("test_solve_RBCM[Newton-ADF]", "MaxEntropyGraphs (newton)", LIB_MEG, "newton")]
         for scale in keys(ju_bench)
             benchind = findfirst(x -> x["name"] == "test_solve_RBCM", ju_bench[scale]["benchmarks"])
             if haskey(ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"], method)
                 solution_times = ju_bench[scale]["benchmarks"][benchind]["stats"][2]["data"][method][2]["times"] ./ 1e9
-                scatter!(p, RBCM_positionmapper[scale], [median(solution_times)], label="",
-                color=color, alpha=trans, marker=approach_markers[approach], linecolor=color, markerstrokecolor=color, markersize=10)
+                scatter!(p, mark_x(RBCM_positionmapper[scale], color, approach), [median(solution_times)], label="",
+                color=color, alpha=trans, marker=approach_markers[approach], linecolor=color,
+                markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
             end
         end
-        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=color)
+        scatter!(p,[],[], label=label, color=color, alpha=trans, marker=approach_markers[approach], linecolor=nothing, markerstrokecolor=MARK_STROKE, markerstrokewidth=MARK_STROKE_WIDTH, markersize=mark_size(approach))
     end
 
     plot!(p, yscale=:log10, bar_width=0.5,

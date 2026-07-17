@@ -1,6 +1,6 @@
 # Which null model should I use?
 
-The package implements eight maximum-entropy null models. They differ in the type of network they apply
+The package implements nine maximum-entropy null models. They differ in the type of network they apply
 to (undirected/directed/bipartite, binary/weighted) and in the structural information they preserve
 (degrees, strengths, reciprocity). This page helps you pick the right one; the individual model pages
 document the mathematics and the API.
@@ -18,11 +18,13 @@ document the mathematics and the API.
      (out-/in-degree sequences);
    - reciprocity *is* structurally important → [`RBCM`](@ref MaxEntropyGraphs.RBCM) (non-reciprocated
      out-/in-degrees **and** reciprocated degrees).
-4. **Is the network directed and weighted (continuous weights)?**
-   - reciprocity is *not* a feature you need to preserve → [`DCReM`](@ref MaxEntropyGraphs.DCReM)
-     (out-/in-strengths conditional on a DBCM topology);
-   - reciprocity *is* structurally important → [`CRWCM`](@ref MaxEntropyGraphs.CRWCM) (the four
-     reciprocal strength sequences conditional on an RBCM topology).
+4. **Is the network directed and weighted?**
+   - **integer** weights, degrees *and* strengths matter → [`DECM`](@ref MaxEntropyGraphs.DECM)
+     (out-/in-degrees and out-/in-strengths, jointly);
+   - **continuous** weights, reciprocity is *not* a feature you need to preserve →
+     [`DCReM`](@ref MaxEntropyGraphs.DCReM) (out-/in-strengths conditional on a DBCM topology);
+   - **continuous** weights, reciprocity *is* structurally important → [`CRWCM`](@ref MaxEntropyGraphs.CRWCM)
+     (the four reciprocal strength sequences conditional on an RBCM topology).
 
 ## Does reciprocity matter for my network?
 
@@ -59,6 +61,7 @@ weighted pair DCReM/CRWCM through the weighted reciprocity ``r_w`` ([`weighted_r
 | [`RBCM`](@ref MaxEntropyGraphs.RBCM)   | directed, binary     | ``k^{→}_i, k^{←}_i, k^{↔}_i``                 | ``3N`` | **no** | — |
 | [`BiCM`](@ref MaxEntropyGraphs.BiCM)   | bipartite, binary    | ``k_i`` (both layers)                         | ``N_⊥ + N_⊤`` | yes | — |
 | [`UECM`](@ref MaxEntropyGraphs.UECM)   | undirected, weighted | ``k_i, s_i``                                  | ``2N`` | (symmetric) | integer |
+| [`DECM`](@ref MaxEntropyGraphs.DECM)   | directed, weighted   | ``k^{out}_i, k^{in}_i, s^{out}_i, s^{in}_i``  | ``4N`` | yes | integer |
 | [`CReM`](@ref MaxEntropyGraphs.CReM)   | undirected, weighted | ``s_i`` (conditional on UBCM topology)        | ``N``  | (symmetric) | continuous |
 | [`DCReM`](@ref MaxEntropyGraphs.DCReM) | directed, weighted   | ``s^{out}_i, s^{in}_i`` (cond. on DBCM)       | ``2N`` | yes | continuous |
 | [`CRWCM`](@ref MaxEntropyGraphs.CRWCM) | directed, weighted   | ``s^{→}_i, s^{←}_i, s^{↔,out}_i, s^{↔,in}_i`` (cond. on RBCM) | ``4N`` | **no** | continuous |
@@ -67,7 +70,8 @@ weighted pair DCReM/CRWCM through the weighted reciprocity ``r_w`` ([`weighted_r
     The CReM, DCReM and CRWCM are *conditional* models: a binary layer (UBCM/DBCM/RBCM respectively) fixes
     the topology, and the weighted layer places weights on the realised links. Their likelihoods — and
     therefore their `AIC`/`AICc`/`BIC` values — are conditional on the binary layer, so compare information
-    criteria only *within* the conditional family (e.g. DCReM vs CRWCM), not against the fully joint UECM.
+    criteria only *within* the conditional family (e.g. DCReM vs CRWCM), not against the fully joint
+    UECM/DECM.
 
 !!! note "Dyadic dependence"
     Under the RBCM and CRWCM the two directions of a dyad are **correlated**

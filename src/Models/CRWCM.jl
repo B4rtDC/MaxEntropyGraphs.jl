@@ -576,7 +576,7 @@ not characterise the dyadic joint distribution. The expected weights can be comp
 function Ĝ(m::CRWCM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     G = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -618,7 +618,7 @@ Compute the expected (unconditional) **weighted adjacency** matrix for the CRWCM
 function Ŵ(m::CRWCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     W = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -670,7 +670,7 @@ Compute the standard deviation for the elements of the (binary) adjacency matrix
 function σˣ(m::CRWCM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     σ = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -711,7 +711,7 @@ Compute the within-dyad covariance matrix of the **binary** layer of the CRWCM m
 """
 function _cov_dyads(m::CRWCM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     C = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -750,7 +750,7 @@ Compute the standard deviation for the elements of the **weighted** adjacency ma
 function σʷ(m::CRWCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     σ = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -804,7 +804,7 @@ Symmetric, zero diagonal. This term is what distinguishes the CRWCM's weighted u
 """
 function _covʷ(m::CRWCM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     C = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -936,7 +936,7 @@ function nonreciprocated_outstrength(m::CRWCM, i::Int; method::Symbol=:full)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
     (method == :full || method == :reduced) || throw(ArgumentError("Unknown method $method"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θ⭢ = @view m.θ[1:n]
     θ⭠ = @view m.θ[n+1:2*n]
     res = zero(precision(m))
@@ -960,7 +960,7 @@ function nonreciprocated_instrength(m::CRWCM, i::Int; method::Symbol=:full)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
     (method == :full || method == :reduced) || throw(ArgumentError("Unknown method $method"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θ⭢ = @view m.θ[1:n]
     θ⭠ = @view m.θ[n+1:2*n]
     res = zero(precision(m))
@@ -984,7 +984,7 @@ function reciprocated_outstrength(m::CRWCM, i::Int; method::Symbol=:full)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
     (method == :full || method == :reduced) || throw(ArgumentError("Unknown method $method"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θ⭤ᵒ = @view m.θ[2*n+1:3*n]
     θ⭤ⁱ = @view m.θ[3*n+1:4*n]
     res = zero(precision(m))
@@ -1008,7 +1008,7 @@ function reciprocated_instrength(m::CRWCM, i::Int; method::Symbol=:full)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
     (method == :full || method == :reduced) || throw(ArgumentError("Unknown method $method"))
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θ⭤ᵒ = @view m.θ[2*n+1:3*n]
     θ⭤ⁱ = @view m.θ[3*n+1:4*n]
     res = zero(precision(m))
@@ -1130,7 +1130,7 @@ function rand(m::CRWCM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     # full per-node binary fitnesses + weighted parameters
-    n = m.status[:N]
+    n = m.status[:N]::Int
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
     z = m.zᵣ[m.dᵣ_ind]
@@ -1226,9 +1226,19 @@ infinite rate, i.e. an exactly zero weight — consistent with the dyadic probab
 # Common settings
 - `maxiters::Int`: maximum number of iterations (defaults to 1000).
 - `verbose::Bool`: show log messages (defaults to false).
-- `ftol::Real`: function tolerance for the fixedpoint method (defaults to 1e-8).
+- `ftol::Union{Real, Nothing}`: tolerance for the fixedpoint method (defaults to `nothing`, i.e. 1e-8), applied to the weighted layer and to the binary layer when either is solved with `:fixedpoint` (passing it when *neither* layer uses it warns). On the weighted layer it is a **relative** strength tolerance (see below); on the binary layer it bounds the fixed-point increment in parameter space.
 - `abstol`, `reltol`: absolute/relative tolerances for the optimisation methods (default `nothing`).
-- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`).
+- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`). The gradient of the weighted layer *is* its constraint residual in strength units, but `g_abstol` is a stopping criterion rather than a guarantee: Optim can also stop on its function or parameter convergence checks and report success without the gradient ever reaching `g_tol`. Verify what was actually achieved with [`constraint_residual`](@ref).
+
+!!! note "`ftol` is a relative strength tolerance on the weighted layer"
+    The weighted layer is solved in **log-parameter** space (see `MaxEntropyGraphs._logspace_fixedpoint`),
+    over the live channels only. The fixed-point map obeys ``G_i = θ_i⟨s_i⟩/s_i`` exactly, so the
+    log-space increment is exactly ``\\log(⟨s_i⟩/s_i)``, and `ftol` therefore bounds the **relative**
+    strength residual ``|⟨s_i⟩/s_i - 1|`` on each of the four channels. That makes it invariant under a
+    rescaling of the weights: `ftol=1e-8` means eight significant digits on every strength whatever the
+    units. (Solving in `θ` directly would instead bound ``|G_i - θ_i| = (θ_i/s_i)|⟨s_i⟩ - s_i|``, whose
+    conversion factor ``s_i/θ_i`` grows as the *square* of the weight scale.) Use
+    [`constraint_residual`](@ref) to measure the achieved residual in either absolute or relative form.
 
 # Examples
 ```jldoctest CRWCM_solve
@@ -1253,19 +1263,25 @@ function solve_model!(m::CRWCM; # weighted (CRWCM) layer settings
                                 # common settings
                                 maxiters::Int=1000,
                                 verbose::Bool=false,
-                                ftol::Real=1e-8,
+                                ftol::Union{Real, Nothing}=nothing,
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
                                 g_tol::Union{Number, Nothing}=nothing)
     N = precision(m)
     N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
-    n = m.status[:N]
+    n = m.status[:N]::Int
+    # `ftol` reaches the fixed point solver of either layer, so it is only truly unused when neither
+    # layer uses it: say so rather than ignoring it silently (only when it was actually passed)
+    method ≠ :fixedpoint && method_conditional ≠ :fixedpoint && !isnothing(ftol) && @warn _ftol_unused_msg(method) maxlog=1
+    ftol = isnothing(ftol) ? _DEFAULT_FTOL : ftol
 
     ## Part 1 - conditional binary layer (RBCM on the reciprocal degree sequences)
     cond_model = RBCM(d_out = m.d_out, d_in = m.d_in, d_rec = m.d_rec, precision = N)
+    # only hand `ftol` down when the binary layer can act on it, so that it never warns on our behalf
     solve_model!(cond_model, method=method_conditional, initial=initial_conditional,
                              AD_method=AD_method_conditional, analytical_gradient=analytical_gradient_conditional,
-                             maxiters=maxiters, ftol=ftol, abstol=abstol, reltol=reltol, verbose=verbose)
+                             maxiters=maxiters, ftol=(method_conditional == :fixedpoint ? ftol : nothing),
+                             abstol=abstol, reltol=reltol, verbose=verbose)
     m.αᵣ .= cond_model.θᵣ
     m.xᵣ .= cond_model.xᵣ
     m.yᵣ .= cond_model.yᵣ
@@ -1287,10 +1303,15 @@ function solve_model!(m::CRWCM; # weighted (CRWCM) layer settings
     if method == :fixedpoint
         G_buffer = zeros(N, length(θ₀))
         FP_model! = (θ::Vector) -> CRWCM_iter!(θ, m.s_out, m.s_in, m.s_rec_out, m.s_rec_in, m.s_out_nz, m.s_in_nz, m.s_rec_nz, x, y, z, G_buffer)
-        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters)
+        # solve in log-parameter space, where the increment is the *relative* strength residual and
+        # `ftol` is scale-invariant (see `_logspace_fixedpoint`). Only the live channels are solved for:
+        # a dead channel has no finite θ (`log(0) = -Inf`), and since its dyadic probabilities vanish
+        # identically it never enters a live row, so holding it at its zero θ₀ leaves them untouched.
+        ind_live = vcat(m.s_out_nz, n .+ m.s_in_nz, 2*n .+ m.s_rec_nz, 3*n .+ m.s_rec_nz)
+        θ_sol, sol = _logspace_fixedpoint(FP_model!, θ₀, ind_live, ftol, maxiters)
         if NLsolve.converged(sol)
             verbose && @info "Fixed point iteration converged after $(sol.iterations) iterations"
-            m.θ .= sol.zero
+            m.θ .= θ_sol
             m.θ[ind_dead] .= Inf
             m.status[:params_computed] = true
         else

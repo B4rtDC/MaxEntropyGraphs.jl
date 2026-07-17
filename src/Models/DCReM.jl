@@ -509,7 +509,7 @@ Note: The expected weights can be computed separately with [`Ŵ`](@ref MaxEntrop
 function Ĝ(m::DCReM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     G = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -546,7 +546,7 @@ Compute the expected (unconditional) **weighted adjacency** matrix for the DCReM
 function Ŵ(m::DCReM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     W = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -589,7 +589,7 @@ available via [`σʷ`](@ref MaxEntropyGraphs.σʷ). Read as "sigma star".
 function σˣ(m::DCReM)
     m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     σ = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -632,7 +632,7 @@ Under the conditional DBCM layer the weights of distinct ordered pairs are indep
 function σʷ(m::DCReM)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     σ = zeros(precision(m), n, n)
     x = m.xᵣ[m.dᵣ_ind]
     y = m.yᵣ[m.dᵣ_ind]
@@ -813,6 +813,44 @@ degree(m::DCReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced
 
 
 """
+    _DCReM_outstrength(θᵒ, θⁱ, x, y, i::Int, n::Int)
+
+Kernel for the expected out-strength of node `i`, given the per-node binary fitnesses `x`, `y` and the
+weighted parameters `θᵒ`, `θⁱ`.
+
+Split out of [`outstrength`](@ref) so that the vector form can materialise the fitness vectors **once**
+instead of once per node: they do not depend on the node being queried, and rebuilding them inside every
+per-node call made the vector form allocate `2n` vectors of length `n`.
+"""
+function _DCReM_outstrength(θᵒ::AbstractVector, θⁱ::AbstractVector, x::AbstractVector, y::AbstractVector, i::Int, n::Int)
+    res = zero(eltype(x))
+    @inbounds for j in 1:n
+        if i ≠ j
+            xiyj = x[i]*y[j]
+            res += (xiyj / (1 + xiyj)) / (θᵒ[i] + θⁱ[j])
+        end
+    end
+    return res
+end
+
+"""
+    _DCReM_outstrength_adj(θᵒ, θⁱ, Ĝ, i::Int, n::Int)
+
+Kernel for the expected out-strength of node `i` reusing the precomputed adjacency matrix `Ĝ`.
+
+See also [`_DCReM_outstrength`](@ref).
+"""
+function _DCReM_outstrength_adj(θᵒ::AbstractVector, θⁱ::AbstractVector, Ĝ::AbstractMatrix, i::Int, n::Int)
+    res = zero(eltype(Ĝ))
+    @inbounds for j in 1:n
+        if i ≠ j
+            res += Ĝ[i,j] / (θᵒ[i] + θⁱ[j])
+        end
+    end
+    return res
+end
+
+"""
     outstrength(m::DCReM, i::Int; method=:reduced)
 
 Return the expected (unconditional) out-strength for node `i` of the DCReM model `m`, i.e.
@@ -828,32 +866,17 @@ function outstrength(m::DCReM, i::Int; method::Symbol=:reduced)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θᵒ = @view m.θ[1:n]
     θⁱ = @view m.θ[n+1:end]
     if method == :reduced || method == :full
-        x = m.xᵣ[m.dᵣ_ind]
-        y = m.yᵣ[m.dᵣ_ind]
-        res = zero(precision(m))
-        @inbounds for j in 1:n
-            if i ≠ j
-                xiyj = x[i]*y[j]
-                res += (xiyj / (1 + xiyj)) / (θᵒ[i] + θⁱ[j])
-            end
-        end
+        return _DCReM_outstrength(θᵒ, θⁱ, m.xᵣ[m.dᵣ_ind], m.yᵣ[m.dᵣ_ind], i, n)
     elseif method == :adjacency
         m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
-        res = zero(precision(m))
-        @inbounds for j in 1:n
-            if i ≠ j
-                res += m.Ĝ[i,j] / (θᵒ[i] + θⁱ[j])
-            end
-        end
+        return _DCReM_outstrength_adj(θᵒ, θⁱ, m.Ĝ, i, n)
     else
         throw(ArgumentError("Unknown method $method"))
     end
-
-    return res
 end
 
 """
@@ -862,8 +885,63 @@ end
 Return a vector corresponding to the expected out-strength of each node of the DCReM model `m`. If `v` is
 specified, only return out-strengths for nodes in `v`.
 """
-outstrength(m::DCReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced) = [outstrength(m, i, method=method) for i in v]
+function outstrength(m::DCReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced)
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    n = m.status[:N]::Int
+    for i in v
+        i > n ? throw(ArgumentError("Attempted to access node $i in a $(n) node graph")) : nothing
+    end
+    θᵒ = @view m.θ[1:n]
+    θⁱ = @view m.θ[n+1:end]
+    if method == :reduced || method == :full
+        # the fitnesses do not depend on the node being queried: build them once for the whole vector
+        x = m.xᵣ[m.dᵣ_ind]
+        y = m.yᵣ[m.dᵣ_ind]
+        return [_DCReM_outstrength(θᵒ, θⁱ, x, y, i, n) for i in v]
+    elseif method == :adjacency
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
+        return [_DCReM_outstrength_adj(θᵒ, θⁱ, m.Ĝ, i, n) for i in v]
+    else
+        throw(ArgumentError("Unknown method $method"))
+    end
+end
 
+
+"""
+    _DCReM_instrength(θᵒ, θⁱ, x, y, i::Int, n::Int)
+
+Kernel for the expected in-strength of node `i`, given the per-node binary fitnesses `x`, `y` and the
+weighted parameters `θᵒ`, `θⁱ`.
+
+See also [`_DCReM_outstrength`](@ref).
+"""
+function _DCReM_instrength(θᵒ::AbstractVector, θⁱ::AbstractVector, x::AbstractVector, y::AbstractVector, i::Int, n::Int)
+    res = zero(eltype(x))
+    @inbounds for j in 1:n
+        if i ≠ j
+            xjyi = x[j]*y[i]
+            res += (xjyi / (1 + xjyi)) / (θⁱ[i] + θᵒ[j])
+        end
+    end
+    return res
+end
+
+"""
+    _DCReM_instrength_adj(θᵒ, θⁱ, Ĝ, i::Int, n::Int)
+
+Kernel for the expected in-strength of node `i` reusing the precomputed adjacency matrix `Ĝ`.
+
+See also [`_DCReM_outstrength`](@ref).
+"""
+function _DCReM_instrength_adj(θᵒ::AbstractVector, θⁱ::AbstractVector, Ĝ::AbstractMatrix, i::Int, n::Int)
+    res = zero(eltype(Ĝ))
+    @inbounds for j in 1:n
+        if i ≠ j
+            res += Ĝ[j,i] / (θⁱ[i] + θᵒ[j])
+        end
+    end
+    return res
+end
 
 """
     instrength(m::DCReM, i::Int; method=:reduced)
@@ -878,32 +956,17 @@ function instrength(m::DCReM, i::Int; method::Symbol=:reduced)
     m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
     i > m.status[:N] ? throw(ArgumentError("Attempted to access node $i in a $(m.status[:N]) node graph")) : nothing
 
-    n = m.status[:N]
+    n = m.status[:N]::Int
     θᵒ = @view m.θ[1:n]
     θⁱ = @view m.θ[n+1:end]
     if method == :reduced || method == :full
-        x = m.xᵣ[m.dᵣ_ind]
-        y = m.yᵣ[m.dᵣ_ind]
-        res = zero(precision(m))
-        @inbounds for j in 1:n
-            if i ≠ j
-                xjyi = x[j]*y[i]
-                res += (xjyi / (1 + xjyi)) / (θⁱ[i] + θᵒ[j])
-            end
-        end
+        return _DCReM_instrength(θᵒ, θⁱ, m.xᵣ[m.dᵣ_ind], m.yᵣ[m.dᵣ_ind], i, n)
     elseif method == :adjacency
         m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
-        res = zero(precision(m))
-        @inbounds for j in 1:n
-            if i ≠ j
-                res += m.Ĝ[j,i] / (θⁱ[i] + θᵒ[j])
-            end
-        end
+        return _DCReM_instrength_adj(θᵒ, θⁱ, m.Ĝ, i, n)
     else
         throw(ArgumentError("Unknown method $method"))
     end
-
-    return res
 end
 
 """
@@ -912,7 +975,26 @@ end
 Return a vector corresponding to the expected in-strength of each node of the DCReM model `m`. If `v` is
 specified, only return in-strengths for nodes in `v`.
 """
-instrength(m::DCReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced) = [instrength(m, i, method=method) for i in v]
+function instrength(m::DCReM, v::Vector{Int}=collect(1:m.status[:N]); method::Symbol=:reduced)
+    m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
+    n = m.status[:N]::Int
+    for i in v
+        i > n ? throw(ArgumentError("Attempted to access node $i in a $(n) node graph")) : nothing
+    end
+    θᵒ = @view m.θ[1:n]
+    θⁱ = @view m.θ[n+1:end]
+    if method == :reduced || method == :full
+        # the fitnesses do not depend on the node being queried: build them once for the whole vector
+        x = m.xᵣ[m.dᵣ_ind]
+        y = m.yᵣ[m.dᵣ_ind]
+        return [_DCReM_instrength(θᵒ, θⁱ, x, y, i, n) for i in v]
+    elseif method == :adjacency
+        m.status[:G_computed] ? nothing : throw(ArgumentError("The adjacency matrix has not been computed yet"))
+        return [_DCReM_instrength_adj(θᵒ, θⁱ, m.Ĝ, i, n) for i in v]
+    else
+        throw(ArgumentError("Unknown method $method"))
+    end
+end
 
 
 """
@@ -1004,7 +1086,7 @@ function rand(m::DCReM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
         m.status[:conditional_params_computed] ? nothing : throw(ArgumentError("The conditional parameters have not been computed yet"))
         m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
         # full per-node binary fitnesses + weighted parameters
-        n = m.status[:N]
+        n = m.status[:N]::Int
         x = m.xᵣ[m.dᵣ_ind]
         y = m.yᵣ[m.dᵣ_ind]
         θᵒ = @view m.θ[1:n]
@@ -1088,9 +1170,19 @@ initial guess (the CReM-family fixed-point recipe is stable).
 # Common settings
 - `maxiters::Int`: maximum number of iterations (defaults to 1000).
 - `verbose::Bool`: show log messages (defaults to false).
-- `ftol::Real`: function tolerance for the fixedpoint method (defaults to 1e-8).
+- `ftol::Union{Real, Nothing}`: tolerance for the fixedpoint method (defaults to `nothing`, i.e. 1e-8), applied to the weighted layer and to the binary layer when either is solved with `:fixedpoint` (passing it when *neither* layer uses it warns). On the weighted layer it is a **relative** strength tolerance (see below); on the binary layer it bounds the fixed-point increment in parameter space.
 - `abstol`, `reltol`: absolute/relative tolerances for the optimisation methods (default `nothing`).
-- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`).
+- `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`). The gradient of the weighted layer *is* its constraint residual in strength units, but `g_abstol` is a stopping criterion rather than a guarantee: Optim can also stop on its function or parameter convergence checks and report success without the gradient ever reaching `g_tol`. Verify what was actually achieved with [`constraint_residual`](@ref).
+
+!!! note "`ftol` is a relative strength tolerance on the weighted layer"
+    The weighted layer is solved in **log-parameter** space (see `MaxEntropyGraphs._logspace_fixedpoint`).
+    The fixed-point map obeys ``G_i = θ_i⟨s_i⟩/s_i`` exactly, so the log-space increment is exactly
+    ``\\log(⟨s_i⟩/s_i)``, and `ftol` therefore bounds the **relative** strength residual
+    ``|⟨s_i⟩/s_i - 1|`` on both the out- and the in-strengths. That makes it invariant under a rescaling
+    of the weights: `ftol=1e-8` means eight significant digits on every strength whatever the units.
+    (Solving in `θ` directly would instead bound ``|G_i - θ_i| = (θ_i/s_i)|⟨s_i⟩ - s_i|``, whose
+    conversion factor ``s_i/θ_i`` grows as the *square* of the weight scale.) Use
+    [`constraint_residual`](@ref) to measure the achieved residual in either absolute or relative form.
 
 # Examples
 ```jldoctest DCReM_solve
@@ -1115,18 +1207,24 @@ function solve_model!(m::DCReM; # weighted (DCReM) layer settings
                                 # common settings
                                 maxiters::Int=1000,
                                 verbose::Bool=false,
-                                ftol::Real=1e-8,
+                                ftol::Union{Real, Nothing}=nothing,
                                 abstol::Union{Number, Nothing}=nothing,
                                 reltol::Union{Number, Nothing}=nothing,
                                 g_tol::Union{Number, Nothing}=nothing)
     N = precision(m)
     N <: Union{Float16, Float32} && @warn "Solving in $(N) precision is experimental and may not converge; low precision is intended for storage. Consider Float64 for the solve." maxlog=1
+    # `ftol` reaches the fixed point solver of either layer, so it is only truly unused when neither
+    # layer uses it: say so rather than ignoring it silently (only when it was actually passed)
+    method ≠ :fixedpoint && method_conditional ≠ :fixedpoint && !isnothing(ftol) && @warn _ftol_unused_msg(method) maxlog=1
+    ftol = isnothing(ftol) ? _DEFAULT_FTOL : ftol
 
     ## Part 1 - conditional binary layer (DBCM on the out/in-degree sequences)
     cond_model = DBCM(d_out = m.d_out, d_in = m.d_in, precision = N)
+    # only hand `ftol` down when the binary layer can act on it, so that it never warns on our behalf
     solve_model!(cond_model, method=method_conditional, initial=initial_conditional,
                              AD_method=AD_method_conditional, analytical_gradient=analytical_gradient_conditional,
-                             maxiters=maxiters, ftol=ftol, abstol=abstol, reltol=reltol, verbose=verbose)
+                             maxiters=maxiters, ftol=(method_conditional == :fixedpoint ? ftol : nothing),
+                             abstol=abstol, reltol=reltol, verbose=verbose)
     m.αᵣ .= cond_model.θᵣ
     m.xᵣ .= cond_model.xᵣ
     m.yᵣ .= cond_model.yᵣ
@@ -1144,10 +1242,13 @@ function solve_model!(m::DCReM; # weighted (DCReM) layer settings
         G_buffer = zeros(N, length(θ₀))
         FP_model! = m.status[:G_computed] ? (θ::Vector) -> DCReM_iter!(θ, m.s_out, m.s_in, m.Ĝ, G_buffer) :
                                             (θ::Vector) -> DCReM_iter!(θ, m.s_out, m.s_in, x, y, G_buffer)
-        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters)
+        # solve in log-parameter space, where the increment is the *relative* strength residual and
+        # `ftol` is scale-invariant (see `_logspace_fixedpoint`). Every node is live: a zero-strength
+        # node has no finite θᵢ, so it is left to fail loudly rather than being masked away.
+        θ_sol, sol = _logspace_fixedpoint(FP_model!, θ₀, eachindex(θ₀), ftol, maxiters)
         if NLsolve.converged(sol)
             verbose && @info "Fixed point iteration converged after $(sol.iterations) iterations"
-            m.θ .= sol.zero
+            m.θ .= θ_sol
             m.status[:params_computed] = true
         else
             throw(ConvergenceError(method, nothing))

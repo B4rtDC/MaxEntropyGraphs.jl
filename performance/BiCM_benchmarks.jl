@@ -40,12 +40,18 @@ name_graphs = [("BiCM_small",  corporateclub(),                             Dict
 # package; BiCM_medium / BiCM_large are committed canonical edge lists in ./data/ (loaded above),
 # so every run uses the exact same graphs.
 
-# Scale limiter: BENCH_MAX_SCALE=small|medium|large (default large). BENCH_QUICK=1 aliases small.
-let scale = lowercase(get(ENV, "BENCH_QUICK", "0") == "1" ? "small" : get(ENV, "BENCH_MAX_SCALE", "large"))
+# Scale limiter: BENCH_MAX_SCALE=small|medium|large (default large) caps the problem size, and
+# BENCH_MIN_SCALE (default small) skips the smaller problems, so a run can target only what is
+# missing (e.g. BENCH_MIN_SCALE=large BENCH_MAX_SCALE=large). BENCH_QUICK=1 aliases small.
+let scale = lowercase(get(ENV, "BENCH_QUICK", "0") == "1" ? "small" : get(ENV, "BENCH_MAX_SCALE", "large")),
+    minscale = lowercase(get(ENV, "BENCH_MIN_SCALE", "small"))
+
     ncap = scale == "small" ? 1 : scale == "medium" ? 2 : length(name_graphs)
     ncap = min(ncap, length(name_graphs))
-    ncap < length(name_graphs) && @info "BENCH_MAX_SCALE=$(scale): restricting BiCM benchmarks to the first $(ncap) problem(s)."
-    global name_graphs = name_graphs[1:ncap]
+    nfloor = minscale == "medium" ? 2 : minscale == "large" ? 3 : 1
+    nfloor = min(nfloor, ncap) # a floor above the cap degrades to the cap, never to an empty run
+    (nfloor > 1 || ncap < length(name_graphs)) && @info "BENCH_MIN_SCALE=$(minscale), BENCH_MAX_SCALE=$(scale): restricting BiCM benchmarks to problem(s) $(nfloor):$(ncap)."
+    global name_graphs = name_graphs[nfloor:ncap]
 end
 
 # Write out the edgelists for the reference graphs (to use the same in python)
@@ -69,8 +75,29 @@ end
 open(joinpath(@__DIR__, "BiCM_script.sh"), "w") do f
     println(f, "#!/bin/bash")
     println(f, "source \"$(joinpath(@__DIR__, ".venv", "bin", "activate"))\"")
+    # Every pytest job runs under the process-group watchdog; BENCH_JOB_TIMEOUT=0 (the
+    # default) runs it untouched, so this changes nothing unless a budget is set.
+    watchdog = "\"$(joinpath(@__DIR__, "run_with_timeout.sh"))\" \"\${BENCH_JOB_TIMEOUT:-0}\" "
     for (name, G) in name_graphs
-        println(f, readlines("$(name).py")[2][3:end])
+        cmd = readlines("$(name).py")[2][3:end]
+        if name == "BiCM_large"
+            # The large-scale projection is by far the most expensive thing in the whole suite
+            # (the slowest NEMtropy variant measured ~490s PER ROUND in 2024), so each of its 8
+            # variants runs as its own pytest process: the watchdog can then kill one slow
+            # variant without losing the others' results, and the round count is lowered from 30
+            # to 5 for these variants only (documented in the readme). pytest-benchmark writes
+            # one result file per invocation while the plotting scripts read only the newest
+            # file per scale, so the parts are merged into a single file afterwards.
+            println(f, watchdog * replace(cmd, "pytest BiCM_large.py" => "pytest BiCM_large.py -k \"not test_project\""))
+            projcmd = replace(cmd, "--benchmark-min-rounds=30" => "--benchmark-min-rounds=5")
+            for method in ("poibin", "poisson"), rows in ("True", "False"), threads in ("1", "4")
+                nodeid = "BiCM_large.py::test_project_BiCM[$(method)-$(rows)-$(threads)]"
+                println(f, watchdog * replace(projcmd, "pytest BiCM_large.py" => "pytest '$(nodeid)'"))
+            end
+            println(f, "python \"$(joinpath(@__DIR__, "merge_pytest_benchmarks.py"))\" \"$(joinpath(@__DIR__, "benchmarks"))\" BiCM_large")
+        else
+            println(f, watchdog * cmd)
+        end
     end
 end
 

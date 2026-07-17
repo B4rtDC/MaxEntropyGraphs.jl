@@ -3,7 +3,7 @@
 This folder lets a third party reproduce the performance and accuracy claims for
 `MaxEntropyGraphs.jl`, comparing it against two Python packages: `NEMtropy` and `NuMeTriS`.
 
-All eight models are benchmarked, each against the Python package that implements it:
+All nine models are benchmarked, each against the Python package that implements it:
 
 | Model | Comparator | Model string in the comparator |
 | --- | --- | --- |
@@ -11,6 +11,7 @@ All eight models are benchmarked, each against the Python package that implement
 | `DBCM` | `NEMtropy` | `dcm_exp` (plus `expected_dcm_3motif_*` for the motif spectra) |
 | `BiCM` | `NEMtropy` | `BipartiteGraph` |
 | `UECM` | `NEMtropy` | `ecm_exp` |
+| `DECM` | `NEMtropy` | `decm_exp` |
 | `CReM` | `NEMtropy` | `crema` |
 | `RBCM` | `NuMeTriS` | `RBCM` |
 | `DCReM` | `NuMeTriS` | `DBCM+CReMa` |
@@ -23,11 +24,11 @@ our two-step `solve_model!`.
 
 ## What is compared
 
-* **Speed** — model creation, parameter computation (fixed-point / quasi-Newton / Newton),
+* **Speed**: model creation, parameter computation (fixed-point / quasi-Newton / Newton),
   and (for the BiCM) the validated bipartite projection, using
   [`BenchmarkTools.jl`](https://github.com/JuliaCI/BenchmarkTools.jl) on the Julia side and
   [`pytest-benchmark`](https://pytest-benchmark.readthedocs.io/) on the Python side.
-* **Accuracy** — that both implementations converge to the *same, correct* maximum-likelihood
+* **Accuracy**: that both implementations converge to the *same, correct* maximum-likelihood
   solution, measured as how well the fitted model reproduces the imposed degree constraints
   (see [Accuracy comparison](#accuracy-comparison) below).
 
@@ -35,15 +36,17 @@ our two-step `solve_model!`.
 
 ### Julia environment
 
-The Julia environment is described by `Project.toml` (pinned to the Julia 1.10 LTS baseline used
-for the published 0.5.0 results — see `../NOTES.md`). The harness `dev`s the *local* package so the
-benchmarks test this checkout's code, not a registry release:
+The Julia environment is described by `Project.toml`. Julia 1.10 LTS is the package's minimum
+supported version (CI covers 1.10, 1.11 and 1.12), so it is the correctness floor rather than the
+benchmark target: the numbers in the paper were produced on Julia 1.12.6 (see `../NOTES.md`), so
+reproduce them on 1.12.6. The harness `dev`s the *local* package so the benchmarks test this
+checkout's code, not a registry release:
 
 ```bash
 julia --project=. -e 'using Pkg; Pkg.develop(path=".."); Pkg.instantiate()'
 ```
 
-### Python environment (uv — cross-platform)
+### Python environment (uv, cross-platform)
 
 The Python side (both NEMtropy and NuMeTriS) uses the [uv](https://docs.astral.sh/uv/) package manager and works on both
 macOS and Linux. **`uv` and `julia` are assumed to be on `PATH`.** `benchmarks.sh` sets this up
@@ -74,11 +77,24 @@ It is controlled by environment variables:
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `BENCH_CORES` | `4` | Core budget applied **fairly to both implementations**. Creation + parameter computation are single-threaded compute in both libraries, so this caps Julia's BLAS threads and Python's `OMP`/`OPENBLAS`/`MKL`/`NUMBA` threads to the same number (a same-core comparison); it also sets Julia's thread count and the NEMtropy sampler's `cpu_n`. Recorded as `system_info.bench_cores`/`blas_num_threads`. Run at `1` and `4` to show the comparison is fair either way. |
-| `BENCH_MAX_SCALE` | `large` | Caps the problem size: `small` \| `medium` \| `large`. `medium` skips the >24h 250k-node UBCM graph, so `BENCH_MAX_SCALE=medium` is a good tractable run. |
+| `BENCH_MAX_SCALE` | `large` | Caps the problem size: `small` \| `medium` \| `large`. `medium` drops the largest problem of every model, which is what makes a full run long, so it is a good tractable run (a bit over an hour at `BENCH_CORES=12`). |
+| `BENCH_MIN_SCALE` | `small` | Skips the problems *below* it, so a run can target only what is missing: `BENCH_MIN_SCALE=large BENCH_MAX_SCALE=large` re-runs just the large problems without redoing small/medium. |
+| `BENCH_MODELS` | all nine | Space-separated subset of `UBCM BiCM DBCM UECM DECM CReM RBCM DCReM CRWCM`; only the listed models are benchmarked and plotted. |
+| `BENCH_JOB_TIMEOUT` | `0` (off) | Per-job wall-clock budget in seconds for every generated Python benchmark job. A job over budget has its **whole process group** killed (`run_with_timeout.sh`, SIGTERM then SIGKILL, taking numba threads and multiprocessing children with it), the event is appended to `benchmarks/timeouts.log`, and the run continues with the next job. A killed job saves no results, so it is simply absent from the plots; check `timeouts.log` to see what was cut. |
 | `BENCH_QUICK` | `0` | Back-compat alias: `1` is equivalent to `BENCH_MAX_SCALE=small` (karate-scale smoke test). |
-| `BENCH_SKIP_PROJECTION` | `0` | `1` skips the (slow) BiCM projection benchmark. |
+| `BENCH_SKIP_PROJECTION` | `0` | `1` skips the (slow) BiCM projection benchmark. This is the single most expensive thing in the suite by a wide margin: at the large scale one of NEMtropy's eight projection variants alone measured 489 s per round over 30 rounds (~4 h), and the projection accounts for most of a full run's wall-clock. Setting this to `1` takes a full run from most of a day down to a few hours. |
 | `SKIP_PYTHON` | `0` | `1` skips the Python benchmarks, both NEMtropy and NuMeTriS (Julia only). |
 | `SKIP_PLOTS` | `0` | `1` skips the plotting step. |
+
+**Large-scale projection protocol.** Because of the cost quoted above, the eight NEMtropy
+projection variants of `BiCM_large` each run as their own pytest process at
+`--benchmark-min-rounds=5` (all other benchmarks keep 30 rounds), so a per-job budget can kill one
+slow variant without losing the others. The same per-test splitting is applied to `DECM_large`
+(NEMtropy's `decm_exp` newton at N=512 is unbounded, while the Julia side deliberately drops Newton
+at that scale). The per-process result files are then merged into a single file per scale by
+`merge_pytest_benchmarks.py`, because the plot scripts read only the newest result file per scale.
+Variants killed by `BENCH_JOB_TIMEOUT` are absent from the merged file and the plots, and are
+listed in `benchmarks/timeouts.log`.
 
 For example, a fair, tractable comparison across small + medium at a single core:
 `BENCH_CORES=1 BENCH_MAX_SCALE=medium ./benchmarks.sh`.
@@ -88,11 +104,11 @@ For example, a fair, tractable comparison across small + medium at a single core
 The suite also times ensemble sampling, where the head-to-head shows an unusually large gap
 (~10⁴–10⁵×). **This gap is architectural rather than purely algorithmic, and should be read that
 way.** MaxEntropyGraphs.jl's `rand(model, n; rng)` generates each replicate *in memory* as a native
-`Graphs.jl` object — exactly what a downstream analysis consumes — with a tight, allocation-light
+`Graphs.jl` object (exactly what a downstream analysis consumes) with a tight, allocation-light
 sampler run thread-parallel across the `n` replicates and no I/O. NEMtropy's `ensemble_sampler`
 instead **writes every sampled graph to disk** as an edge-list file and carries a large fixed
 per-call overhead (Python/numba dispatch and array setup, plus a multiprocessing pool whose spawn
-cost *exceeds the sampling work itself* at these sizes — which is why `cpu_n=4` is measured as
+cost *exceeds the sampling work itself* at these sizes, which is why `cpu_n=4` is measured as
 *slower* than `cpu_n=1`). Measured per graph, NEMtropy is ≈0.5 s for a 34-node graph versus
 microseconds for MaxEntropyGraphs. So the reported ratio mostly reflects in-memory native-object
 generation versus disk-backed, overhead-heavy file writing; a pure compute-only comparison would be
@@ -125,7 +141,7 @@ convergence settings: a gradient tolerance of `1e-8` (`g_tol` in Julia / `tol` i
 iteration budget of `1000` (`maxiters` / `max_steps`). Without this, NEMtropy's default 100-step cap
 would let it stop at a looser solution and look faster; with matched settings the timing differences
 reflect the solvers, not their stopping criteria. (Even so, on the BiCM quasi-Newton solve NEMtropy
-stalls at a ~10⁻⁷ solution while MaxEntropyGraphs.jl converges to ~10⁻⁹ — see `accuracy_comparison.jl`.)
+stalls at a ~10⁻⁷ solution while MaxEntropyGraphs.jl converges to ~10⁻⁹. See `accuracy_comparison.jl`.)
 
 ## Solver-method correspondence
 
@@ -190,9 +206,10 @@ from the fitted parameters, which is valid because the reconstruction is gauge-i
 * **Threads.** Pin `JULIA_NUM_THREADS` and compare runs with the same value; the thread count is
   recorded in each result file.
 * **Python pins.** `nemtropy==3.0.3`, `numetris==0.1.1`, `numpy==1.26.4`, `numba==0.60.0`,
-  `scipy==1.14.0`, `networkx==3.3`, `bicm==3.3.0`, `pytest==8.2.2`, `pytest-benchmark==4.0.0`,
-  Python 3.12.4. `requirements.txt` is the authoritative list. Note `numpy` must stay below 2.0
-  (NEMtropy 3.0.3 still calls `np.infty`, which NumPy 2.0 removed).
+  `scipy==1.14.0`, `networkx==3.3`, `bicm==3.3.0`, `pytest==9.0.3`, `pytest-benchmark==5.2.3`,
+  Python 3.12. `requirements.txt` is the authoritative list. Note `numpy` must stay below 2.0
+  (NEMtropy 3.0.3 still calls `np.infty`, which NumPy 2.0 removed), and `matplotlib==3.9.0` has no
+  wheel for Python 3.13 or later, so stay on 3.12 (`benchmarks.sh` pins it via `uv venv --python 3.12`).
 
 ## Output layout
 

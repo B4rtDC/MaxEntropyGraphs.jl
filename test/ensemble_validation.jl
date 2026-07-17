@@ -340,6 +340,59 @@ end
         @test isapprox(analytical_σL, sqrt(_var(ne_samples)), rtol = 0.1)
     end
 
+    @testset "analytical ensemble averages vs sampling (DECM)" begin
+        # directed rhesus network, used unsymmetrised (the DECM requires integer weights)
+        G = MaxEntropyGraphs.rhesus_macaques()
+        nv = Graphs.nv(G)
+        model = DECM(G)
+        solve_model!(model, method = :BFGS) # the fixed point recipe is unstable for the DECM
+        set_Ĝ!(model); set_σ!(model); set_Ŵ!(model); set_σʷ!(model)
+        N = 2000
+        S = rand(model, N; rng = MaxEntropyGraphs.Xoshiro(161))
+        @test length(S) == N
+
+        # (a) sampled mean total weight == the sum of Ŵ (exact in expectation; the pairs are
+        #     ordered for a directed model, so no halving as in the UECM)
+        Wtot_samples = [sum(g.weights) for g in S]
+        expected_Wtot = sum(model.Ŵ)
+        @test isapprox(_mean(Wtot_samples), expected_Wtot, rtol = 0.05)
+
+        # (b) the sampler reproduces the analytical weight variance Var(wᵢⱼ) = σʷᵢⱼ² of the
+        #     Bernoulli-geometric mixture. Checked on the 3 largest-⟨w⟩ ordered pairs with a 5·SE
+        #     guard band (SE of a sample variance from the empirical fourth moment).
+        pairs = [(i, j) for i in 1:nv for j in 1:nv if i ≠ j]
+        sort!(pairs, by = p -> -model.Ŵ[p...])
+        for (i, j) in pairs[1:3]
+            w = [Float64(g.weights[j, i]) for g in S] # SimpleWeightedGraphs stores weights[dst, src]
+            emp_var = _var(w)
+            m4 = _mean((w .- _mean(w)) .^ 4)
+            se = sqrt((m4 - emp_var^2) / N)
+            @test abs(emp_var - model.σʷ[i, j]^2) <= 5 * se
+        end
+
+        # (c) the two directions of a dyad are independent under the DECM: the empirical
+        #     Cov(wᵢⱼ, wⱼᵢ) is statistically compatible with zero on the heaviest dyads
+        ud_pairs = [(i, j) for i in 1:nv for j in i+1:nv]
+        sort!(ud_pairs, by = p -> -(model.Ŵ[p...] + model.Ŵ[p[2], p[1]]))
+        for (i, j) in ud_pairs[1:5]
+            w_ij = [Float64(g.weights[j, i]) for g in S] # SimpleWeightedGraphs stores weights[dst, src]
+            w_ji = [Float64(g.weights[i, j]) for g in S]
+            emp_cov = _mean(w_ij .* w_ji) - _mean(w_ij) * _mean(w_ji)
+            se = sqrt(_var(w_ij) * _var(w_ji) / N)
+            @test abs(emp_cov) <= 5 * se
+        end
+
+        # (d) the weighted delta method (no within-dyad cross-term for a directed model) is exact
+        #     for linear metrics: σ[W_tot] reproduced by the sampler
+        analytical_σW = MaxEntropyGraphs.σₓ(model, sum, layer = :weighted)
+        @test isapprox(analytical_σW, sqrt(_var(Wtot_samples)), rtol = 0.1)
+
+        # (e) same for the binary layer: σ[#links] reproduced by the sampler
+        analytical_σL = MaxEntropyGraphs.σₓ(model, sum)
+        ne_samples = [Graphs.ne(g) for g in S]
+        @test isapprox(analytical_σL, sqrt(_var(ne_samples)), rtol = 0.1)
+    end
+
     @testset "analytical ensemble averages vs sampling (CReM)" begin
         # symmetrised rhesus network; the CReM models CONTINUOUS weights conditional on a UBCM
         # binary layer (solve_model! performs the two-step solve: binary layer, then weighted layer)
