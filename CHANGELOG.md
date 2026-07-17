@@ -24,6 +24,17 @@ Convergence is now expressed in the units users actually care about.
   `log(⟨sᵢ⟩/sᵢ)`, so the residual is now scale-invariant: measured at a constant `3.2e-9` relative
   across a 1000× range of weight scales, where it was previously `5.3e-5`, `0.45` and `61.7`.
   This also enforces `θ > 0` for free.
+- **The `UBCM` was unsolvable at large scale: `exp` overflow made the default fixed point crash and
+  the quasi-Newton path report false convergence.** Both kernels evaluated terms of the form
+  `x/(1 + x·y)` with `x = exp(-θ)`, which overflows to `Inf/Inf = NaN` once a fitted parameter
+  passes `θ < -710` (hub nodes on graphs with more than a few hundred distinct degrees). The fixed
+  point then crashed with an `NLsolve.IsFiniteException`, while `BFGS` aborted its line search on
+  the `NaN` gradient and reported `Success` at a garbage point (constraint residual `~4·10⁴`).
+  The kernels now use the algebraically identical, overflow-safe forms `1/(exp(θⱼ) + exp(-θᵢ))`
+  (fixed-point map) and `1/(1 + yᵢ·xⱼ)` (gradient) at the same cost, and the fixed-point solve
+  retries once with damped Anderson acceleration (`m = 5`, `β = 0.5`) if the accelerator itself
+  diverges. A 250,000-node scale-free graph (1,044 distinct degrees) now solves in ~0.2 s with a
+  relative constraint residual of `9·10⁻⁹`; results on small graphs are bit-identical.
 - The `θ` accessors of the two-step models (`strength`, `outstrength`, `instrength`) rebuilt the full
   per-node fitness vectors inside every per-node call, and their accumulator was type-unstable
   (`zero(precision(m))` does not infer). The vector forms are **60-64× faster** with ~200× fewer
