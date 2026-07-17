@@ -42,10 +42,10 @@ are standard objects from the Julia graph ecosystem [@graphs2021], so models
 integrate directly with existing tooling. The currently supported models are the
 Undirected, Directed and Bipartite Binary Configuration Models (UBCM, DBCM,
 BiCM), the Reciprocal Binary Configuration Model (RBCM)
-[@squartini2011analytical], the Undirected Enhanced Configuration Model (UECM),
-the undirected and directed Conditional Reconstruction Methods (CReM, DCReM)
-[@parisi2020faster], and the Conditionally Reciprocal Weighted Configuration
-Model (CRWCM) [@divece2024commodity]. The reciprocity-aware models (RBCM, CRWCM)
+[@squartini2011analytical], the Undirected and Directed Enhanced Configuration
+Models (UECM, DECM), the undirected and directed Conditional Reconstruction
+Methods (CReM, DCReM) [@parisi2020faster], and the Conditionally Reciprocal
+Weighted Configuration Model (CRWCM) [@divece2024commodity]. The reciprocity-aware models (RBCM, CRWCM)
 preserve the dyadic structure of directed networks, that is the numbers of
 reciprocated and non-reciprocated links and the weights they carry, which is
 essential for higher-order (motif-based) analyses of directed networks.
@@ -152,9 +152,14 @@ implementations restricted to the same number of cores. `MaxEntropyGraphs.jl` is
 consistently and often substantially faster at fixed-point parameter
 computation, with the gap widening as the number of distinct constraints grows
 (\autoref{fig:ubcm}, \autoref{fig:bicm}), and at model construction
-(\autoref{fig:crwcm}). For the
-gradient-based (quasi-Newton) solver it is faster on the binary configuration
-models. For the bipartite model it is somewhat slower, but returns a markedly
+(\autoref{fig:crwcm}). At the largest undirected benchmark (250,000 nodes, 1,044
+distinct degrees) the fixed point solves the model in tens of milliseconds
+versus $\sim\!90$ s for each of `NEMtropy`'s routines; the quasi-Newton
+comparison is omitted at that scale because neither implementation's
+quasi-Newton routine converges there within the shared iteration budget, and
+reporting a time for a solver that has not converged would be meaningless. For
+the gradient-based (quasi-Newton) solver it is faster on the binary
+configuration models at the remaining scales. For the bipartite model it is somewhat slower, but returns a markedly
 more accurate solution: given identical solver settings (a $10^{-8}$ tolerance,
 at most 1000 iterations, and a degree-based initial guess), `MaxEntropyGraphs.jl`
 reproduces the imposed degree sequence to a maximum error of $\sim\!10^{-9}$ on
@@ -175,9 +180,9 @@ per-motif triple loops, and the two implementations agree to
 $\sim\!10^{-8}$ on the *maspalomas* food web. That agreement is a direct
 cross-package validation of correctness, with both solved to a matched $10^{-8}$
 tolerance. The weighted models
-(UECM, CReM) are benchmarked against `NEMtropy`'s `ecm` and `crema` solvers in
-the same harness, with both implementations reproducing their imposed
-degree/strength sequences at comparable accuracy.
+(UECM, DECM, CReM) are benchmarked against `NEMtropy`'s `ecm`, `decm` and
+`crema` solvers in the same harness, with both implementations reproducing their
+imposed degree/strength sequences at comparable accuracy.
 
 The reciprocity-aware models are benchmarked against `NuMeTriS` [@numetris], the
 reference implementation accompanying @divece2024commodity, under the same

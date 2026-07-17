@@ -76,7 +76,7 @@ begin
 
     # finalize the plot
     #plot!(p, yscale=:log10, bar_width=0.5, xlabel="Number of unique constraints\n (scale of the problem)", ylabel="Time [s]",
-    #legendposition=:topleft, xticks=(1:3, ["11"; "102"; "1051"]), title="Object creation (UBCM)", yticks=10. .^ collect(-5:3), ylims=(1e-6,1e2))
+    #legendposition=:topleft, xticks=(1:3, ["11"; "102"; "1044"]), title="Object creation (UBCM)", yticks=10. .^ collect(-5:3), ylims=(1e-6,1e2))
 
     plot!(p, yscale=:log10, bar_width=0.5, 
         xlabel="Number of unique constraints\n(problem scale)", 
@@ -88,7 +88,7 @@ begin
         tickfontsize=14,
         top_margin = 5mm,
         labelfontsize=18,
-        xticks=(1:3, ["11"; "102"; "1051"]), 
+        xticks=(1:3, ["11"; "102"; "1044"]), 
         yticks=10. .^ collect(-5:3), 
         ylims=(1e-6,1e2), xlims=(0,4), 
         grid=true, 
@@ -138,7 +138,7 @@ begin
 
     # finalize the plot
     plot!(p, yscale=:log10, bar_width=0.5, xlabel="Number of unique constraints\n (scale of the problem)", ylabel="Time [s]",
-            legendposition=:topleft, xticks=(1:3, ["11"; "102"; "1051"]), title="Parameter computation (UBCM)", yticks=10. .^ collect(-5:4), ylims=(1e-5,1e4))
+            legendposition=:topleft, xticks=(1:3, ["11"; "102"; "1044"]), title="Parameter computation (UBCM)", yticks=10. .^ collect(-5:4), ylims=(1e-5,1e4))
     p
 end
 
@@ -193,7 +193,7 @@ begin
             legendfontsize=12,
             tickfontsize=14,
             labelfontsize=18,
-            xticks=(1:3, ["11"; "102"; "1051"]), 
+            xticks=(1:3, ["11"; "102"; "1044"]), 
             yticks=10. .^ collect(-5:4), 
             ylims=(1e-5,1e4), xlims=(0,4), 
             grid=true, 
