@@ -244,8 +244,9 @@ scales: model creation time (left) and median parameter-computation time
 # AI usage disclosure
 
 During the preparation of this submission, the author used generative AI
-assistance, specifically Anthropic's Claude (Opus 4.8), in three places: to help
-draft and edit the manuscript text, to refactor and modernize parts of the
+assistance, specifically Anthropic's Claude models (Opus 4.8 and Fable 5), in
+three places: to help draft and edit the manuscript text, to refactor and
+modernize parts of the
 codebase, and to prepare benchmarking, validation and testing scaffolding. The
 research problem, the choice of models to implement, the design of the package
 and its interfaces, and the interpretation of all results are the author's own.
