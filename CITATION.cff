@@ -12,12 +12,12 @@ authors:
   - family-names: "De Clerck"
     given-names: "Bart"
     orcid: "https://orcid.org/0000-0002-9718-260X" 
-version: "0.6.0"
+version: "0.7.0"
 license: MIT
 repository-code: "https://github.com/B4rtDC/MaxEntropyGraphs.jl"
 url: "https://b4rtdc.github.io/MaxEntropyGraphs.jl/dev/"
 doi: "10.5281/zenodo.8314609"          # Zenodo concept DOI (all versions; always resolves to the latest release)
-date-released: "2026-07-15"
+date-released: "2026-07-17"
 keywords:
   - Julia
   - network science
