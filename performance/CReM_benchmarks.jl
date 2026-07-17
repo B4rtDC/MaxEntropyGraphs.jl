@@ -56,7 +56,7 @@ end
 
 name_graphs = [("CReM_small",  SWG.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques()), Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => true)),
                ("CReM_medium", tiled_rhesus(8),                                         Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => true)),
-               ("CReM_large",  tiled_rhesus(32),                                        Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => false))]
+               ("CReM_large",  tiled_rhesus(32),                                        Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => false, :maxiters => 5000))] # BFGS needs 1000-5000 iterations at N=512 (converges in ~3s at 5000); at the shared 1000 budget solve_model! raises ConvergenceError and would kill the driver
 
 # Scale limiter: BENCH_MAX_SCALE=small|medium|large (default large) caps the problem size, and
 # BENCH_MIN_SCALE (default small) skips the smaller problems, so a run can target only what is

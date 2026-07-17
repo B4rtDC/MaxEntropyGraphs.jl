@@ -1112,22 +1112,22 @@ end
 Benchmark solving the CReM for the given weighted, undirected graph `G` (settings matched to the Python
 side). The two-step solve includes the internal binary (UBCM) layer, as it does on the NEMtropy side.
 """
-function test_solve_CReM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
+function test_solve_CReM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true, maxiters=1000)
     model = CReM(G)
     solve_model!(model)
     suite = BenchmarkGroup()
     if include_fixed_point
-        suite["test_solve_CReM[crema-FP]"] =           @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=1000, ftol=1e-8)
+        suite["test_solve_CReM[crema-FP]"] =           @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=$(maxiters), ftol=1e-8)
     end
     if include_BFGS
-        suite["test_solve_CReM[crema-QN-BFGS-AG]"] =   @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=true)
-        suite["test_solve_CReM[crema-QN-BFGS-ADF]"] =  @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+        suite["test_solve_CReM[crema-QN-BFGS-AG]"] =   @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, ftol=1e-8, analytical_gradient=true)
+        suite["test_solve_CReM[crema-QN-BFGS-ADF]"] =  @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, ftol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
     end
     if include_LBFGS
-        suite["test_solve_CReM[crema-QN-LBFGS-AG]"] =  @benchmarkable solve_model!($(model), method=:LBFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=true)
+        suite["test_solve_CReM[crema-QN-LBFGS-AG]"] =  @benchmarkable solve_model!($(model), method=:LBFGS, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, ftol=1e-8, analytical_gradient=true)
     end
     if include_newton
-        suite["test_solve_CReM[crema-Newton-ADF]"] =   @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+        suite["test_solve_CReM[crema-Newton-ADF]"] =   @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, ftol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
     end
     tune!(suite)
     res = run(suite)
@@ -1353,18 +1353,18 @@ end
 
 Benchmark solving the DCReM (two-step: internal DBCM + weighted layer, as on the NuMeTriS side).
 """
-function test_solve_DCReM(G; include_fixed_point=true, include_BFGS=true, include_newton=true)
+function test_solve_DCReM(G; include_fixed_point=true, include_BFGS=true, include_newton=true, maxiters=1000)
     model = DCReM(G)
     solve_model!(model)
     suite = BenchmarkGroup()
     if include_fixed_point
-        suite["test_solve_DCReM[FP]"] =         @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=1000, ftol=1e-8)
+        suite["test_solve_DCReM[FP]"] =         @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=$(maxiters), ftol=1e-8)
     end
     if include_BFGS
-        suite["test_solve_DCReM[QN-BFGS-AG]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=true)
+        suite["test_solve_DCReM[QN-BFGS-AG]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, analytical_gradient=true)
     end
     if include_newton
-        suite["test_solve_DCReM[Newton-ADF]"] = @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+        suite["test_solve_DCReM[Newton-ADF]"] = @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
     end
     tune!(suite)
     res = run(suite)
@@ -1397,18 +1397,18 @@ end
 
 Benchmark solving the CRWCM (two-step: internal RBCM + the 4N weighted layer, as on the NuMeTriS side).
 """
-function test_solve_CRWCM(G; include_fixed_point=true, include_BFGS=true, include_newton=true)
+function test_solve_CRWCM(G; include_fixed_point=true, include_BFGS=true, include_newton=true, maxiters=1000)
     model = CRWCM(G)
     solve_model!(model)
     suite = BenchmarkGroup()
     if include_fixed_point
-        suite["test_solve_CRWCM[FP]"] =         @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=1000, ftol=1e-8)
+        suite["test_solve_CRWCM[FP]"] =         @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:strengths, maxiters=$(maxiters), ftol=1e-8)
     end
     if include_BFGS
-        suite["test_solve_CRWCM[QN-BFGS-AG]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=true)
+        suite["test_solve_CRWCM[QN-BFGS-AG]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, analytical_gradient=true)
     end
     if include_newton
-        suite["test_solve_CRWCM[Newton-ADF]"] = @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=1000, g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+        suite["test_solve_CRWCM[Newton-ADF]"] = @benchmarkable solve_model!($(model), method=:Newton, initial=:strengths, maxiters=$(maxiters), g_tol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
     end
     tune!(suite)
     res = run(suite)

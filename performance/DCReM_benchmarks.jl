@@ -50,7 +50,7 @@ end
 
 name_graphs = [("DCReM_small",  tiled_rhesus_digraph(1),  Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => true)),
                ("DCReM_medium", tiled_rhesus_digraph(8),  Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => true)),
-               ("DCReM_large",  tiled_rhesus_digraph(32), Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => false))]
+               ("DCReM_large",  tiled_rhesus_digraph(32), Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => false, :maxiters => 5000))] # BFGS needs 1000-5000 iterations at N=512 (converges in seconds); at the shared 1000 budget solve_model! raises ConvergenceError and would kill the driver
 
 # Scale limiter: BENCH_MAX_SCALE=small|medium|large (default large) caps the problem size, and
 # BENCH_MIN_SCALE (default small) skips the smaller problems, so a run can target only what is
