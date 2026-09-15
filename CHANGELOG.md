@@ -1,5 +1,73 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **`DECM`: `:Newton` aborted the whole Julia process when `Symbolics` was loaded.** `:Newton` needs second
+  derivatives; handed a first-order ADtype, `OptimizationBase` wraps it as `SecondOrder(inner,
+  AutoForwardDiff)` (it warns that it is doing so), and with our `:AutoZygote` default as the inner backend
+  that nested HVP path dies with `signal 4: illegal instruction` inside `DifferentiationInterface`'s `hvp!`
+  once `Symbolics` is in the same session. `:Newton` now computes its Hessian with `ForwardDiff` directly —
+  no nesting, and what the upstream warning recommends anyway. It is also markedly more accurate: the
+  degree residual on the rhesus macaques network drops from `~4e-9` to `3.6e-15`. An explicitly requested
+  non-Zygote backend is still honoured as given.
+
+  ⚠️ **The same crash affects `BiCM` and `UECM` with `method = :Newton`** and is *not* fixed here — their
+  solvers are untouched by this release. `AD_method = :AutoForwardDiff` (or `:AutoReverseDiff`) is a working
+  workaround for both. The crash is state-sensitive: it reproduces in `validation/` but not in the package's
+  own test sandbox, on byte-identical dependency versions.
+
+- **`DECM`: `:Newton` returned garbage from a far initial guess.** `L_DECM_reduced` is **exactly** invariant
+  under `(α_out, α_in) → (α_out + c, α_in - c)` and `(β_out, β_in) → (β_out + c, β_in - c)`: the pair terms
+  depend only on the sums `α_out,ᵢ + α_in,ⱼ` and `β_out,ᵢ + β_in,ⱼ`, and the linear part shifts by
+  `-c·(Σ F·k_out - Σ F·k_in)` resp. `-c·(Σ F·s_out - Σ F·s_in)`, both identically zero (one counts the edges
+  twice over, the other the total weight twice over). The Hessian is therefore singular — `‖H·g‖ ≈ 2e-19`
+  for both gauge vectors. `:Newton` factorises that Hessian, so the degeneracy handed it a meaningless step:
+  from a `:uniform` start it returned `-L ≈ 1.0e4` against a true optimum of `384.49`, on **every** network
+  tested (8/8). Perturbing the start does not help — the degeneracy is structural, not an artifact of a
+  symmetric starting point. `solve_model!` now adds a gauge-fixing term on the `:Newton` path, pinning the
+  representative with `Σα_out = Σα_in`, `Σβ_out = Σβ_in`. Because the likelihood is *flat* along those
+  directions this changes **no gauge-invariant quantity** — `Ĝ`, `Ŵ` and every metric are untouched.
+
+  It is applied to `:Newton` **only**. `BFGS`/`LBFGS` keep a positive definite *approximation*, never invert
+  the true Hessian, and (since `∇L` is exactly orthogonal to the gauge) never travel along it, so for them
+  the extra curvature is pure trajectory perturbation that helps or hurts at random — measured, `λ = 1e-2`
+  broke a `BFGS` case that both `λ = 0` and `λ = 1` solve, and `λ = 1` broke a different one.
+
+- **`DECM`: `:LBFGS` reported failure on a converged fit.** It was not diverging but slow: at the old
+  `maxiters = 1000` it was already within `7e-4` of the optimum yet reported `MaxIters`, which
+  `solve_model!` turns into a hard `ConvergenceError`. The `DECM` default `maxiters` is now `10_000`; it is
+  only a cap, so it costs the faster methods nothing. `:LBFGS` remains not recommended for this model.
+
+### Added
+- **`validation/symbolic/decm_gauge.jl`** (49 checks) — proves the gauge invariance and records the
+  *degeneracy taxonomy* of the DECM Hessian. Beyond the two gauge modes it gains one near-null direction per
+  constraint pinned at the edge of its feasible range, because the conjugate parameter runs away:
+
+  | mechanism | condition | limit | handled |
+  |---|---|---|---|
+  | dead channel | `k = 0` | `α → +∞` | yes, `ind_inf` |
+  | saturated degree | `k = N-1` | `α → -∞` (fitted `≈ -30…-55`) | no — runs away |
+  | minimum strength | `s = k` | `β → +∞` (fitted `≈ +31`) | no — runs away |
+
+  These runaways, not the gauge, are what make the DECM ill-conditioned (condition numbers `1e15`-`1e17` on
+  affected networks versus `~1e3` on clean ones) and why first-order methods need many iterations there.
+  They are a property of the **data** — such a constraint sits at the boundary of what any ensemble can
+  realise, so its fitness is not identifiable — and not a defect: those fits still reproduce the constraints
+  to `~1e-9`. The `rhesus_macaques` network shipped with the package has one `s = k` node.
+
+  Recorded explicitly: the `UECM`'s box constraint (v0.7.1) must **not** be transplanted here. The DECM
+  domain `β_out,ᵢ + β_in,ⱼ > 0` exempts the diagonal of singleton classes, and on a hub network the true
+  optimum sits at `β_out,ᵢ + β_in,ᵢ = -0.204` — outside *every* box gauge — while all constrained `i≠j`
+  pairs stay strictly feasible. A box would cut off the optimum.
+
+- `DECM` solver-parity tests covering every recommended method × initial-guess combination, plus the gauge
+  identities, so neither failure mode can regress silently.
+
+### Changed
+- `DECM` `solve_model!` now defaults to `maxiters = 10_000` (was `1000`), and `:Newton` defaults to a
+  `ForwardDiff` Hessian rather than the Zygote `SecondOrder` path. Both documented on the method.
+
 ## v0.7.1
 
 Compatibility with the modern SciML optimisation stack (`NLsolve` 5 / `Optim` 2).

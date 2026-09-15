@@ -62,10 +62,17 @@ function verify(name::String, expr, domains; kwargs...)
 end
 
 "Record a numeric closure check (symbolic value vs the actual package function's output)."
-function closecheck(name::String, a::Real, b::Real; rtol::Real=1e-8)
-    pass = isapprox(a, b; rtol=rtol)
+function closecheck(name::String, a::Real, b::Real; rtol::Real=1e-8, atol::Real=0)
+    pass = isapprox(a, b; rtol=rtol, atol=atol)
     push!(RESULTS, (name, pass))
     pass || @warn "FAILED: $name ($a vs $b)"
+    return pass
+end
+
+"Record a check that is already a predicate (structural facts that are not an approximate equality)."
+function boolcheck(name::String, pass::Bool)
+    push!(RESULTS, (name, pass))
+    pass || @warn "FAILED: $name"
     return pass
 end
 
