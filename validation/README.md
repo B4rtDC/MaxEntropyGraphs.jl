@@ -13,6 +13,14 @@ Every script is deterministic (fixed seeds / exact `Rational{BigInt}` substituti
 pass/fail table, and exits non-zero on failure. A fast distilled subset runs in CI
 (`test/symbolics.jl`).
 
+## Derivation notes
+
+Longer write-ups that do not fit in a script header:
+
+| Note | Subject |
+|---|---|
+| [`decm_solver_geometry.md`](decm_solver_geometry.md) | Geometry of the DECM log-likelihood: the exact two-fold gauge freedom and why only `Newton` is hurt by it; the feasible polyhedron and why the `UECM`'s box constraint must **not** be transplanted; the runaway-constraint degeneracy taxonomy (`k = 0`, `k = N-1`, `s = k`) and the `10¹⁵`–`10¹⁷` condition numbers it produces; what that costs each solver; and the `AutoZygote` second-order crash. Backed by `symbolic/decm_gauge.jl`. |
+
 ## symbolic/ — dyad-level derivations vs the shipped closed forms
 
 `common.jl` provides the equality oracles: structural `simplify∘expand` first, then exact

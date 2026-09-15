@@ -58,6 +58,10 @@
 # NOTE the rhesus macaques network shipped with the package has one `s = k` node, so it exhibits
 # this too.
 #
+# The full derivation — the invariance proof, the stationarity conditions behind each runaway, the
+# feasibility argument against a box constraint, and the conditioning measurements — is written up in
+# ../decm_solver_geometry.md. This script is the executable half of that note.
+#
 # Run: julia --project=validation validation/symbolic/decm_gauge.jl
 ###############################################################################
 
