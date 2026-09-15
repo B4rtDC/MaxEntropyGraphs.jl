@@ -56,7 +56,7 @@ Pkg.test("MaxEntropyGraphs")
 ```
 
 The suite also runs automatically on every pull request via GitHub Actions across
-Julia 1.10 (LTS), 1.11, and 1.12 on Linux, macOS, and Windows, and includes
+Julia 1.10 (LTS), 1.11, 1.12, and 1.13 on Linux, macOS, and Windows, and includes
 [Aqua.jl](https://github.com/JuliaTesting/Aqua.jl) quality checks.
 
 ## Development tips

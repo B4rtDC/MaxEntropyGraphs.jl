@@ -27,7 +27,8 @@ jobs:
         version:
           - '1.10'   # LTS (minimum supported)
           - '1.11'
-          - '1.12'   # current stable release
+          - '1.12'
+          - '1.13'   # current stable release
           - 'pre'    # next prerelease (beyond the current stable)
         os:
           - ubuntu-latest
@@ -103,6 +104,13 @@ jobs:
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+        with:
+          # This job pins every dependency to its declared floor. Left at its `auto` default,
+          # `force_latest_compatible_version` flips to `true` on CompatHelper/Dependabot PRs and forces the
+          # exact opposite, which makes the job unsatisfiable: forcing latest pulls Symbolics 7 (a test-only
+          # dep), which needs Preferences >= 1.5, while the downgrade pin holds Preferences at ~1.4. Testing
+          # floors and forcing latest cannot both hold, so pin the input off here.
+          force_latest_compatible_version: false
 
   docs:
     name: Documentation

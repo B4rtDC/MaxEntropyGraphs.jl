@@ -853,6 +853,10 @@ function solve_model!(m::BiCM;  # common settings
     θ₀ = initial_guess(m, method=initial)
     # find Inf values
     ind_inf = findall(isinf, θ₀)
+    # Neutralise them before solving: the optimisation branch hands θ₀ straight to Optim, and
+    # Optim 2 aborts the whole solve on a non-finite iterate (`accept_step!`). Both branches restore
+    # the Inf entries on `m.θᵣ` afterwards, so this only fixes where the solver *starts*.
+    θ₀[ind_inf] .= zero(N);
     if method == :fixedpoint
         # initiate buffers
         x_buffer = zeros(N, length(m.d⊥ᵣ));  # buffer for x = exp(-α)
@@ -861,7 +865,6 @@ function solve_model!(m::BiCM;  # common settings
         # define fixed point function
         FP_model! = (θ::Vector) -> BiCM_reduced_iter!(θ, m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, x_buffer, y_buffer, G_buffer, m.status[:d⊥_unique]);
         # obtain solution
-        θ₀[ind_inf] .= zero(N);
         sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
         if NLsolve.converged(sol)
             if verbose 
@@ -910,6 +913,10 @@ function solve_model!(m::BiCM;  # common settings
                 @info """$(method) optimisation converged after $(@sprintf("%1.2e", sol.stats.time)) seconds (Optimization.jl return code: $("$(sol.retcode)"))"""
             end
             m.θᵣ .= sol.u;
+            # Restore the dead channels (zero-degree classes). The `:fixedpoint` branch already did
+            # this, and so do the DECM/RBCM/UECM in *both* branches; here it used to happen by
+            # accident, because θ₀'s Inf entries were handed to the optimiser and came back untouched.
+            m.θᵣ[ind_inf] .= N(Inf);
             m.status[:params_computed] = true;
             set_xᵣ!(m);
             set_yᵣ!(m);

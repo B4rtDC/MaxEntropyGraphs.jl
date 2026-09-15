@@ -1,6 +1,6 @@
 name = "MaxEntropyGraphs"
 uuid = "0bc52ce7-e54a-4624-bf8b-683aa79224c9"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Bart De Clerck"]
 
 [deps]
@@ -33,7 +33,7 @@ Graphs = "1.9"
 LinearAlgebra = "1"
 Logging = "1"
 MultipleTesting = "0.6"
-NLsolve = "4.5"
+NLsolve = "4.5, 5"
 Optimization = "4, 5"
 OptimizationOptimJL = "0.4"
 PrecompileTools = "1.2"
