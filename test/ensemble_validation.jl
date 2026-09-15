@@ -103,6 +103,55 @@ end
         end
     end
 
+    @testset "solver parity + gauge structure (DECM)" begin
+        G = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedDiGraph(MaxEntropyGraphs.rhesus_macaques())
+        A = MaxEntropyGraphs.SimpleWeightedGraphs.weights(G)
+        dout = Graphs.outdegree(G); din = Graphs.indegree(G)
+        sout = vec(sum(A, dims = 2)); sin_ = vec(sum(A, dims = 1))
+        mats = Matrix{Float64}[]
+        # The recommended methods must work from EVERY initial guess: `:Newton` used to fail outright
+        # from `:uniform` (singular Hessian — see `_decm_gauge`) on every network tested, so that
+        # combination is the regression guard. `:LBFGS` is documented as not recommended here (the
+        # limited-memory approximation cannot represent this Hessian, so it needs ~7300 iterations from
+        # `:strengths` and exceeds the cap from the far `:uniform` start); it is covered only from the
+        # guesses where it is expected to converge.
+        combos = vcat([(meth, init) for meth in (:BFGS, :Newton)
+                                    for init in (:strengths, :strengths_minor, :uniform)],
+                      [(:LBFGS, :strengths), (:LBFGS, :strengths_minor)])
+        for (method, initial) in combos
+            m = DECM(G)
+            solve_model!(m, method = method, initial = initial)
+            MaxEntropyGraphs.set_Ĝ!(m); MaxEntropyGraphs.set_Ŵ!(m)
+            @test isapprox(vec(sum(m.Ĝ, dims = 2)), dout, rtol = 1e-3)
+            @test isapprox(vec(sum(m.Ĝ, dims = 1)), din, rtol = 1e-3)
+            @test isapprox(vec(sum(m.Ŵ, dims = 2)), sout, rtol = 1e-3)
+            @test isapprox(vec(sum(m.Ŵ, dims = 1)), sin_, rtol = 1e-3)
+            push!(mats, Float64.(m.Ĝ))
+        end
+        # every method/initial-guess combination agrees on the expected adjacency matrix
+        for M in mats[2:end]
+            @test isapprox(mats[1], M, rtol = 1e-3)
+        end
+
+        # the likelihood is EXACTLY flat along the two gauge directions (this is what makes the
+        # Hessian singular and what `_decm_gauge` compensates for in the `:Newton` path)
+        m = DECM(G); n = length(m.dᵣ_out)
+        L = θ -> MaxEntropyGraphs.L_DECM_reduced(θ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f, n)
+        θ = MaxEntropyGraphs.initial_guess(m); θ[isinf.(θ)] .= 0.0
+        θ[2n+1:end] .= abs.(θ[2n+1:end]) .+ 0.5          # strictly inside β_out,i + β_in,j > 0
+        gα = vcat(ones(n), -ones(n), zeros(2n))
+        gβ = vcat(zeros(2n), ones(n), -ones(n))
+        @test sum(m.f .* m.dᵣ_out) == sum(m.f .* m.dᵣ_in)     # balance that makes the α gauge exact
+        @test sum(m.f .* m.sᵣ_out) == sum(m.f .* m.sᵣ_in)     # balance that makes the β gauge exact
+        for c in (0.25, -1.5, 3.0)
+            @test L(θ .+ c .* gα) ≈ L(θ) rtol = 1e-14
+            @test L(θ .+ c .* gβ) ≈ L(θ) rtol = 1e-14
+        end
+        # the gauge term itself vanishes on the canonical representative and is gauge-covariant
+        @test MaxEntropyGraphs._decm_gauge(θ .- (sum(θ[1:n]) - sum(θ[n+1:2n])) / (2n) .* gα
+                                             .- (sum(θ[2n+1:3n]) - sum(θ[3n+1:end])) / (2n) .* gβ, n) < 1e-20
+    end
+
     @testset "analytical ensemble averages vs sampling (RBCM)" begin
         G = Graphs.SimpleDiGraph(MaxEntropyGraphs.rhesus_macaques())
         nv = Graphs.nv(G)

@@ -13,6 +13,14 @@ Every script is deterministic (fixed seeds / exact `Rational{BigInt}` substituti
 pass/fail table, and exits non-zero on failure. A fast distilled subset runs in CI
 (`test/symbolics.jl`).
 
+## Derivation notes
+
+Longer write-ups that do not fit in a script header:
+
+| Note | Subject |
+|---|---|
+| [`decm_solver_geometry.md`](decm_solver_geometry.md) | Geometry of the DECM log-likelihood: the exact two-fold gauge freedom and why only `Newton` is hurt by it; the feasible polyhedron and why the `UECM`'s box constraint must **not** be transplanted; the runaway-constraint degeneracy taxonomy (`k = 0`, `k = N-1`, `s = k`) and the `10¹⁵`–`10¹⁷` condition numbers it produces; what that costs each solver; and the `AutoZygote` second-order crash. Backed by `symbolic/decm_gauge.jl`. |
+
 ## symbolic/ — dyad-level derivations vs the shipped closed forms
 
 `common.jl` provides the equality oracles: structural `simplify∘expand` first, then exact
@@ -32,6 +40,7 @@ exponentials, joint MGF for the reciprocal coupling).
 | `decm.jl` | ALL PASS (37) | directed twin of `uecm.jl` via the per-channel PGF with composite params `x=xᵢ_out·xⱼ_in`, `y=yᵢ_out·yⱼ_in`: p ≡ `f_DECM`, ⟨w⟩ ≡ `Ŵ`, Var[w] ≡ `σʷ`², Cov(a,w)=⟨w⟩(1−p); joint PGF factorizes ⇒ Cov(w_ij,w_ji)=0 |
 | `crem.jl` | ALL PASS (32) | via MGF: ⟨w⟩=f/(θ_i+θ_j) ≡ `Ŵ`, **Var[w]=f(2−f)/(θ_i+θ_j)²** (proposed σʷ, = DCReM code form), Cov(a,w)=⟨w⟩(1−f) |
 | `dcrem.jl` | ALL PASS (12) | MGF moments ≡ `Ŵ`/`σʷ` code; joint MGF factorizes ⇒ Cov(w_ij,w_ji)=0 |
+| `decm_gauge.jl` | ALL PASS (49) | the *geometry* of the DECM objective rather than its moments: the exact two-fold gauge freedom `(α_out,α_in)→(α_out+c,α_in−c)`, `(β_out,β_in)→(β_out+c,β_in−c)` (invariance follows from `Σ F·k_out = Σ F·k_in` and `Σ F·s_out = Σ F·s_in`), the resulting singular Hessian (`‖H·g‖ ≈ 2e-19`), the degeneracy taxonomy (dead channel `k=0` → `α→+∞`, **saturated** degree `k=N−1` → `α→−∞`, **minimum** strength `s=k` → `β→+∞`; null dim = 2 gauge modes + one per degenerate constraint), that the gauge term changes no gauge-invariant quantity (`Ĝ`/`Ŵ` identical with and without), and a regression guard that `Newton` from `:uniform` fails without it (`-L = 10472` vs `384.49`) |
 | `crwcm.jl` | ALL PASS (23) | joint MGF: ⟨w⟩, Var ≡ `Ŵ`/`σʷ`; ⟨w_ij w_ji⟩=π↔/(r₃r₄) ⇒ Cov ≡ `_covʷ`; binary layer ≡ RBCM |
 
 **No discrepancies between the derivations and the shipped formulas.**

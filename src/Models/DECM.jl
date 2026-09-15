@@ -396,6 +396,77 @@ end
 
 
 """
+    _DECM_GAUGE_λ
+
+Strength of the gauge-fixing term added to the [`DECM`](@ref) objective (see [`_decm_gauge`](@ref)).
+
+Any strictly positive value is mathematically equivalent — it only selects a representative on a flat
+orbit — so this is purely a conditioning knob. Values spanning `1e-2` to `1e2` were checked to repair
+`Newton` equally well; the small end is used so the added curvature stays far below the likelihood's own
+scale and cannot perturb the line search on well-conditioned problems.
+"""
+const _DECM_GAUGE_λ = 1e-2
+
+
+"""
+    _decm_gauge(θ::AbstractVector, n::Int)
+
+Gauge-fixing term added to the minimised `DECM` objective `-L`.
+
+`L_DECM_reduced` is **exactly** invariant under the two shifts
+
+```
+(α_out, α_in) → (α_out + c, α_in - c)        (β_out, β_in) → (β_out + c, β_in - c)
+```
+
+because the pair terms depend only on the sums `α_out,i + α_in,j` and `β_out,i + β_in,j`, while the linear
+terms are unchanged since `Σ F·k_out = Σ F·k_in` (both count the edges) and `Σ F·s_out = Σ F·s_in` (both
+count the total weight). The likelihood therefore has two exactly flat directions and a singular Hessian:
+`‖H·g‖ ≈ 2e-19` on the rhesus macaques network for both gauge vectors `g`.
+
+`Newton` factorises that Hessian, so the degeneracy gives it a meaningless step and it aborts — from a
+`:uniform` start it returned `-L ≈ 1.0e4` against a true optimum of `384.49`. Perturbing the start does not
+help (the degeneracy is structural, not a symmetric-point artifact); removing the flat directions does.
+
+Adding `λ/2·[(Σα_out - Σα_in)² + (Σβ_out - Σβ_in)²]` lifts exactly those two directions and pins the
+representative with `Σα_out = Σα_in` and `Σβ_out = Σβ_in`. Because the likelihood is *flat* along them this
+changes **no gauge-invariant quantity** — `Ĝ`, `Ŵ`, every dyadic probability and every metric are
+untouched; it only fixes which point of the gauge orbit is reported as `θᵣ`.
+
+See also [`_decm_gauge_grad!`](@ref), [`_DECM_GAUGE_λ`](@ref).
+"""
+@inline function _decm_gauge(θ::AbstractVector, n::Int)
+    # NOTE: index the last block as `3n+1:4n` rather than `3n+1:end` — `end` lowers to `lastindex`,
+    # whose pullback Zygote 0.7.11 gets wrong here (`BoundsError` inside the reverse pass).
+    gα = sum(@view θ[1:n])       - sum(@view θ[n+1:2*n])
+    gβ = sum(@view θ[2*n+1:3*n]) - sum(@view θ[3*n+1:4*n])
+    return oftype(gα, _DECM_GAUGE_λ) / 2 * (gα^2 + gβ^2)
+end
+
+
+"""
+    _decm_gauge_grad!(∇::AbstractVector, θ::AbstractVector, n::Int)
+
+Add `∇(_decm_gauge(θ, n))` to `∇` in place, for the `analytical_gradient = true` path.
+
+The derivative of `λ/2·(Σα_out - Σα_in)²` is `λ·(Σα_out - Σα_in)` on every `α_out` entry and minus that on
+every `α_in` entry; likewise for the `β` blocks. See [`_decm_gauge`](@ref).
+"""
+@inline function _decm_gauge_grad!(∇::AbstractVector, θ::AbstractVector, n::Int)
+    λ  = eltype(∇)(_DECM_GAUGE_λ)
+    gα = λ * (sum(@view θ[1:n])       - sum(@view θ[n+1:2*n]))
+    gβ = λ * (sum(@view θ[2*n+1:3*n]) - sum(@view θ[3*n+1:4*n]))
+    @inbounds @simd for i in 1:n
+        ∇[i]       += gα
+        ∇[n+i]     -= gα
+        ∇[2*n+i]   += gβ
+        ∇[3*n+i]   -= gβ
+    end
+    return ∇
+end
+
+
+"""
     DECM_reduced_iter!(θ, d_out, d_in, s_out, s_in, F, nz_out, nz_in, x_out, x_in, y_out, y_in, G, n=length(θ)÷4)
 
 Compute the next fixed-point iteration for the reduced DECM model. The pre-allocated buffers `x_out`, `x_in`,
@@ -1249,7 +1320,7 @@ By default the parameters are computed using the BFGS method with the strength s
 # Arguments
 - `method::Symbol`: solution method, `:BFGS` (default) or any of :$(join(keys(MaxEntropyGraphs.optimization_methods), ", :", " and :")), plus `:fixedpoint`.
 - `initial::Symbol`: initial guess, `:strengths` (default), `:strengths_minor`, `:random`, or `:uniform`.
-- `maxiters::Int`: maximum number of iterations (defaults to 1000).
+- `maxiters::Int`: maximum number of iterations (defaults to 10_000 — larger than the other models, see the notes on conditioning below).
 - `verbose::Bool`: show log messages (defaults to false).
 - `ftol::Union{Real, Nothing}`: tolerance for the fixedpoint method (defaults to `nothing`, i.e. 1e-8). It bounds the fixed-point *increment* ``\\|G(\\theta) - \\theta\\|_\\infty`` in **parameter** space; it is **not** the constraint residual. ❗ It applies to the `:fixedpoint` method only, and so is **ignored on this model's default `:BFGS` path** (passing it there warns). Use [`constraint_residual`](@ref) to measure how well the expected degrees and strengths actually match the observed ones.
 - `abstol`, `reltol`: absolute/relative tolerances for the optimisation methods (default `nothing`).
@@ -1259,12 +1330,47 @@ By default the parameters are computed using the BFGS method with the strength s
 
 **Notes**
 - the fixed-point method is very unstable for this model and should not be used. From an acceptable solution it can be used to fine-tune an existing one.
-- the L-BFGS method is known to be unstable for this model and should not be used.
+- **`:BFGS` (the default) and `:Newton` are the recommended methods**; `:LBFGS` converges to the same
+  optimum but needs an order of magnitude more iterations (see below).
+
+**Conditioning of the DECM likelihood**
+
+The DECM objective is ill-conditioned in two distinct ways, and both are properties of the *model and the
+data* rather than defects — every solve below still reproduces the constraints to `~1e-9`.
+
+1. *A two-fold gauge freedom, always present.* The likelihood is exactly invariant under
+   `(α_out, α_in) → (α_out + c, α_in - c)` and `(β_out, β_in) → (β_out + c, β_in - c)`, because the pair
+   terms depend only on the sums `α_out,ᵢ + α_in,ⱼ` and `β_out,ᵢ + β_in,ⱼ` while the linear part shifts by
+   `-c·(Σ F·k_out - Σ F·k_in)` resp. `-c·(Σ F·s_out - Σ F·s_in)`, both identically zero. `θᵣ` is therefore
+   only determined up to that orbit, and the Hessian is singular along it. `:Newton` factorises the
+   Hessian, so it needs the flat directions removed; `solve_model!` does that internally for `:Newton`
+   only, which changes no gauge-invariant quantity (`Ĝ`, `Ŵ` and every metric are unaffected).
+2. *Runaway parameters from constraints at the edge of their feasible range.* A **saturated** degree
+   (`k = N-1`, the node links to everyone) drives `α → -∞`, and a **minimum** strength (`s = k`, every
+   incident link carrying weight exactly 1) drives `β → +∞`. Each such constraint adds a near-null
+   Hessian direction; condition numbers reach `1e15`-`1e17` on affected networks versus `~1e3` on clean
+   ones. The corresponding fitness is simply not identifiable — the constraint sits at the boundary of
+   what any ensemble can realise. (The `rhesus_macaques` network shipped with the package has one such
+   `s = k` node.)
+
+Measured iterations to convergence across a spread of networks, from the default `:strengths` guess and
+from the deliberately far `:uniform` one:
+
+| method | from `:strengths` | from `:uniform` |
+|---|---|---|
+| `:Newton` | ≤ 40 | ≤ 160 |
+| `:BFGS` | ≤ 200 | ≤ 265 |
+| `:LBFGS` | up to ~7 300 | up to ~16 000 |
+
+The limited-memory approximation simply cannot represent a Hessian of this condition number, which is why
+`:LBFGS` is not recommended here — it reaches the same optimum, but may exceed `maxiters` from a far start.
+`:BFGS` and `:Newton` are insensitive to the initial guess. Hence the larger `maxiters` default, which is
+only a cap and so costs the faster methods nothing.
 """
 function solve_model!(m::DECM;  # common settings
                                 method::Symbol=:BFGS,
                                 initial::Symbol=:strengths,
-                                maxiters::Int=1000,
+                                maxiters::Int=10_000,
                                 verbose::Bool=false,
                                 # NLsolve.jl specific settings (fixed point method)
                                 ftol::Union{Real, Nothing}=nothing,
@@ -1314,6 +1420,23 @@ function solve_model!(m::DECM;  # common settings
             throw(ConvergenceError(method, nothing))
         end
     else
+        # `_decm_gauge` lifts the two exactly flat gauge directions of the likelihood (see `_decm_gauge`).
+        # Only `Newton` needs it: it factorises the Hessian, which the degeneracy makes exactly singular, so
+        # without it `Newton` takes a meaningless step and aborts (`-L ≈ 1e4` against a true `384.49` on the
+        # rhesus macaques network, from a `:uniform` start). `BFGS`/`LBFGS` maintain a positive definite
+        # *approximation* and never invert the true Hessian — and because ∇L is exactly orthogonal to the
+        # gauge directions they never travel along them either — so for them the extra curvature is pure
+        # trajectory perturbation that helps or hurts at random (measured: λ = 1e-2 breaks a `BFGS` case that
+        # both λ = 0 and λ = 1 solve, and λ = 1 breaks a different one). Hence: `Newton` only.
+        gauge_fix = method === :Newton
+        # `Newton` needs second derivatives. Given a first-order ADtype, OptimizationBase wraps it as
+        # `SecondOrder(inner, AutoForwardDiff)` (it says so in a warning) — and with Zygote as the inner
+        # backend that nested HVP path *aborts the process* (`signal 4: illegal instruction`, inside
+        # DifferentiationInterface's `hvp!`) as soon as Symbolics is loaded into the same session, which the
+        # package's own test suite does. ForwardDiff differentiates the Hessian directly, needs no nesting,
+        # and is what the upstream warning recommends anyway, so second-order methods use it in place of the
+        # Zygote default. An explicitly requested non-Zygote backend is honoured as given.
+        AD_for_method = (method === :Newton && AD_method === :AutoZygote) ? :AutoForwardDiff : AD_method
         if analytical_gradient
             # initiate buffers
             x_out_buffer = zeros(N, n); # buffer for x_out = exp(-α_out)
@@ -1321,11 +1444,19 @@ function solve_model!(m::DECM;  # common settings
             y_out_buffer = zeros(N, n); # buffer for y_out = exp(-β_out)
             y_in_buffer  = zeros(N, n); # buffer for y_in  = exp(-β_in)
             # define gradient function for optimisation.jl
-            grad! = (G, θ, p) -> ∇L_DECM_reduced_minus!(G, θ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f, x_out_buffer, x_in_buffer, y_out_buffer, y_in_buffer, n);
+            # the gauge term is part of the minimised objective for `Newton`, so its gradient belongs here too
+            grad! = gauge_fix ?
+                (G, θ, p) -> begin
+                    ∇L_DECM_reduced_minus!(G, θ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f, x_out_buffer, x_in_buffer, y_out_buffer, y_in_buffer, n)
+                    _decm_gauge_grad!(G, θ, n)
+                end :
+                (G, θ, p) -> ∇L_DECM_reduced_minus!(G, θ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f, x_out_buffer, x_in_buffer, y_out_buffer, y_in_buffer, n);
         end
         # define objective function and its AD method
-        f = AD_method ∈ keys(AD_methods) ? Optimization.OptimizationFunction( (θ, p) -> - L_DECM_reduced(θ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f, n),
-                                                                                        AD_methods[AD_method],
+        f = AD_for_method ∈ keys(AD_methods) ? Optimization.OptimizationFunction( gauge_fix ?
+                                                                                            (θ, p) -> - L_DECM_reduced(θ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f, n) + _decm_gauge(θ, n) :
+                                                                                            (θ, p) -> - L_DECM_reduced(θ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f, n),
+                                                                                        AD_methods[AD_for_method],
                                                                                         grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
 
         prob = Optimization.OptimizationProblem(f, θ₀);
