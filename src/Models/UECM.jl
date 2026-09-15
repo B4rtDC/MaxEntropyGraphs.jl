@@ -989,6 +989,10 @@ function solve_model!(m::UECM;  # common settings
     θ₀ = initial_guess(m, method=initial)
     # find Inf values (zero-degree/zero-strength nodes)
     ind_inf = findall(isinf, θ₀)
+    # Neutralise them before solving: the optimisation branch hands θ₀ straight to Optim, and
+    # Optim 2 aborts the whole solve on a non-finite iterate (`accept_step!`). Both branches restore
+    # the Inf entries on `m.θᵣ` afterwards, so this only fixes where the solver *starts*.
+    θ₀[ind_inf] .= zero(N);
     if method==:fixedpoint
         @warn "The fixed point method is very unstable for this model and should not be used. `BFGS` is prefered for quasinewton methods."
         # initiate buffers
@@ -998,7 +1002,6 @@ function solve_model!(m::UECM;  # common settings
         # define fixed point function
         FP_model! = (θ::Vector) -> UECM_reduced_iter!(θ, m.dᵣ, m.sᵣ, m.f, x_buffer, y_buffer, G_buffer, m.nz, length(m.dᵣ));
         # obtain solution
-        θ₀[ind_inf] .= zero(N);
         sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
         if NLsolve.converged(sol)
             if verbose
@@ -1025,7 +1028,24 @@ function solve_model!(m::UECM;  # common settings
                                                                                         AD_methods[AD_method],
                                                                                         grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
 
-        prob = Optimization.OptimizationProblem(f, θ₀);
+        # The UECM is only defined where `yᵢyⱼ < 1`. The diagonal self-pair term of `L_UECM_reduced`
+        # (`om_c2 = -expm1(-2βᵢ)`) is evaluated for every class, so that domain is *exactly* the open box
+        # `βᵢ > 0 ∀i` — which also implies `βᵢ + βⱼ > 0` for the off-diagonal pairs. Solving it as a genuinely
+        # box-constrained problem keeps every iterate feasible. Previously we relied on the out-of-domain
+        # `NaN` to repel the line search: Optim 1 muddled through that, but Optim 2 (with LineSearches 7.8)
+        # aborts the whole solve on a non-finite iterate, which pinned BFGS against the barrier at `β ≈ 0`.
+        # `Fminbox` does not accept `Newton`, which converges unconstrained anyway, so bound only the
+        # first-order methods. Both give the same optimum under Optim 1 and Optim 2.
+        prob = if method === :Newton
+            Optimization.OptimizationProblem(f, θ₀)
+        else
+            nθ = length(m.dᵣ)
+            # start strictly inside the box: `ind_inf` entries were zeroed above, which sits on the boundary
+            @views θ₀[nθ+1:end] .= max.(θ₀[nθ+1:end], N(_UECM_β_FLOOR))
+            Optimization.OptimizationProblem(f, θ₀;
+                                             lb = vcat(fill(N(-Inf), nθ), fill(N(_UECM_β_FLOOR), nθ)),
+                                             ub = fill(N(Inf), 2nθ))
+        end
         # obtain solution
         method ∈ keys(optimization_methods) || throw(ArgumentError("The method $(method) is not supported (yet)"))
         # use the BackTracking-line-search variants (see `backtracking_optimization_methods` in

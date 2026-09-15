@@ -41,6 +41,20 @@ const _DEFAULT_FTOL = 1e-8
 
 
 """
+    _UECM_β_FLOOR
+
+Lower bound imposed on the `β` block when the [`UECM`](@ref) is solved with a first-order method.
+
+The UECM likelihood is only defined on the open box `βᵢ > 0` (see `L_UECM_reduced`); a closed box needs a
+strictly positive floor. It is deliberately tiny — it is a feasibility guard, not a regularisation, so it
+does not move a well-posed solution. Networks whose ML solution genuinely pushes a `βᵢ` to the boundary
+(degenerate strength constraints) will report that `βᵢ` sitting at this floor instead of at an arbitrary
+value near zero produced by the barrier.
+"""
+const _UECM_β_FLOOR = 1e-10
+
+
+"""
     _ftol_unused_msg(method::Symbol)
 
 Message warning that an explicitly passed `ftol` is silently ignored by the chosen solution `method`.

@@ -88,7 +88,7 @@ To run the test suite, activate the package environment and call `Pkg.test`:
 using Pkg
 Pkg.test("MaxEntropyGraphs")
 ```
-The tests also run automatically on every push and pull request via GitHub Actions (Julia 1.10–1.12 on Linux, macOS, and Windows) and include [Aqua.jl](https://github.com/JuliaTesting/Aqua.jl) quality checks.
+The tests also run automatically on every push and pull request via GitHub Actions (Julia 1.10–1.13 on Linux, macOS, and Windows) and include [Aqua.jl](https://github.com/JuliaTesting/Aqua.jl) quality checks.
 
 ## Getting help
 * Documentation: <https://B4rtDC.github.io/MaxEntropyGraphs.jl/stable/>

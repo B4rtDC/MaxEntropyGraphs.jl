@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.7.1
+
+Compatibility with the modern SciML optimisation stack (`NLsolve` 5 / `Optim` 2).
+
+### Compatibility
+- **`NLsolve` is now `"4.5, 5"`.** This is a far larger change than it looks. `NLsolve` 4.5 requires
+  `NLSolversBase` 7, `Optim` 1.13 requires `NLSolversBase` 7.9 and `Optim` 2 requires `NLSolversBase` 8,
+  so the old bound transitively pinned the package to **`Optim` 1** — and with it `OptimizationOptimJL`
+  0.4.8, even though our own `OptimizationOptimJL = "0.4"` already admitted 0.4.21 (which requires
+  `Optim` 2). That pin was accidental rather than intended. Both stacks now solve correctly; `Optim` 1
+  remains supported and is what the `downgrade` job exercises.
+- Julia **1.13** added to the CI matrix (1.10 LTS through 1.13, plus `pre`). No source change was
+  needed: `julia = "1.10"` already admits it.
+
+### Fixed
+- **Models whose initial guess contains `Inf` could not be solved by any gradient method.**
+  `solve_model!` neutralises the `Inf` entries of `θ₀` (zero-degree / zero-strength classes) before
+  solving, but on the `DBCM`, `BiCM`, `DECM` and `UECM` it did so only inside the `:fixedpoint` branch,
+  while restoring `m.θᵣ[ind_inf] .= Inf` in **both**. The optimisation branch therefore handed a
+  non-finite `θ₀` straight to `Optim`. `Optim` 1 absorbed that silently; `Optim` 2 validates every trial
+  iterate (`accept_step!`) and aborts the solve, so `DBCM(maspalomas())` — which has zero-degree nodes
+  and sits in the precompile workload — made the **package fail to precompile**, taking the docs build
+  down with it. The neutralisation is now unconditional, matching what the `RBCM` already did, and the
+  `DBCM` and `BiCM` now also **restore** those entries to `Inf` after an optimisation solve — previously
+  that happened only by accident, because the `Inf` was handed to the optimiser and came back untouched,
+  and the `DECM`/`RBCM`/`UECM` already restored it explicitly in both branches. Results are unchanged on
+  `Optim` 1: degree residuals on *maspalomas* stay at `2.25e-9` (out) / `4.46e-9` (in), and the four
+  solvers still agree on `Ĝ` to `8.1e-9`.
+- **`UECM` first-order solves are now genuinely box-constrained instead of relying on `NaN`.** The
+  likelihood is only defined on `yᵢyⱼ < 1`, and because the diagonal self-pair term
+  (`om_c2 = -expm1(-2βᵢ)`) is evaluated for every class, that domain is *exactly* the open box
+  `βᵢ > 0 ∀i`. It was previously solved unconstrained, leaving the out-of-domain `NaN` to repel the line
+  search. `Optim` 2 (with `LineSearches` 7.8) turns a line search that cannot reach a finite point into a
+  hard failure rather than muddling through, which pinned `BFGS` against the barrier: on the *rhesus
+  macaques* network it stopped at `-L = 2189.7` with `min βᵢ ≈ 2e-14`, against a true optimum of
+  `264.8103`. `BFGS` and `LBFGS` now carry the box `βᵢ ≥ 1e-10` and reach `264.8103` under **both**
+  `Optim` 1 and `Optim` 2. `Newton` is unchanged (`Fminbox` does not accept it, and it converges
+  unconstrained). Networks whose ML solution genuinely pushes a `βᵢ` onto the boundary now report it
+  resting on that floor instead of at an arbitrary value produced by the barrier.
+
+### CI
+- **The `downgrade` job no longer fails on every CompatHelper PR.** `julia-runtest` leaves
+  `force_latest_compatible_version` at `auto`, which it flips to `true` on CompatHelper/Dependabot
+  branches — the exact opposite of what a floors job tests, and unsatisfiable in combination with it:
+  forcing latest pulls `Symbolics` 7 (a test-only dep), which needs `Preferences ≥ 1.5`, while the
+  downgrade pin holds `Preferences` at `~1.4`. It is now pinned to `false` for that job.
+
 ## v0.7.0
 
 Convergence is now expressed in the units users actually care about.

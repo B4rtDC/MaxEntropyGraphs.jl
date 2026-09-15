@@ -1285,6 +1285,10 @@ function solve_model!(m::DECM;  # common settings
     θ₀ = initial_guess(m, method=initial)
     # find Inf values (dead channels: zero degrees/strengths)
     ind_inf = findall(isinf, θ₀)
+    # Neutralise them before solving: the optimisation branch hands θ₀ straight to Optim, and
+    # Optim 2 aborts the whole solve on a non-finite iterate (`accept_step!`). Both branches restore
+    # the Inf entries on `m.θᵣ` afterwards, so this only fixes where the solver *starts*.
+    θ₀[ind_inf] .= zero(N);
     if method==:fixedpoint
         @warn "The fixed point method is very unstable for this model and should not be used. `BFGS` is prefered for quasinewton methods."
         # initiate buffers
@@ -1296,7 +1300,6 @@ function solve_model!(m::DECM;  # common settings
         # define fixed point function
         FP_model! = (θ::Vector) -> DECM_reduced_iter!(θ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f, m.dᵣ_out_nz, m.dᵣ_in_nz, x_out_buffer, x_in_buffer, y_out_buffer, y_in_buffer, G_buffer, n);
         # obtain solution
-        θ₀[ind_inf] .= zero(N);
         sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
         if NLsolve.converged(sol)
             if verbose
