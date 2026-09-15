@@ -790,8 +790,13 @@ function solve_model!(m::DBCM;  # common settings
     ftol = isnothing(ftol) ? _DEFAULT_FTOL : ftol
     # initial guess
     θ₀ = initial_guess(m, method=initial)
-    # find Inf values
-    ind_inf = findall(isinf, θ₀)
+    # Dead channels (classes with a zero degree / zero strength): their parameter belongs at Inf, i.e.
+    # x = exp(-θ) = 0, so the channel can never carry a link. Derive them from the DATA, not from
+    # `isinf(θ₀)`: only the `:degrees`/`:strengths`-family guesses put an Inf there, so an initial guess
+    # such as `:uniform` or `:random` left every dead channel finite and the solve then returned a
+    # silently wrong fit (BiCM on a planted bipartite graph: degree residual 9.85, reported as Success).
+    # The RBCM already derived this from the data; the other models did not.
+    ind_inf = vcat(findall(iszero, m.dᵣ_out), length(m.dᵣ_out) .+ findall(iszero, m.dᵣ_in))
     # Neutralise them before solving: the optimisation branch hands θ₀ straight to Optim, and
     # Optim 2 aborts the whole solve on a non-finite iterate (`accept_step!`). Both branches restore
     # the Inf entries on `m.θᵣ` afterwards, so this only fixes where the solver *starts*.

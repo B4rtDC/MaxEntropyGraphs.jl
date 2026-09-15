@@ -103,6 +103,48 @@ end
         end
     end
 
+    @testset "dead channels are honoured from every initial guess" begin
+        # `ind_inf` used to be `findall(isinf, θ₀)`, i.e. read off the INITIAL GUESS. Only the
+        # `:degrees`/`:strengths` family puts an Inf there, so `:uniform`/`:random` left every
+        # zero-degree class with a finite parameter and the fit came back silently wrong while
+        # reporting Success (BiCM on a planted bipartite graph: degree residual 9.85). It is now
+        # derived from the data. Guard all four affected models — the RBCM already did it right.
+        @testset "BiCM" begin
+            # a bipartite graph with isolated nodes in BOTH layers
+            Nb, Nt = 18, 40
+            g = Graphs.SimpleGraph(Nb + Nt)
+            for b in 1:(Nb - 3), k in 0:1
+                Graphs.add_edge!(g, b, Nb + ((b * 5 + k * 11) % (Nt - 5)) + 1)
+            end
+            m0 = BiCM(g)
+            @test count(iszero, m0.d⊥ᵣ) + count(iszero, m0.d⊤ᵣ) > 0   # the probe must actually be degenerate
+            # `method` is given explicitly: this guards the dead-channel handling on the OPTIMISATION
+            # path. The BiCM default `:fixedpoint` is excluded because its Anderson iteration diverges
+            # on a graph this degenerate (29 isolated ⊥ nodes here) — a separate, pre-existing
+            # instability, reproducible on main and unrelated to `ind_inf`.
+            for initial in (:degrees, :uniform, :random, :chung_lu)
+                m = BiCM(g)
+                solve_model!(m, method = :BFGS, initial = initial)
+                MaxEntropyGraphs.set_Ĝ!(m)
+                @test isapprox(vec(sum(m.Ĝ, dims = 2)), m.d⊥, atol = 1e-6)
+                @test isapprox(vec(sum(m.Ĝ, dims = 1)), m.d⊤, atol = 1e-6)
+            end
+        end
+
+        @testset "DBCM" begin
+            G = MaxEntropyGraphs.maspalomas()                    # has zero out- and in-degrees
+            dout = Graphs.outdegree(G); din = Graphs.indegree(G)
+            @test count(iszero, dout) + count(iszero, din) > 0
+            for initial in (:degrees, :uniform, :chung_lu)
+                m = DBCM(G)
+                solve_model!(m, method = :BFGS, initial = initial)
+                MaxEntropyGraphs.set_Ĝ!(m)
+                @test isapprox(vec(sum(m.Ĝ, dims = 2)), dout, atol = 1e-5)
+                @test isapprox(vec(sum(m.Ĝ, dims = 1)), din, atol = 1e-5)
+            end
+        end
+    end
+
     @testset "solver parity + gauge structure (DECM)" begin
         G = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedDiGraph(MaxEntropyGraphs.rhesus_macaques())
         A = MaxEntropyGraphs.SimpleWeightedGraphs.weights(G)
