@@ -108,6 +108,20 @@
   identities, so neither failure mode can regress silently.
 
 ### Changed
+- **`BiCM` now rejects a graph containing isolated vertices** (`ArgumentError`, naming them). An isolated
+  vertex has no determinable layer — the data says nothing about which side of the bipartition it belongs
+  to — and `Graphs.bipartite_map` colours each component from 1, so every one of them silently landed in
+  ⊥. Measured: a graph built as 18×40 came back as a **44×14** model, with 26 ⊤-vertices moved to ⊥. The
+  *fit* was unaffected (live-vertex residual `2.7e-12`, isolated rows of `Ĝ` exactly zero), but `|⊥|` and
+  `|⊤|` were wrong, so `rand(m)` sampled the wrong ensemble.
+
+  This is **not** the `k = 0` constraint being unsatisfiable — it is satisfied exactly (`α → +∞`,
+  `p_ij = 0`), and the other models fit isolated vertices without trouble. It is specific to the BiCM,
+  where a vertex must also be placed in a layer. To state the partition yourself, build from the degree
+  sequences, which may contain zeros: `BiCM(nothing; d⊥ = ..., d⊤ = ...)`.
+
+  ⚠️ **Breaking** for callers passing such a graph — though their model was silently mis-specified before.
+  The package's own `_planted_bipartite()` test fixture was one: a 24×100 graph being built as 57×67.
 - `UECM` `solve_model!` documents that `:Newton` requires the default `initial = :strengths`. It is the
   one UECM method without box protection — `Fminbox` (which carries the `βᵢ > 0` domain for the
   first-order methods) does not accept `Newton` — so from a far start the Newton step overshoots past

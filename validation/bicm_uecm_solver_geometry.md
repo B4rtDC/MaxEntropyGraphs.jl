@@ -229,33 +229,49 @@ discrepancy visible.
 
 ---
 
-## 3b. Open: the BiCM `:fixedpoint` diverges on graphs with isolated nodes
+## 3b. Isolated vertices have no layer, so the BiCM now refuses them
 
-Found while building the dead-channel probe above, and **not fixed** — it is a pre-existing instability,
-not part of the `ind_inf` bug, and it reproduces unchanged on `main`.
+A `k = 0` constraint is **not** infeasible — it is met exactly (`α → +∞`, `p_ij = 0 ∀j`), and every other
+model in the package fits isolated vertices without trouble. The BiCM is different for a reason that has
+nothing to do with feasibility: a vertex must also be **assigned to a layer**, and an isolated vertex
+gives no evidence for either side.
 
-The BiCM's *default* method is `:fixedpoint`. On a bipartite graph containing isolated nodes it aborts
-with `NLsolve`'s "the evaluation of the following equation(s) resulted in a non-finite number":
+`Graphs.bipartite_map` colours each connected component starting from 1, so every isolated vertex lands
+in ⊥. Measured on an 18×40 graph with 29 isolated vertices (3 from ⊥, 26 from ⊤ by construction):
 
-| probe graph | `:fixedpoint` | `:BFGS` | `:Newton` |
-|---|---|---|---|
-| with isolated nodes (29 of them, one dead ⊥ class) | **fails**, from *every* initial guess | ok, resid `1e-11` | ok, resid `1e-13` |
-| same graph, isolated nodes attached | ok | ok | ok |
+| | intended | what `BiCM` built |
+|---|---|---|
+| layer sizes | 18 × 40 | **44 × 14** |
 
-It is not a dead-channel handling bug in the iteration: `BiCM_reduced_iter!` correctly restricts both
-loops to the live ranges `nz⊥` / `nz⊤`, and one iteration from the neutralised start is finite
-everywhere (checked entry by entry). What happens is that the Anderson acceleration then diverges on a
-system this lopsided — here the dead ⊥ class carries multiplicity 29 against 15 live nodes.
+The *fit* survives — live-vertex residual `2.7e-12`, isolated rows of `Ĝ` exactly zero — but `|⊥|` and
+`|⊤|` are wrong, so `rand(m)` samples a 44×14 ensemble and anything keyed on layer sizes is off. Since
+the input genuinely does not determine the model, the constructor now throws an `ArgumentError` naming
+the offending vertices, rather than silently picking a side.
 
-That it fails from `:degrees` too (where the old and new `ind_inf` agree exactly) is what establishes it
-as independent of §3.
+The package's own test fixture was an instance of this: `_planted_bipartite()` (24 ⊥ × 100 ⊤) left 33
+vertices isolated and was being built as a **57 × 67** model. It has been de-isolated.
 
-This is the same class of problem already documented for the `UECM` and `DECM`, whose fixed points are
-noted as unstable and not recommended. The difference is that for the BiCM `:fixedpoint` is the
-**default**, so a user hits it without opting in. Worth fixing — either by damping the accelerator (as
-the `UBCM` does: it retries with `m = 5`, `β = 0.5`) or by falling back to `:BFGS` — but it is a separate
-change from the ones made here, and the regression test in `test/ensemble_validation.jl` therefore pins
-the optimisation path explicitly rather than the default.
+Dead channels still reach the BiCM, just not through a graph — via explicit degree sequences, where the
+caller has stated the partition:
+
+```julia
+BiCM(nothing; d⊥ = [0, 2, 2, 1], d⊤ = [1, 2, 2])   # zeros are fine here
+```
+
+That is the form the §3 dead-channel checks now use.
+
+### An earlier claim, corrected
+
+This section previously said the BiCM `:fixedpoint` "diverges on any bipartite graph containing isolated
+nodes". **That was wrong** — generalised from a single probe. Adding 1, 3 or 5 isolated vertices to
+otherwise healthy graphs converges fine; and among single-live-class systems, `deg 2` diverges while
+`deg 3` and `deg 4` converge. There is no clean structural rule: it is data-dependent instability of the
+Anderson acceleration, of the same kind already documented for the `UECM` and `DECM` fixed points.
+
+The isolated-vertex guard removes the *observed* failures, because the graphs that triggered them are now
+refused at construction — but it is not a fix for the underlying accelerator, and a degenerate reduced
+system reached some other way could still diverge. `:fixedpoint` remains the BiCM default; `:BFGS` and
+`:Newton` were solid on every case tested.
 
 ---
 

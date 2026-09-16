@@ -160,6 +160,32 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
             @warn "The graph is weighted, while the BiCM model is unweighted, the weight information will be lost"
         end
 
+        # An isolated vertex has NO determinable layer: nothing in the data says which side of the
+        # bipartition it belongs to. `Graphs.bipartite_map` colours each connected component starting
+        # from 1, so every isolated vertex silently lands in the ⊥ layer — a graph built as 18×40 comes
+        # back as a 44×14 model, with 26 ⊤-vertices moved to ⊥. The *fit* of the live vertices is still
+        # correct (their rows of `Ĝ` are exact and the isolated rows are zero), but `|⊥|` and `|⊤|` are
+        # wrong, so the ensemble `rand(m)` samples from — and anything else keyed on the layer sizes —
+        # is not the one the user asked for. Since the input genuinely does not determine the model,
+        # refuse it rather than pick a side silently.
+        #
+        # This is NOT the `k = 0` constraint being unsatisfiable: it is satisfiable exactly (`α → +∞`,
+        # `p_ij = 0 ∀j`), and the other models fit isolated vertices without trouble. It is specific to
+        # the BiCM, where a vertex must also be *assigned to a layer*.
+        if Graphs.nv(G) > 0
+            isolated = findall(v -> iszero(Graphs.degree(G, v)), Graphs.vertices(G))
+            if !isempty(isolated)
+                throw(ArgumentError("""
+                The graph has $(length(isolated)) isolated vertex/vertices $(length(isolated) > 6 ? string(first(isolated, 6), " …") : string(isolated)), whose layer membership is not determined by the data.
+
+                A vertex with no edges belongs to neither side of the bipartition as far as the graph is concerned, and `Graphs.bipartite_map` would place all of them in the ⊥ layer, silently changing |⊥| and |⊤| and therefore the ensemble this model represents.
+
+                Either drop the isolated vertices from the graph, or state the partition yourself by building the model from the degree sequences, which may contain zeros:
+
+                    BiCM(nothing; d⊥ = ..., d⊤ = ...)
+                """))
+            end
+        end
         # get layer membership
         membership = Graphs.bipartite_map(G)
         ⊥nodes, ⊤nodes = findall(membership .== 1), findall(membership .== 2)

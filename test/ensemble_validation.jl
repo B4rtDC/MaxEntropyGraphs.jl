@@ -35,6 +35,14 @@ function _planted_bipartite()
         j = ((b * 7 + k * 13) % Nt) + 1
         Graphs.add_edge!(g, b, topnode(j))
     end
+    # The patterns above leave part of the top layer untouched. Those vertices are isolated, and an
+    # isolated vertex has no determinable layer — `bipartite_map` would put every one of them in ⊥,
+    # turning this 24x100 graph into a 57x67 model. `BiCM` now refuses such input, so attach the
+    # leftovers deterministically; the planted hub co-occurrence that the projection tests rely on is
+    # untouched.
+    for j in 1:Nt
+        Graphs.degree(g, topnode(j)) == 0 && Graphs.add_edge!(g, hubs + 1 + (j % (Nb - hubs)), topnode(j))
+    end
     return g
 end
 
@@ -109,26 +117,32 @@ end
         # zero-degree class with a finite parameter and the fit came back silently wrong while
         # reporting Success (BiCM on a planted bipartite graph: degree residual 9.85). It is now
         # derived from the data. Guard all four affected models — the RBCM already did it right.
-        @testset "BiCM" begin
-            # a bipartite graph with isolated nodes in BOTH layers
-            Nb, Nt = 18, 40
-            g = Graphs.SimpleGraph(Nb + Nt)
-            for b in 1:(Nb - 3), k in 0:1
-                Graphs.add_edge!(g, b, Nb + ((b * 5 + k * 11) % (Nt - 5)) + 1)
-            end
-            m0 = BiCM(g)
-            @test count(iszero, m0.d⊥ᵣ) + count(iszero, m0.d⊤ᵣ) > 0   # the probe must actually be degenerate
-            # `method` is given explicitly: this guards the dead-channel handling on the OPTIMISATION
-            # path. The BiCM default `:fixedpoint` is excluded because its Anderson iteration diverges
-            # on a graph this degenerate (29 isolated ⊥ nodes here) — a separate, pre-existing
-            # instability, reproducible on main and unrelated to `ind_inf`.
-            for initial in (:degrees, :uniform, :random, :chung_lu)
-                m = BiCM(g)
+        @testset "BiCM (from degree sequences — the supported way to have a dead channel)" begin
+            # A BiCM built from a GRAPH can no longer contain a dead channel: a zero-degree vertex is
+            # an isolated vertex, whose layer is undetermined, and the constructor now refuses it.
+            # From explicit degree sequences the partition is stated by the caller, so zeros are fine.
+            d⊥ = [0, 2, 2, 1, 3, 0]
+            d⊤ = [2, 3, 1, 2, 0]
+            m0 = BiCM(nothing; d⊥ = d⊥, d⊤ = d⊤)
+            @test count(iszero, m0.d⊥ᵣ) + count(iszero, m0.d⊤ᵣ) > 0    # the probe is actually degenerate
+            # `:chung_lu` needs the graph, so it is not applicable here
+            for initial in (:degrees, :uniform, :random)
+                m = BiCM(nothing; d⊥ = d⊥, d⊤ = d⊤)
                 solve_model!(m, method = :BFGS, initial = initial)
                 MaxEntropyGraphs.set_Ĝ!(m)
-                @test isapprox(vec(sum(m.Ĝ, dims = 2)), m.d⊥, atol = 1e-6)
-                @test isapprox(vec(sum(m.Ĝ, dims = 1)), m.d⊤, atol = 1e-6)
+                @test isapprox(vec(sum(m.Ĝ, dims = 2)), d⊥, atol = 1e-6)
+                @test isapprox(vec(sum(m.Ĝ, dims = 1)), d⊤, atol = 1e-6)
             end
+        end
+
+        @testset "BiCM rejects a graph with isolated vertices" begin
+            g = Graphs.SimpleGraph(8)
+            for b in 1:3; Graphs.add_edge!(g, b, 3 + b); end            # vertices 7, 8 isolated
+            @test_throws ArgumentError BiCM(g)
+            # ... and accepts the same graph once they are gone
+            g2 = Graphs.SimpleGraph(6)
+            for b in 1:3; Graphs.add_edge!(g2, b, 3 + b); end
+            @test BiCM(g2) isa BiCM
         end
 
         @testset "DBCM" begin

@@ -79,15 +79,6 @@ function bip(seed::Int, Nb::Int, Nt::Int, p::Real)
     g
 end
 
-"Bipartite graph deliberately leaving isolated nodes in BOTH layers (dead channels)."
-function bip_with_zeros(seed::Int, Nb::Int, Nt::Int)
-    rng = Xoshiro(seed); g = G_.SimpleGraph(Nb + Nt)
-    for b in 1:(Nb - 3), _ in 1:2
-        G_.add_edge!(g, b, Nb + rand(rng, 1:(Nt - 5)))
-    end
-    g
-end
-
 "Weighted undirected graph; `minw` makes every weight 1 (⇒ s = k), `sat` saturates node 1."
 function wund(seed::Int, n::Int, p::Real, wmax::Int; minw::Bool=false, sat::Bool=false)
     rng = Xoshiro(seed); A = zeros(Int, n, n)
@@ -200,19 +191,40 @@ end
 # ===========================================================================
 # `ind_inf` used to be `findall(isinf, θ₀)`. Only the `:degrees`/`:strengths` family puts
 # an Inf there, so `:uniform`/`:random` left every dead channel finite and the fit came
-# back silently wrong (BiCM on a planted bipartite graph: degree residual 9.85, Success).
-let g = bip_with_zeros(5, 18, 40)
-    m0 = BiCM(g)
+# back silently wrong (degree residual 9.85, reported as Success).
+#
+# NOTE a BiCM built from a GRAPH can no longer have a dead channel at all: a zero-degree
+# vertex is an isolated vertex, whose layer membership is undetermined, and the constructor
+# refuses it (checked below). Dead channels reach this model only through explicit degree
+# sequences, where the caller has stated the partition — so that is the probe used here.
+let d⊥ = [0, 2, 2, 1, 3, 0], d⊤ = [2, 3, 1, 2, 0]
+    m0 = BiCM(nothing; d⊥ = d⊥, d⊤ = d⊤)
     nzero = count(iszero, m0.d⊥ᵣ) + count(iszero, m0.d⊤ᵣ)
-    boolcheck("BiCM: the probe network really has dead channels (zero-degree classes: $nzero)", nzero > 0)
-    for init in (:degrees, :uniform, :random, :chung_lu)
-        m = BiCM(g)
+    boolcheck("BiCM: the probe really has dead channels (zero-degree classes: $nzero)", nzero > 0)
+    for init in (:degrees, :uniform, :random)      # `:chung_lu` needs the graph
+        m = BiCM(nothing; d⊥ = d⊥, d⊤ = d⊤)
         solve_model!(m; method = :BFGS, initial = init)
         MEG.set_Ĝ!(m)
-        resid = maximum(abs, vcat(vec(sum(m.Ĝ, dims = 2)) .- m.d⊥, vec(sum(m.Ĝ, dims = 1)) .- m.d⊤))
+        resid = maximum(abs, vcat(vec(sum(m.Ĝ, dims = 2)) .- d⊥, vec(sum(m.Ĝ, dims = 1)) .- d⊤))
         closecheck("BiCM: degrees reproduced from initial=$init (dead channels honoured)",
                    resid, 0; rtol = 0, atol = 1e-6)
     end
+end
+
+# ===========================================================================
+# 5. an isolated vertex has no layer, so the graph constructor refuses it
+# ===========================================================================
+# `Graphs.bipartite_map` colours each component from 1, so every isolated vertex silently lands
+# in ⊥: a graph built as 18x40 came back as a 44x14 model. The live-vertex fit stayed correct,
+# but |⊥| and |⊤| — and hence the ensemble `rand(m)` draws from — did not.
+let g = G_.SimpleGraph(8)
+    for b in 1:3; G_.add_edge!(g, b, 3 + b); end                 # vertices 7, 8 isolated
+    threw = try (BiCM(g); false) catch e; e isa ArgumentError end
+    boolcheck("BiCM: a graph with isolated vertices is refused (their layer is undetermined)", threw)
+    g2 = G_.SimpleGraph(6)
+    for b in 1:3; G_.add_edge!(g2, b, 3 + b); end
+    ok = try (BiCM(g2); true) catch; false end
+    boolcheck("BiCM: the same graph without the isolated vertices is accepted", ok)
 end
 
 report("BiCM & UECM geometry")
