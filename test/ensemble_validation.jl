@@ -111,6 +111,49 @@ end
         end
     end
 
+    @testset "BiCM :fixedpoint survives the gauge-singular accelerator" begin
+        # The BiCM fixed-point map is gauge-equivariant, G(θ+c·g) = G(θ)+c·g, so g is an eigenvector
+        # of its Jacobian with eigenvalue exactly 1 and the residual is blind to the gauge component.
+        # Anderson's least-squares — built from residual differences, all of which then lie in gᗮ — is
+        # therefore rank-deficient by construction and emits NaN. `solve_model!` steps the accelerator's
+        # memory down (default -> m=2 -> m=0/Picard) to escape it. These seeds are graphs on which the
+        # un-laddered accelerator provably blows up; each must now solve.
+        function _bip(seed, Nb, Nt, p)
+            rng = MaxEntropyGraphs.Xoshiro(seed); g = Graphs.SimpleGraph(Nb + Nt)
+            for b in 1:Nb, t in 1:Nt; rand(rng) < p && Graphs.add_edge!(g, b, Nb + t); end
+            for b in 1:Nb; Graphs.degree(g, b) == 0 && Graphs.add_edge!(g, b, Nb + rand(rng, 1:Nt)); end
+            for t in 1:Nt; Graphs.degree(g, Nb + t) == 0 && Graphs.add_edge!(g, rand(rng, 1:Nb), Nb + t); end
+            g
+        end
+        for (seed, Nb, Nt, p) in [(4, 12, 19, 0.52), (11, 19, 10, 0.48), (34, 16, 19, 0.52),
+                                  (38, 20, 16, 0.44), (47, 16, 13, 0.56), (48, 17, 16, 0.44)]
+            m = BiCM(_bip(seed, Nb, Nt, p))
+            solve_model!(m, method = :fixedpoint)          # the default method
+            MaxEntropyGraphs.set_Ĝ!(m)
+            @test isapprox(vec(sum(m.Ĝ, dims = 2)), m.d⊥, atol = 1e-6)
+            @test isapprox(vec(sum(m.Ĝ, dims = 1)), m.d⊤, atol = 1e-6)
+        end
+
+        # the gauge identity the whole thing rests on
+        m = BiCM(_bip(4, 12, 19, 0.52))
+        n⊥ = m.status[:d⊥_unique]; nθ = length(m.θᵣ)
+        θ = MaxEntropyGraphs.initial_guess(m); θ[isinf.(θ)] .= 0.0
+        g = vcat(ones(n⊥), -ones(nθ - n⊥))
+        xb = zeros(length(m.d⊥ᵣ)); yb = zeros(length(m.d⊤ᵣ)); Gb = zeros(nθ)
+        step(v) = copy(MaxEntropyGraphs.BiCM_reduced_iter!(copy(v), m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤,
+                                                           m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, xb, yb, Gb, n⊥))
+        for c in (0.3, -1.5)
+            @test step(θ .+ c .* g) ≈ step(θ) .+ c .* g   rtol = 1e-12
+        end
+    end
+
+    @testset "BiCM saturation ceiling counts live vertices" begin
+        # a vertex adjacent to every LIVE counterpart forces p = 1, so its fitness diverges; dead
+        # vertices cannot be connected to and must not raise the ceiling
+        @test_throws DomainError BiCM(nothing; d⊥ = [4, 2, 2, 1, 0], d⊤ = [3, 3, 2, 1, 0])
+        @test BiCM(nothing; d⊥ = [4, 2, 2, 1, 0], d⊤ = [2, 2, 2, 2, 1]) isa BiCM
+    end
+
     @testset "dead channels are honoured from every initial guess" begin
         # `ind_inf` used to be `findall(isinf, θ₀)`, i.e. read off the INITIAL GUESS. Only the
         # `:degrees`/`:strengths` family puts an Inf there, so `:uniform`/`:random` left every

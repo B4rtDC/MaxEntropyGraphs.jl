@@ -260,18 +260,112 @@ BiCM(nothing; d⊥ = [0, 2, 2, 1], d⊤ = [1, 2, 2])   # zeros are fine here
 
 That is the form the §3 dead-channel checks now use.
 
-### An earlier claim, corrected
+## 3c. The fixed-point accelerator: the gauge again
 
-This section previously said the BiCM `:fixedpoint` "diverges on any bipartite graph containing isolated
-nodes". **That was wrong** — generalised from a single probe. Adding 1, 3 or 5 isolated vertices to
-otherwise healthy graphs converges fine; and among single-live-class systems, `deg 2` diverges while
-`deg 3` and `deg 4` converge. There is no clean structural rule: it is data-dependent instability of the
-Anderson acceleration, of the same kind already documented for the `UECM` and `DECM` fixed points.
+The `:fixedpoint` method — the BiCM **default** — used to abort on **25 of 183** ordinary random
+bipartite graphs with no isolated vertices and no dead channels at all. Roughly one graph in seven. The
+cause is the same gauge as §1.1, arriving through a different door.
 
-The isolated-vertex guard removes the *observed* failures, because the graphs that triggered them are now
-refused at construction — but it is not a fix for the underlying accelerator, and a degenerate reduced
-system reached some other way could still diverge. `:fixedpoint` remains the BiCM default; `:BFGS` and
-`:Newton` were solid on every case tested.
+### The map is gauge-equivariant
+
+`BiCM_reduced_iter!` computes
+
+```
+G(θ)ᵢ    = -log( k⊥ᵢ / Σⱼ f⊤ⱼ · yⱼ/(1 + xᵢyⱼ) )          (⊥ block)
+G(θ)_{n⊥+ⱼ} = -log( k⊤ⱼ / Σᵢ f⊥ᵢ · xᵢ/(1 + xᵢyⱼ) )      (⊤ block)
+```
+
+Under the gauge shift `α → α + c`, `β → β - c` we have `xᵢ → xᵢe^{-c}` and `yⱼ → yⱼe^{c}`, so every
+product `xᵢyⱼ` is **unchanged** and the ⊥ inner sum is multiplied by exactly `e^{c}`. The outer `-log`
+turns that into `+c`; the ⊤ block gets `-c` by the same argument. Hence
+
+```
+G(θ + c·g) = G(θ) + c·g          exactly.
+```
+
+Measured: `‖G(θ+cg) - G(θ) - cg‖∞ ≈ 4·10⁻¹⁶`.
+
+### Three consequences, and why Anderson breaks
+
+Differentiating the equivariance in `c` at `c = 0`:
+
+- **`J·g = g`** — `g` is an eigenvector of the Jacobian with eigenvalue **exactly 1**. Measured
+  `‖J·g - g‖∞ ≈ 2·10⁻¹⁶`, with the next eigenvalue a clear `|λ-1| ≈ 0.06` away.
+- **the residual `f(θ) = G(θ) - θ` is blind to the gauge**: `f(θ + cg) = G(θ) + cg - θ - cg = f(θ)`.
+  Measured `4·10⁻¹⁶`.
+- therefore **`J_f` is singular along `g` by construction** — measured `rank = 8` of `9`.
+
+Anderson acceleration solves a least-squares problem built from residual *differences*, and by the second
+point every one of those lies in the `(n-1)`-dimensional subspace `gᗮ`. The system is rank-deficient by
+design, so its internal solve emits `NaN` and NLsolve raises `IsFiniteException`.
+
+The signature is unmistakable once you look for it — failures over 183 random bipartite graphs, against
+the accelerator's memory:
+
+| Anderson memory | ok | **non-finite** | hit iteration cap |
+|---|---|---|---|
+| `m = 0` (Picard — no least-squares at all) | **183** | **0** | 0 |
+| `m = 2` | 181 | 2 | 0 |
+| default | 158 | 25 | 0 |
+| `m = 5, beta = 0.5` | 148 | 35 | 0 |
+| `m = 20` | 108 | 75 | 0 |
+
+**Every** failure is the `NaN`; not one is a failure to converge in time. And the failure count rises
+monotonically with the memory, which is exactly what a structural rank deficiency predicts: the more
+history vectors you stack into a subspace of dimension `n-1`, the sooner the least-squares is singular.
+
+### What the fix is — and two things it is not
+
+The remedy is to **shrink the least-squares**, and `m = 0` removes it entirely. `solve_model!` now walks a
+ladder: the default accelerator first, then `m = 2` on `IsFiniteException`, then `m = 0`. Measured over
+the same 183 graphs:
+
+| strategy | ok | median iters | total iters |
+|---|---|---|---|
+| plain (what shipped before) | 158/183 | 18 | 3 612 |
+| always Picard | **183/183** | 46 | 10 413 |
+| **the ladder** | **183/183** | 21 | **4 551** |
+| UBCM-style damped retry | 169/183 | 20 | 4 071 |
+
+The ladder buys Picard's robustness at 56 % of its iteration cost, because the accelerated path still
+handles the ~86 % of graphs that never had a problem.
+
+Two approaches were tried and **rejected**, and both are worth recording because each looked right:
+
+- **Damping (`beta = 0.5`), the `UBCM`'s remedy.** It is *worse than doing nothing* here — 148/183
+  against 158/183. Damping addresses the `UBCM`'s own problem (an accelerator proposing overflowing
+  iterates on a large, ill-scaled system); it does nothing for a rank-deficient least-squares. Copying
+  that pattern would have produced a fix that half-works for the wrong reason.
+- **Projecting the gauge out of the iterate.** The obvious move given the diagnosis: run on the quotient,
+  where `J_f` is full rank. It is *much* worse — 127/183. Diagnosing a singularity correctly does not mean
+  removing it is the right lever; constraining the iterate to `gᗮ` evidently costs more contraction than
+  the rank deficiency was costing.
+
+### A second, smaller finding: the saturation ceiling counted the wrong thing
+
+With the ladder in place, 3 of 393 realisable degree sequences still ran to the iteration cap. All three
+had the same shape: a vertex adjacent to **every live vertex** of the other layer.
+
+That is the saturated-degree runaway of §1.2 — `p_ij = 1` for all counterparts, so the fitness has no
+finite maximiser. But the guard compared `max(d⊥)` against `length(d⊤)`, the **layer size**, while a dead
+vertex can never be connected to and so does not raise the ceiling. The two differ exactly when dead
+channels are present, and such inputs slipped through to burn the iteration cap instead of being refused.
+
+The ceiling now counts live vertices. Graph-built models have no dead channels (§3b), so for them
+`live == length` and the check is unchanged.
+
+Final state: **183/183** graph-built, and **373/373** realisable degree sequences with dead channels —
+zero non-finite failures, zero iteration-cap failures.
+
+### Corrections to earlier versions of this note
+
+Two claims in earlier drafts were wrong, both from generalising a single probe:
+
+1. *"the `:fixedpoint` diverges on any bipartite graph containing isolated nodes"* — no. Adding isolated
+   vertices to healthy graphs converges fine, and the failures occur on graphs with no isolated vertices
+   at all.
+2. *"data-dependent Anderson instability with no clean structural rule"* — no. There is a clean rule, and
+   it is the gauge equivariance derived above.
 
 ---
 
