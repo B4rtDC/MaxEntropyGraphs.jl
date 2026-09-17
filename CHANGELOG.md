@@ -1,8 +1,47 @@
 # Changelog
 
-## Unreleased
+## v0.8.0
+
+Solver correctness and robustness across the `BiCM`, `DBCM`, `UECM` and `DECM`, and Julia 1.13.
+
+**This release supersedes v0.7.1, which was never tagged**: its changes (the `NLsolve` 5 / `Optim` 2
+compatibility work) ship here. The version is `0.8.0` rather than `0.7.2` because of the breaking `BiCM`
+constructor change below.
 
 ### Fixed
+- **`BiCM`: the `:fixedpoint` default aborted on ~1 bipartite graph in 7.** Measured: **25 of 183** random
+  bipartite graphs with no isolated vertices and no dead channels. The cause is the gauge freedom of §1.1
+  of `validation/bicm_uecm_solver_geometry.md`, arriving through the solver rather than the likelihood.
+
+  The fixed-point map is **gauge-equivariant**: under `α → α + c`, `β → β - c` every product `xᵢ·yⱼ` is
+  unchanged and the inner sum is multiplied by exactly `e^c`, which the outer `-log` turns back into `+c`,
+  so `G(θ + c·g) = G(θ) + c·g` (measured to `4e-16`). Hence `g` is an eigenvector of the Jacobian with
+  eigenvalue **exactly 1**, the residual `G(θ) - θ` is completely **blind** to the gauge component, and the
+  residual Jacobian is **singular along `g` by construction** (measured `rank 8` of `9`).
+
+  Anderson acceleration solves a least-squares built from residual *differences*, every one of which
+  therefore lies in `gᗮ`. The system is rank-deficient by design and its internal solve emits `NaN`
+  (`IsFiniteException`). The signature: failures rise monotonically with the accelerator's memory —
+  **0** at `m=0`, 2 at `m=2`, 25 at the default, 75 at `m=20` — and *every* failure is that `NaN`, never a
+  failure to converge in time.
+
+  `solve_model!` now walks a ladder: the default accelerator, then `m=2`, then `m=0` (plain Picard, which
+  has no least-squares and cannot hit this). Result **183/183**, at 4 551 total iterations against 10 413
+  for always-Picard and 158/183 for the accelerated path alone.
+
+  Two approaches were tried and rejected, both recorded in the note: **damping** (`beta=0.5`, which is what
+  the `UBCM` does for its own, different, overflow problem) is *worse than doing nothing* here — 148/183;
+  and **projecting the gauge out** of the iterate, the obvious move given the diagnosis, is worse still at
+  127/183.
+
+- **`BiCM`: the saturation ceiling counted layer size instead of live vertices.** A vertex adjacent to
+  every *available* counterpart forces `p_ij = 1`, so its fitness diverges — but a dead vertex can never be
+  connected to and does not raise the ceiling. Comparing `max(d⊥)` against `length(d⊤)` let such inputs
+  through, and they then ran to the iteration cap rather than being refused (3 of 393 realisable random
+  degree pairs, each one a vertex adjacent to every live counterpart). The ceiling now counts live
+  vertices; graph-built models have no dead channels, so for them the check is unchanged. Final state:
+  **373/373** realisable degree sequences with dead channels, zero failures of either kind.
+
 - **Dead channels were read off the initial guess instead of the data, so `initial = :uniform` or
   `:random` returned a silently wrong fit.** A class with zero degree (or zero strength) is a *dead
   channel*: its parameter belongs at `Inf`, so `x = e^{-θ} = 0` and the channel can never carry a link.
@@ -133,7 +172,7 @@
 - `DECM` `solve_model!` now defaults to `maxiters = 10_000` (was `1000`), and `:Newton` defaults to a
   `ForwardDiff` Hessian rather than the Zygote `SecondOrder` path. Both documented on the method.
 
-## v0.7.1
+## v0.7.1 — never released; folded into v0.8.0
 
 Compatibility with the modern SciML optimisation stack (`NLsolve` 5 / `Optim` 2).
 

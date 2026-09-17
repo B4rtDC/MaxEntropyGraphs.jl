@@ -227,4 +227,116 @@ let g = G_.SimpleGraph(8)
     boolcheck("BiCM: the same graph without the isolated vertices is accepted", ok)
 end
 
+# ===========================================================================
+# 6. the BiCM FIXED-POINT map inherits the gauge — and that is what broke Anderson
+# ===========================================================================
+# The same gauge that leaves `L` flat makes the fixed-point map G EQUIVARIANT:
+#
+#     G(θ + c·g) = G(θ) + c·g
+#
+# (the shift leaves every product xᵢ·yⱼ alone and multiplies the inner sum by e^c, which the
+# outer -log turns back into +c). Three consequences, each checked below: g is an eigenvector
+# of the Jacobian with eigenvalue EXACTLY 1; the residual G(θ) - θ is completely blind to the
+# gauge component; and the residual Jacobian is therefore singular along g BY CONSTRUCTION.
+#
+# Anderson acceleration solves a least-squares problem built from residual DIFFERENCES, every
+# one of which lies in gᗮ. The more history it keeps, the sooner that system is rank-deficient
+# and its internal solve emits NaN. That is the whole story of the divergence — see the failure
+# counts against Anderson memory below, and ../bicm_uecm_solver_geometry.md §3b.
+let m = BiCM(bip(11, 10, 14, 0.3))
+    n⊥ = m.status[:d⊥_unique]; nθ = length(m.θᵣ)
+    function Gmap(θ::AbstractVector{T}) where {T}
+        xb = zeros(T, length(m.d⊥ᵣ)); yb = zeros(T, length(m.d⊤ᵣ)); Gb = zeros(T, nθ)
+        MEG.BiCM_reduced_iter!(collect(θ), m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, xb, yb, Gb, n⊥)
+        Gb
+    end
+    g = vcat(ones(n⊥), -ones(nθ - n⊥))
+    θ = MEG.initial_guess(m); θ[isinf.(θ)] .= 0.0
+
+    for cval in (0.3, 1.0, -2.0)
+        closecheck("BiCM fixed point: G(θ+cg) = G(θ)+cg  (c=$cval)",
+                   maximum(abs, Gmap(θ .+ cval .* g) .- Gmap(θ) .- cval .* g), 0; rtol = 0, atol = 1e-12)
+    end
+    J = MEG.ForwardDiff.jacobian(Gmap, θ)
+    closecheck("BiCM fixed point: g is an eigenvector of the Jacobian with eigenvalue exactly 1",
+               maximum(abs, J * g .- g), 0; rtol = 0, atol = 1e-12)
+    resid(θ) = Gmap(θ) .- θ
+    closecheck("BiCM fixed point: the residual is blind to the gauge component",
+               maximum(abs, resid(θ .+ 0.7 .* g) .- resid(θ)), 0; rtol = 0, atol = 1e-12)
+    Jf = MEG.ForwardDiff.jacobian(resid, θ)
+    boolcheck("BiCM fixed point: the residual Jacobian is singular along g (rank $(rank(Jf)) of $nθ)",
+              rank(Jf) == nθ - 1)
+end
+
+# The practical consequence, and the reason the fix is a shorter MEMORY rather than damping:
+# failures rise monotonically with the Anderson memory, and vanish at m = 0 (plain Picard, which
+# has no least-squares at all). Damping (`beta = 0.5`) makes it WORSE, so the UBCM's remedy for
+# its own overflow problem is the wrong tool here.
+let
+    function count_nonfinite(mem; ngraph = 40)
+        rng = Xoshiro(20260917); bad = 0; tot = 0
+        for _ in 1:ngraph
+            Nb = rand(rng, 4:24); Nt = rand(rng, 4:24); p = rand(rng) * 0.6 + 0.05
+            g = bip(rand(rng, 1:10^6), Nb, Nt, p)
+            mm = try BiCM(g) catch; continue end
+            tot += 1
+            n⊥ = mm.status[:d⊥_unique]
+            xb = zeros(length(mm.d⊥ᵣ)); yb = zeros(length(mm.d⊤ᵣ)); Gb = zeros(length(mm.θᵣ))
+            θ₀ = MEG.initial_guess(mm); θ₀[isinf.(θ₀)] .= 0.0
+            FP! = (θ::Vector) -> MEG.BiCM_reduced_iter!(θ, mm.d⊥ᵣ, mm.d⊤ᵣ, mm.f⊥, mm.f⊤, mm.d⊥ᵣ_nz, mm.d⊤ᵣ_nz, xb, yb, Gb, n⊥)
+            kw = mem === nothing ? NamedTuple() : (m = mem,)
+            try
+                MEG.NLsolve.fixedpoint(FP!, copy(θ₀); method = :anderson, ftol = 1e-8, iterations = 1000, kw...)
+            catch e
+                e isa MEG.NLsolve.IsFiniteException && (bad += 1)
+            end
+        end
+        bad, tot
+    end
+    b0, t0 = count_nonfinite(0)
+    bd, _  = count_nonfinite(nothing)
+    b20, _ = count_nonfinite(20)
+    boolcheck("BiCM fixed point: Picard (m=0) never hits the singular least-squares — $b0 of $t0 failed",
+              b0 == 0)
+    boolcheck("BiCM fixed point: failures grow with Anderson memory (m=0: $b0, default: $bd, m=20: $b20)",
+              b0 <= bd <= b20 && b20 > 0)
+end
+
+# and the shipped solver, which walks that ladder, converges where the plain accelerator did not
+let nok = 0, ntot = 0
+    rng = Xoshiro(987)
+    for _ in 1:25
+        Nb = rand(rng, 4:24); Nt = rand(rng, 4:24); p = rand(rng) * 0.6 + 0.05
+        g = bip(rand(rng, 1:10^6), Nb, Nt, p)
+        mm = try BiCM(g) catch; continue end
+        ntot += 1
+        try
+            solve_model!(mm; method = :fixedpoint)
+            MEG.set_Ĝ!(mm)
+            r = max(maximum(abs, vec(sum(mm.Ĝ, dims = 2)) .- mm.d⊥),
+                    maximum(abs, vec(sum(mm.Ĝ, dims = 1)) .- mm.d⊤))
+            r < 1e-6 && (nok += 1)
+        catch; end
+    end
+    boolcheck("BiCM `:fixedpoint` (shipped, with the memory ladder) solves all $ntot probes — got $nok", nok == ntot)
+end
+
+# ===========================================================================
+# 7. the saturation ceiling counts LIVE vertices, not layer size
+# ===========================================================================
+# A vertex adjacent to every *available* counterpart forces p = 1 and its fitness diverges. Dead
+# vertices cannot be connected to, so they do not raise the ceiling — comparing against the layer
+# size let such inputs through, and they then burned the iteration cap instead of being refused.
+let
+    # 4 live ⊤ vertices (plus one dead); a ⊥ vertex of degree 4 is saturated among the live ones
+    d⊥ = [4, 2, 2, 1, 0]; d⊤ = [3, 3, 2, 1, 0]
+    threw = try (BiCM(nothing; d⊥ = d⊥, d⊤ = d⊤); false) catch e; e isa DomainError end
+    boolcheck("BiCM: a vertex adjacent to every LIVE counterpart is refused (ceiling counts live, not layer size)",
+              threw)
+    # the same shape with one more live ⊤ vertex is fine
+    d⊥b = [4, 2, 2, 1, 0]; d⊤b = [2, 2, 2, 2, 1]
+    ok = try (BiCM(nothing; d⊥ = d⊥b, d⊤ = d⊤b); true) catch; false end
+    boolcheck("BiCM: one more live counterpart and the same degree is accepted", ok)
+end
+
 report("BiCM & UECM geometry")

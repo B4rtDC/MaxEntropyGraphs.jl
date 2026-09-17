@@ -1,8 +1,10 @@
 name: CI
 on:
+  # Every pull request, whatever its base. Restricting this to `base: main` meant a STACKED pull
+  # request — one opened against another feature branch while that branch is still in review — got
+  # no checks at all and merged on nothing but a green tick from its parent. Running them costs a
+  # little more CI time and removes a silent hole.
   pull_request:
-    branches:
-      - main
   push:
     branches:
       - main

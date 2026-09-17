@@ -201,8 +201,18 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
     !isnothing(d⊤) && length(d⊤) == 0 ? throw(ArgumentError("The degree sequences d⊤ is empty")) : nothing
     !isnothing(d⊥) && length(d⊥) == 1 ? throw(ArgumentError("The degree sequences d⊥ only contains a single node")) : nothing
     !isnothing(d⊤) && length(d⊤) == 1 ? throw(ArgumentError("The degree sequences d⊤ only contains a single node")) : nothing    
-    maximum(d⊥) >= length(d⊤) ? throw(DomainError("The maximum outdegree in the layer d⊥ is greater or equal to the number of vertices in layer d⊤, this is not allowed")) : nothing
-    maximum(d⊤) >= length(d⊥) ? throw(DomainError("The maximum outdegree in the layer d⊤ is greater or equal to the number of vertices in layer d⊥, this is not allowed")) : nothing
+    # Saturation ceiling. A vertex adjacent to every vertex of the other layer forces `p_ij = 1` for all
+    # of them, so its fitness has no finite maximiser and the solve cannot converge.
+    #
+    # The ceiling is the number of *live* vertices opposite, not the layer size: a dead vertex (degree 0)
+    # can never be connected to, so it does not raise the bound. With dead channels present the two differ,
+    # and comparing against the layer size let genuinely unsolvable inputs through — they then ran to the
+    # iteration cap instead of being rejected (3 of 393 realisable random degree pairs, each one a vertex
+    # adjacent to every live vertex opposite). Graph-built models have no dead channels (isolated vertices
+    # are refused above), so for them `live == length` and this is the same check as before.
+    live⊥, live⊤ = count(!iszero, d⊥), count(!iszero, d⊤)
+    maximum(d⊥) >= live⊤ ? throw(DomainError("The maximum degree in layer d⊥ ($(maximum(d⊥))) is greater than or equal to the number of non-isolated vertices in layer d⊤ ($(live⊤)), this is not allowed: such a vertex must connect to every available counterpart, so its fitness diverges")) : nothing
+    maximum(d⊤) >= live⊥ ? throw(DomainError("The maximum degree in layer d⊤ ($(maximum(d⊤))) is greater than or equal to the number of non-isolated vertices in layer d⊥ ($(live⊥)), this is not allowed: such a vertex must connect to every available counterpart, so its fitness diverges")) : nothing
     if isnothing(G)
         ⊥nodes = collect(1:length(d⊥))
         ⊤nodes = collect(length(d⊥)+1:length(d⊥)+length(d⊤))
@@ -895,8 +905,41 @@ function solve_model!(m::BiCM;  # common settings
         G_buffer = zeros(N, length(m.θᵣ));   # buffer for G(x)
         # define fixed point function
         FP_model! = (θ::Vector) -> BiCM_reduced_iter!(θ, m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, x_buffer, y_buffer, G_buffer, m.status[:d⊥_unique]);
-        # obtain solution
-        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        # Obtain the solution, retrying down a ladder of Anderson memories if the accelerator blows up.
+        #
+        # WHY: the BiCM fixed-point map is *gauge-equivariant*. With `g = (1…1, -1…-1)` over the live
+        # entries, `G(θ + c·g) = G(θ) + c·g` exactly — the shift leaves every product `xᵢ·yⱼ` alone and
+        # multiplies the inner sum by `e^c`, which the outer `-log` turns back into `+c`. Two consequences:
+        # `g` is an eigenvector of the Jacobian with eigenvalue **exactly 1** (measured `‖J·g - g‖ ≈ 2e-16`,
+        # next eigenvalue `|λ-1| ≈ 0.06`), and the residual `G(θ) - θ` is completely **blind** to the gauge
+        # component. The residual Jacobian is therefore singular along `g` by construction — measured
+        # `rank = 8` of `9` on a small model.
+        #
+        # Anderson acceleration solves a least-squares problem built from residual *differences*, and every
+        # one of those lies in `gᗮ`. The more history it keeps, the sooner that system is rank-deficient and
+        # its internal solve emits `NaN`, which NLsolve reports as an `IsFiniteException`. Measured over 183
+        # random bipartite graphs, failures rise monotonically with the memory: 0 at `m=0`, 2 at `m=2`, 25 at
+        # the default, 75 at `m=20` — and *every* failure is that `NaN`, never a failure to converge in time.
+        #
+        # So the remedy is to shrink the least-squares, not to damp it. Damping (`beta=0.5`), which is what
+        # `UBCM` does for its own — different — overflow problem, makes this one WORSE (148/183 against
+        # 158/183 for the plain path). Stepping the memory down does work, and `m=0` is plain Picard, which
+        # has no least-squares at all and so cannot hit this failure mode. Measured on the same 183 graphs:
+        # this ladder solves 183/183 in 4551 total iterations, against 10413 for always-Picard (robust but
+        # slow) and 158/183 for the accelerated path alone.
+        sol = try
+            NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        catch e
+            e isa NLsolve.IsFiniteException || rethrow()
+            verbose && @info "Anderson acceleration produced non-finite values (its least-squares is rank-deficient along the gauge direction); retrying with a shorter memory (m=2)"
+            try
+                NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, m=2, ftol=ftol, iterations=maxiters);
+            catch e2
+                e2 isa NLsolve.IsFiniteException || rethrow()
+                verbose && @info "still non-finite; falling back to un-accelerated Picard iteration (m=0), which has no least-squares to go singular"
+                NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, m=0, ftol=ftol, iterations=maxiters);
+            end
+        end
         if NLsolve.converged(sol)
             if verbose 
             @info "Fixed point iteration converged after $(sol.iterations) iterations"
