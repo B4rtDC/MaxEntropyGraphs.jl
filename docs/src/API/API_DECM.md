@@ -19,6 +19,7 @@ MaxEntropyGraphs.L_DECM_reduced
 MaxEntropyGraphs.∇L_DECM_reduced!
 MaxEntropyGraphs.∇L_DECM_reduced_minus!
 MaxEntropyGraphs.DECM_reduced_iter!
+MaxEntropyGraphs.DECM_reduced_coordinate_iter!
 MaxEntropyGraphs.set_xᵣ!(::DECM)
 MaxEntropyGraphs.set_yᵣ!(::DECM)
 MaxEntropyGraphs.Ĝ(::DECM)

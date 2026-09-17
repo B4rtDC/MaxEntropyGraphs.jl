@@ -19,6 +19,7 @@ MaxEntropyGraphs.L_UECM_reduced
 MaxEntropyGraphs.∇L_UECM_reduced!
 MaxEntropyGraphs.∇L_UECM_reduced_minus!
 MaxEntropyGraphs.UECM_reduced_iter!
+MaxEntropyGraphs.UECM_reduced_coordinate_iter!
 MaxEntropyGraphs.set_xᵣ!(::UECM)
 MaxEntropyGraphs.set_yᵣ!(::UECM)
 MaxEntropyGraphs.Ĝ(::UECM)
