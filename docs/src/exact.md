@@ -44,7 +44,7 @@ For an undirected model the matrix entries ``g_{ij}`` and ``g_{ji}`` denote the 
 ```
 
 For the other model families the within-dyad term takes a different form:
-* the directed models with independent entries ([`DBCM`](@ref MaxEntropyGraphs.DBCM), [`DCReM`](@ref MaxEntropyGraphs.DCReM)) and the bipartite [`BiCM`](@ref MaxEntropyGraphs.BiCM) have ``\sigma[g_{ij}, g_{ji}] = 0`` (for the BiCM the biadjacency matrix is rectangular and every entry is a distinct, independent variable), so the formula reduces to the familiar sum of squares;
+* the directed models with independent entries ([`DBCM`](@ref MaxEntropyGraphs.DBCM), [`DCReM`](@ref MaxEntropyGraphs.DCReM)) and the bipartite [`BiCM`](@ref MaxEntropyGraphs.BiCM) and [`DBiCM`](@ref MaxEntropyGraphs.DBiCM) have ``\sigma[g_{ij}, g_{ji}] = 0`` (for the BiCM the biadjacency matrix is rectangular and every entry is a distinct, independent variable), so the formula reduces to the familiar sum of squares;
 * the reciprocal models ([`RBCM`](@ref MaxEntropyGraphs.RBCM), [`CRWCM`](@ref MaxEntropyGraphs.CRWCM)) draw both directions of a dyad *jointly*, so ``g_{ij}`` and ``g_{ji}`` are correlated through the reciprocity constraint; `σₓ` includes the corresponding dyadic covariance.
 
 ## [Model-specific moments](@id exact_moments)
@@ -56,6 +56,7 @@ The table below lists, for each model (and each layer of the two-layer models), 
 | DBCM | Bernoulli | ``p_{ij}=\frac{x_iy_j}{1+x_iy_j}`` | ``p_{ij}(1-p_{ij})`` | ``0`` |
 | RBCM | 4-state dyad | ``\left< a_{ij} \right>=\frac{x_iy_j+z_iz_j}{D_{ij}}`` | ``\left< a_{ij} \right>(1-\left< a_{ij} \right>)`` | ``p^{\leftrightarrow}_{ij}-\left< a_{ij} \right>\left< a_{ji} \right>`` |
 | BiCM (biadjacency) | Bernoulli | ``p_{i\alpha}=\frac{x_iy_\alpha}{1+x_iy_\alpha}`` | ``p_{i\alpha}(1-p_{i\alpha})`` | n/a (independent entries) |
+| DBiCM (biadjacency, per channel) | Bernoulli | ``p^{\pm}_{i\alpha}`` (see [`DBiCM`](@ref MaxEntropyGraphs.DBiCM)) | ``p^{\pm}_{i\alpha}(1-p^{\pm}_{i\alpha})`` | ``0`` — the two channels are independent |
 | UECM (binary) | Bernoulli | ``p_{ij}=\frac{xy}{1-y+xy}`` | ``p_{ij}(1-p_{ij})`` | ``= \sigma^2[g_{ij}]`` |
 | UECM (weighted) | Bernoulli–geometric | ``\left< w_{ij} \right>=\frac{p_{ij}}{1-y}`` | ``\frac{p_{ij}(1+y-p_{ij})}{(1-y)^{2}}`` | ``= \sigma^2[g_{ij}]`` |
 | CReM (binary) | Bernoulli | ``f_{ij}=\frac{x_ix_j}{1+x_ix_j}`` | ``f_{ij}(1-f_{ij})`` | ``= \sigma^2[g_{ij}]`` |

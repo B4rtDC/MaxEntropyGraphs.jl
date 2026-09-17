@@ -180,13 +180,19 @@ Exception thrown when the optimisation method does not converge.
 
 When using and optimisation method from the `Optimisation.jl` framework, the return code of the optimisation method is stored in the `retcode` field.
 When using the fixed point iteration method, the `retcode` field is set to `nothing`.
+
+Models that are solved in several independent pieces (such as the two channels of a `DBiCM`) set the
+optional `context` field to name the piece that failed; it is `nothing` otherwise.
 """
 struct ConvergenceError <: Exception
     method::Symbol
     retcode::Any  # Optimization.jl return code, or `nothing` for the fixed-point method
+    context::Union{Nothing, String}  # which sub-problem failed, for models solved in several pieces
 end
 
-Base.showerror(io::IO, e::ConvergenceError) = print(io, """method `$(e.method)` did not converge $(isnothing(e.retcode) ? "" : "(Optimization.jl return code: $(e.retcode))")""")
+ConvergenceError(method::Symbol, retcode) = ConvergenceError(method, retcode, nothing)
+
+Base.showerror(io::IO, e::ConvergenceError) = print(io, """method `$(e.method)` did not converge$(isnothing(e.context) ? "" : " for channel $(e.context)")$(isnothing(e.retcode) ? "" : " (Optimization.jl return code: $(e.retcode))")""")
 
 
 """
@@ -248,3 +254,51 @@ zero: `exp(-Inf) = 0`, and `m ≥ 0` remains finite).
     return m + log(exp(-m) + exp(a - m) + exp(b - m) + exp(c - m))
 end
 
+
+"""
+    _gauge_fixedpoint_ladder(FP!, θ₀; ftol, maxiters, verbose=false)
+
+Run `NLsolve.fixedpoint` on the Anderson-accelerated map `FP!`, retrying down a ladder of shorter
+memories (default → `m=2` → `m=0`) whenever the accelerator produces non-finite values. Returns the
+`NLsolve` solution object. Shared by the bipartite models, whose maps are gauge-equivariant.
+
+WHY: a bipartite fixed-point map is *gauge-equivariant*. With `g = (1…1, -1…-1)` over the live
+entries, `G(θ + c·g) = G(θ) + c·g` exactly — the shift leaves every product `xᵢ·yⱼ` alone and
+multiplies the inner sum by `e^c`, which the outer `-log` turns back into `+c`. Two consequences:
+`g` is an eigenvector of the Jacobian with eigenvalue **exactly 1** (measured `‖J·g - g‖ ≈ 2e-16`,
+next eigenvalue `|λ-1| ≈ 0.06`), and the residual `G(θ) - θ` is completely **blind** to the gauge
+component. The residual Jacobian is therefore singular along `g` by construction — measured
+`rank = 8` of `9` on a small model.
+
+Anderson acceleration solves a least-squares problem built from residual *differences*, and every
+one of those lies in `gᗮ`. The more history it keeps, the sooner that system is rank-deficient and
+its internal solve emits `NaN`, which NLsolve reports as an `IsFiniteException`. Measured over 183
+random bipartite graphs, failures rise monotonically with the memory: 0 at `m=0`, 2 at `m=2`, 25 at
+the default, 75 at `m=20` — and *every* failure is that `NaN`, never a failure to converge in time.
+
+So the remedy is to shrink the least-squares, not to damp it. Damping (`beta=0.5`), which is what
+`UBCM` does for its own — different — overflow problem, makes this one WORSE (148/183 against
+158/183 for the plain path). Stepping the memory down does work, and `m=0` is plain Picard, which
+has no least-squares at all and so cannot hit this failure mode. Measured on the same 183 graphs:
+this ladder solves 183/183 in 4551 total iterations, against 10413 for always-Picard (robust but
+slow) and 158/183 for the accelerated path alone.
+
+A model with `n` independent gauge directions makes the least-squares rank-deficient by `n`, which
+is a *different* regime from the one measured above. The `DBiCM` therefore solves its two channels
+separately, so that each call here sees exactly one gauge direction.
+"""
+function _gauge_fixedpoint_ladder(FP!, θ₀::Vector; ftol::Real, maxiters::Int, verbose::Bool=false)
+    return try
+        NLsolve.fixedpoint(FP!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters)
+    catch e
+        e isa NLsolve.IsFiniteException || rethrow()
+        verbose && @info "Anderson acceleration produced non-finite values (its least-squares is rank-deficient along the gauge direction); retrying with a shorter memory (m=2)"
+        try
+            NLsolve.fixedpoint(FP!, θ₀, method=:anderson, m=2, ftol=ftol, iterations=maxiters)
+        catch e2
+            e2 isa NLsolve.IsFiniteException || rethrow()
+            verbose && @info "still non-finite; falling back to un-accelerated Picard iteration (m=0), which has no least-squares to go singular"
+            NLsolve.fixedpoint(FP!, θ₀, method=:anderson, m=0, ftol=ftol, iterations=maxiters)
+        end
+    end
+end

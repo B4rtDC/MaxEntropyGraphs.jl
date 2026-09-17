@@ -47,6 +47,7 @@ sequences the answer is the worst case across all of them:
 | `UBCM`  | degree                                                                    |
 | `DBCM`  | out-degree, in-degree                                                     |
 | `BiCM`  | ⊥-layer degree, ⊤-layer degree                                            |
+| `DBiCM` | ⊥-layer out/in-degree, ⊤-layer out/in-degree                              |
 | `RBCM`  | non-reciprocated out-degree, non-reciprocated in-degree, reciprocated degree |
 | `UECM`  | degree, strength                                                          |
 | `DECM`  | out-degree, in-degree, out-strength, in-strength                          |
@@ -146,6 +147,24 @@ function constraint_residual(m::BiCM; relative::Bool=false)
     # each layer carries its own multiplicities
     r = vcat(∇L[1:n⊥] ./ m.f⊥, ∇L[n⊥+1:end] ./ m.f⊤)
     return _constraint_residual(r, vcat(m.d⊥ᵣ, m.d⊤ᵣ), relative)
+end
+
+function constraint_residual(m::DBiCM; relative::Bool=false)
+    m.status[:params_computed] || throw(ArgumentError("The parameters have not been computed yet"))
+    N = precision(m)
+    ∇L = zeros(N, length(m.θᵣ))
+    ∇L_DBiCM_reduced!(∇L, m.θᵣ, m,
+                      zeros(N, length(m.d⊥ᵣ_out)), zeros(N, length(m.d⊤ᵣ_in)),
+                      zeros(N, length(m.d⊥ᵣ_in)),  zeros(N, length(m.d⊤ᵣ_out)))
+    # four independent reductions, so four separate multiplicity weightings to undo
+    r = N[]; target = Int[]
+    for ch in (:to_top, :to_bottom)
+        c = _channel(m, ch)
+        g = @view ∇L[c.block]
+        append!(r, vcat(g[1:c.n_own] ./ c.f_own, g[c.n_own+1:end] ./ c.f_opp))
+        append!(target, vcat(c.d_own, c.d_opp))
+    end
+    return _constraint_residual(r, target, relative)
 end
 
 

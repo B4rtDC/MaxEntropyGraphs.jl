@@ -1,14 +1,18 @@
 # Which null model should I use?
 
-The package implements nine maximum-entropy null models. They differ in the type of network they apply
+The package implements ten maximum-entropy null models. They differ in the type of network they apply
 to (undirected/directed/bipartite, binary/weighted) and in the structural information they preserve
 (degrees, strengths, reciprocity). This page helps you pick the right one; the individual model pages
 document the mathematics and the API.
 
 ## Decision tree
 
-1. **Is the network bipartite?** → [`BiCM`](@ref MaxEntropyGraphs.BiCM) (binary; project afterwards with
-   [`project`](@ref MaxEntropyGraphs.project)).
+1. **Is the network bipartite?**
+   - edges are undirected → [`BiCM`](@ref MaxEntropyGraphs.BiCM) (binary; project afterwards with
+     [`project`](@ref MaxEntropyGraphs.project));
+   - edges carry a direction → [`DBiCM`](@ref MaxEntropyGraphs.DBiCM) (binary; constrains the out- and
+     in-degrees of both layers). Note that it does **not** constrain reciprocity, so it will generally
+     under-predict the reciprocated ⊥–⊤ dyads.
 2. **Is the network undirected?**
    - binary → [`UBCM`](@ref MaxEntropyGraphs.UBCM) (degree sequence);
    - weighted, **integer** weights, degrees *and* strengths matter → [`UECM`](@ref MaxEntropyGraphs.UECM);
@@ -60,6 +64,7 @@ weighted pair DCReM/CRWCM through the weighted reciprocity ``r_w`` ([`weighted_r
 | [`DBCM`](@ref MaxEntropyGraphs.DBCM)   | directed, binary     | ``k^{out}_i, k^{in}_i``                       | ``2N`` | yes | — |
 | [`RBCM`](@ref MaxEntropyGraphs.RBCM)   | directed, binary     | ``k^{→}_i, k^{←}_i, k^{↔}_i``                 | ``3N`` | **no** | — |
 | [`BiCM`](@ref MaxEntropyGraphs.BiCM)   | bipartite, binary    | ``k_i`` (both layers)                         | ``N_⊥ + N_⊤`` | yes | — |
+| [`DBiCM`](@ref MaxEntropyGraphs.DBiCM) | bipartite, directed, binary | ``k^{out}_i, k^{in}_i`` (both layers)  | ``2(N_⊥ + N_⊤)`` | yes | — |
 | [`UECM`](@ref MaxEntropyGraphs.UECM)   | undirected, weighted | ``k_i, s_i``                                  | ``2N`` | (symmetric) | integer |
 | [`DECM`](@ref MaxEntropyGraphs.DECM)   | directed, weighted   | ``k^{out}_i, k^{in}_i, s^{out}_i, s^{in}_i``  | ``4N`` | yes | integer |
 | [`CReM`](@ref MaxEntropyGraphs.CReM)   | undirected, weighted | ``s_i`` (conditional on UBCM topology)        | ``N``  | (symmetric) | continuous |

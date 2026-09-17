@@ -38,6 +38,7 @@ exponentials, joint MGF for the reciprocal coupling).
 | `dbcm.jl` | ALL PASS (9) | p, Var, and Cov(a_ij,a_ji)=0 from the factorized 4-state sum |
 | `rbcm.jl` | ALL PASS (9) | ⟨a⟩=(x_iy_j+z_iz_j)/Z, Var=a(1−a), Cov=z_iz_j/Z−⟨a_ij⟩⟨a_ji⟩ ≡ `_cov_dyads` |
 | `bicm.jl` | ALL PASS (15) | p=xy/(1+xy) ≡ `f_BiCM`; entry independence; Saracco III.7 binomial-derivative identity (n=2,3,4); III.10≡III.6; Gaussian shifts for ⟨N_Vn⟩ (n=2,3,4) |
+| `dbicm.jl` | ALL PASS (26) | the DBiCM Hamiltonian separates: ⟨B⁺⟩ is free of the ⁻ parameters, Cov(B⁺,B⁻)=0 within a dyad, independence for all three projection kernels, exactly two gauge modes and zero cross-channel curvature |
 | `uecm.jl` | ALL PASS (29) | via PGF: p ≡ `f_UECM`, ⟨w⟩=p/(1−y) ≡ `Ŵ`, **Var[w]=p(1+y−p)/(1−y)²** (proposed σʷ), Cov(a,w)=⟨w⟩(1−p) |
 | `decm.jl` | ALL PASS (37) | directed twin of `uecm.jl` via the per-channel PGF with composite params `x=xᵢ_out·xⱼ_in`, `y=yᵢ_out·yⱼ_in`: p ≡ `f_DECM`, ⟨w⟩ ≡ `Ŵ`, Var[w] ≡ `σʷ`², Cov(a,w)=⟨w⟩(1−p); joint PGF factorizes ⇒ Cov(w_ij,w_ji)=0 |
 | `crem.jl` | ALL PASS (32) | via MGF: ⟨w⟩=f/(θ_i+θ_j) ≡ `Ŵ`, **Var[w]=f(2−f)/(θ_i+θ_j)²** (proposed σʷ, = DCReM code form), Cov(a,w)=⟨w⟩(1−f) |

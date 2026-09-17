@@ -62,8 +62,8 @@ end
 
 Base.show(io::IO, m::BiCM{T,N}) where {T,N} = print(io, """BiCM{$(T), $(N)} ($(m.status[:N⊥]) + $(m.status[:N⊤]) vertices, $(m.status[:d⊥_unique]) + $(m.status[:d⊤_unique]) unique degrees, $(@sprintf("%.2f", m.status[:cᵣ])) compression ratio)""")
 
-"""Return the reduced number of nodes in the UBCM network"""
-Base.length(m::BiCM) = length(m.d⊥_ᵣ) + length(m.d⊤_ᵣ)
+"""Return the reduced number of nodes in the BiCM network (both layers combined)"""
+Base.length(m::BiCM) = length(m.d⊥ᵣ) + length(m.d⊤ᵣ)
 
 
 """
@@ -90,14 +90,14 @@ BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (25 + 15 vertices, 6 + 6 u
 ```
 ```jldoctest
 # generating a model directly from a degree sequence
-julia> model = model = BiCM(d⊥=[1,1,2,2,2,3,3,1,1,2], d⊤=[3,4,5,2,5,6,6,1,1,2])
-BiCM{Nothing, Float64} (10 + 10 vertices, 3 + 6 unique degrees, 0.45 compression ratio)
+julia> model = model = BiCM(d⊥=[1,1,2,2,2,3,3,1,1,2], d⊤=[1,1,1,1,1,2,2,2,3,4])
+BiCM{Nothing, Float64} (10 + 10 vertices, 3 + 4 unique degrees, 0.35 compression ratio)
 
 ```
 ```jldoctest
 # generating a model directly from a degree sequence with a different precision
-julia> model = model = BiCM(d⊥=[1,1,2,2,2,3,3,1,1,2], d⊤=[3,4,5,2,5,6,6,1,1,2], precision=Float32)
-BiCM{Nothing, Float32} (10 + 10 vertices, 3 + 6 unique degrees, 0.45 compression ratio)
+julia> model = model = BiCM(d⊥=[1,1,2,2,2,3,3,1,1,2], d⊤=[1,1,1,1,1,2,2,2,3,4], precision=Float32)
+BiCM{Nothing, Float32} (10 + 10 vertices, 3 + 4 unique degrees, 0.35 compression ratio)
 
 ```
 ```jldoctest
@@ -149,8 +149,16 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
         # check if the graph is empty or has only one vertex
         Graphs.nv(G) == 0 ? throw(ArgumentError("The graph is empty")) : nothing
         Graphs.nv(G) == 1 ? throw(ArgumentError("The graph has only one vertex")) : nothing
+        # The bipartition must be read off the UNDIRECTED skeleton. `Graphs.bipartite_map` BFSes over
+        # `outneighbors` only, so on a directed graph it explores just the out-reachable set of its seed
+        # and leaves every other vertex at the default colour — `2→1, 2→3, 4→1` comes back as `[1,1,1,1]`
+        # (one layer) while `is_bipartite` still reports `true`, because an empty traversal finds no
+        # conflict. The failure is data-dependent: when every ⊥ vertex has out-edges the BFS happens to
+        # reach everything and the answer is right, so it survives casual use and then silently
+        # mis-partitions a network whose ⊥ layer contains pure receivers.
+        Gᵤ = Graphs.is_directed(G) ? Graphs.SimpleGraph(G) : G
         # check if the graph is bipartite
-        Graphs.is_bipartite(G) ? nothing : throw(ArgumentError("The graph is not bipartite"))
+        Graphs.is_bipartite(Gᵤ) ? nothing : throw(ArgumentError("The graph is not bipartite"))
         
         if Graphs.is_directed(G)
             @warn "The graph is directed, while the BiCM model is undirected, the directional information will be lost"
@@ -173,7 +181,7 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
         # `p_ij = 0 ∀j`), and the other models fit isolated vertices without trouble. It is specific to
         # the BiCM, where a vertex must also be *assigned to a layer*.
         if Graphs.nv(G) > 0
-            isolated = findall(v -> iszero(Graphs.degree(G, v)), Graphs.vertices(G))
+            isolated = findall(v -> iszero(Graphs.degree(Gᵤ, v)), Graphs.vertices(Gᵤ))
             if !isempty(isolated)
                 throw(ArgumentError("""
                 The graph has $(length(isolated)) isolated vertex/vertices $(length(isolated) > 6 ? string(first(isolated, 6), " …") : string(isolated)), whose layer membership is not determined by the data.
@@ -186,13 +194,15 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
                 """))
             end
         end
-        # get layer membership
-        membership = Graphs.bipartite_map(G)
+        # get layer membership (from the undirected skeleton, see above)
+        membership = Graphs.bipartite_map(Gᵤ)
         ⊥nodes, ⊤nodes = findall(membership .== 1), findall(membership .== 2)
         is⊥ = membership .== 1 # keep track of the membership of each node for later use (e.g. degree etc.)
         # degree sequences
-        d⊥ = isnothing(d⊥) ? Graphs.degree(G, ⊥nodes) : d⊥
-        d⊤ = isnothing(d⊤) ? Graphs.degree(G, ⊤nodes) : d⊤
+        # degrees from the skeleton too: on a directed input a reciprocated pair is ONE undirected
+        # edge, but `Graphs.degree(::SimpleDiGraph, v)` is in+out and would count it twice.
+        d⊥ = isnothing(d⊥) ? Graphs.degree(Gᵤ, ⊥nodes) : d⊥
+        d⊤ = isnothing(d⊤) ? Graphs.degree(Gᵤ, ⊤nodes) : d⊤
 
         Graphs.nv(G) != length(d⊥) + length(d⊤) ? throw(DimensionMismatch("The number of vertices in the graph ($(Graphs.nv(G))) and the length of the degree sequences do not match")) : nothing
     end
@@ -201,6 +211,13 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
     !isnothing(d⊤) && length(d⊤) == 0 ? throw(ArgumentError("The degree sequences d⊤ is empty")) : nothing
     !isnothing(d⊥) && length(d⊥) == 1 ? throw(ArgumentError("The degree sequences d⊥ only contains a single node")) : nothing
     !isnothing(d⊤) && length(d⊤) == 1 ? throw(ArgumentError("The degree sequences d⊤ only contains a single node")) : nothing    
+    # Link conservation. Both layers count the SAME edges, so `Σd⊥` and `Σd⊤` are two ways of writing
+    # the number of links: a pair that disagrees describes no bipartite graph at all. The likelihood is
+    # still perfectly well defined, it simply has no stationary point — the ⊥ block of the gradient wants
+    # `Σᵢ⟨kᵢ⟩ = Σd⊥` while the ⊤ block wants the same sum to equal `Σd⊤`, and the solver spends its whole
+    # iteration budget failing to satisfy both before throwing a bare `ConvergenceError` that says nothing
+    # about why. Reject it here, where the arithmetic explains itself.
+    sum(d⊥) == sum(d⊤) ? nothing : throw(DomainError("The degree sequences are not realisable: the links counted from layer d⊥ (Σd⊥ = $(sum(d⊥))) and from layer d⊤ (Σd⊤ = $(sum(d⊤))) disagree, but both count the edges of the same bipartite graph, so they must be equal"))
     # Saturation ceiling. A vertex adjacent to every vertex of the other layer forces `p_ij = 1` for all
     # of them, so its fitness has no finite maximiser and the solve cannot converge.
     #
@@ -788,7 +805,7 @@ function rand(m::BiCM; precomputed::Bool=false, rng::AbstractRNG=default_rng())
         # check if possible to use precomputed Ĝ
         m.status[:G_computed] ? nothing : throw(ArgumentError("The expected adjacency matrix has not been computed yet"))
         # generate random graph
-        G = Graphs.SimpleDiGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand(rng)<m.Ĝ[i,j]]))
+        G = Graphs.SimpleGraphFromIterator( Graphs.Edge.([(or⊥,or⊤) for (i,or⊥) in enumerate(m.⊥nodes) for (j,or⊤) in enumerate(m.⊤nodes) if rand(rng)<m.Ĝ[i,j]]))
     else
         # check if possible to use parameters
         m.status[:params_computed] ? nothing : throw(ArgumentError("The parameters have not been computed yet"))
@@ -905,41 +922,10 @@ function solve_model!(m::BiCM;  # common settings
         G_buffer = zeros(N, length(m.θᵣ));   # buffer for G(x)
         # define fixed point function
         FP_model! = (θ::Vector) -> BiCM_reduced_iter!(θ, m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, x_buffer, y_buffer, G_buffer, m.status[:d⊥_unique]);
-        # Obtain the solution, retrying down a ladder of Anderson memories if the accelerator blows up.
-        #
-        # WHY: the BiCM fixed-point map is *gauge-equivariant*. With `g = (1…1, -1…-1)` over the live
-        # entries, `G(θ + c·g) = G(θ) + c·g` exactly — the shift leaves every product `xᵢ·yⱼ` alone and
-        # multiplies the inner sum by `e^c`, which the outer `-log` turns back into `+c`. Two consequences:
-        # `g` is an eigenvector of the Jacobian with eigenvalue **exactly 1** (measured `‖J·g - g‖ ≈ 2e-16`,
-        # next eigenvalue `|λ-1| ≈ 0.06`), and the residual `G(θ) - θ` is completely **blind** to the gauge
-        # component. The residual Jacobian is therefore singular along `g` by construction — measured
-        # `rank = 8` of `9` on a small model.
-        #
-        # Anderson acceleration solves a least-squares problem built from residual *differences*, and every
-        # one of those lies in `gᗮ`. The more history it keeps, the sooner that system is rank-deficient and
-        # its internal solve emits `NaN`, which NLsolve reports as an `IsFiniteException`. Measured over 183
-        # random bipartite graphs, failures rise monotonically with the memory: 0 at `m=0`, 2 at `m=2`, 25 at
-        # the default, 75 at `m=20` — and *every* failure is that `NaN`, never a failure to converge in time.
-        #
-        # So the remedy is to shrink the least-squares, not to damp it. Damping (`beta=0.5`), which is what
-        # `UBCM` does for its own — different — overflow problem, makes this one WORSE (148/183 against
-        # 158/183 for the plain path). Stepping the memory down does work, and `m=0` is plain Picard, which
-        # has no least-squares at all and so cannot hit this failure mode. Measured on the same 183 graphs:
-        # this ladder solves 183/183 in 4551 total iterations, against 10413 for always-Picard (robust but
-        # slow) and 158/183 for the accelerated path alone.
-        sol = try
-            NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
-        catch e
-            e isa NLsolve.IsFiniteException || rethrow()
-            verbose && @info "Anderson acceleration produced non-finite values (its least-squares is rank-deficient along the gauge direction); retrying with a shorter memory (m=2)"
-            try
-                NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, m=2, ftol=ftol, iterations=maxiters);
-            catch e2
-                e2 isa NLsolve.IsFiniteException || rethrow()
-                verbose && @info "still non-finite; falling back to un-accelerated Picard iteration (m=0), which has no least-squares to go singular"
-                NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, m=0, ftol=ftol, iterations=maxiters);
-            end
-        end
+        # Obtain the solution. The map is gauge-equivariant, which makes Anderson's least-squares
+        # rank-deficient along the gauge direction; `_gauge_fixedpoint_ladder` steps the memory down
+        # until it stops producing NaN. Full derivation and the measurements are on that helper.
+        sol = _gauge_fixedpoint_ladder(FP_model!, θ₀; ftol=ftol, maxiters=maxiters, verbose=verbose)
         if NLsolve.converged(sol)
             if verbose 
             @info "Fixed point iteration converged after $(sol.iterations) iterations"

@@ -1,5 +1,86 @@
 # Changelog
 
+## Unreleased
+
+Adds the `DBiCM` (directed bipartite configuration model), together with four `BiCM` correctness fixes
+and one shared-solver extraction that it is built on.
+
+### Added
+- **`DBiCM` — a directed bipartite configuration model**, constraining all four degree sequences: the
+  out- and in-degrees of both layers. It fills the one gap in the model table — every other model had a
+  directed counterpart, so a directed bipartite network could previously only be fitted by discarding
+  the directions.
+
+  A directed bipartite graph has two disjoint link channels, `⊥ → ⊤` and `⊤ → ⊥`. Collected per entry
+  the Hamiltonian reads `Σ (αᵢ + δ_α) B⁺ + Σ (βᵢ + γ_α) B⁻`, so **no term couples the two channels**:
+  the model is exactly two `BiCM`s, one on `(d⊥_out, d⊤_in)` and one on `(d⊥_in, d⊤_out)`, and it
+  introduces no new likelihood — `L_DBiCM_reduced` is `L_BiCM_reduced` evaluated on two disjoint blocks
+  of θ and summed. Three consequences, all verified rather than assumed:
+
+  - **Four independent class reductions.** The `DBCM` needs joint `(out, in)` classes only because its
+    sums carry the self-exclusion `i ≠ j`. Bipartite sums range over disjoint vertex sets, the
+    cross-channel second derivatives vanish identically (measured `< 1e-10`), and the joint pair never
+    enters the likelihood. On the test fixture this is 23 parameter classes where a `DBCM`-style
+    reduction would give 50.
+  - **The two channels are solved separately.** This is the exact decomposition, not a compromise: it
+    keeps each solve at a single gauge direction — the regime the `BiCM` fixed-point accelerator is
+    measured on — where a joint four-block solve would make Anderson's least-squares rank-deficient by
+    two, which is untested. The Hessian's null dimension is exactly 2 (measured eigenvalues `2.7e-16`,
+    `2.0e-15`, then `0.99`) and the condition number off the gauge is `12.8`, inside the `BiCM`'s
+    measured 9–23, so `:Newton` needs no gauge-fixing here either.
+  - **A channel carrying no links is not iterated.** A purely one-directional bipartite network is an
+    ordinary input, not an edge case; its reverse channel's optimum is `θ ≡ Inf`, `p ≡ 0` exactly, and
+    running the fixed-point map on it would evaluate `-log(0/0)`.
+
+  All of `:fixedpoint`, `:BFGS`, `:LBFGS` and `:Newton` reach a constraint residual below `1e-7` from
+  every initial guess and reproduce all four constrained sequences.
+
+  `reciprocity(m::DBiCM)` is exact, since `⟨B⁺B⁻⟩ = p⁺p⁻`. Note that the model does **not** constrain
+  reciprocity — it is the bipartite analogue of the `DBCM`, not of the `RBCM` — so it will generally
+  under-predict the reciprocated ⊥–⊤ dyads, and that gap is informative.
+
+  Two selectors appear in the API and mean different things: `channel` is **absolute** (`:to_top` is
+  `⊥ → ⊤`, `:to_bottom` is `⊤ → ⊥`), while `layer` is relative to the projected side. `:out`/`:in` are
+  deliberately refused as a `channel`, with a pointer, because they are the projection API's vocabulary
+  and would select the opposite matrix under `layer = :top`.
+
+  Directed projection tooling (the three V-motif kinds and their significance filters) follows
+  separately.
+
+### Fixed
+- **`BiCM(::SimpleDiGraph)` silently produced the wrong layers *and* the wrong degrees.** The constructor
+  warns that "the directional information will be lost" and then called `Graphs.is_bipartite` and
+  `Graphs.bipartite_map` on the directed graph. That map BFSes over `outneighbors` only, so it explores
+  just the out-reachable set of its seed and leaves every other vertex at the default colour: on
+  `2→1, 2→3, 4→1` it returns `[1,1,1,1]` — one layer — while `is_bipartite` still reports `true`, because
+  an empty traversal encounters no conflict. Separately, `Graphs.degree` on a digraph is in-degree plus
+  out-degree, so a reciprocated pair was counted as two undirected edges rather than one, which also broke
+  link conservation between the layers. Membership, the degree sequences and the isolated-vertex guard are
+  now all read off the undirected skeleton. The failure was data-dependent — when every ⊥ vertex has
+  out-edges the traversal happens to reach everything — so it survived casual use and would have
+  mis-partitioned any network whose ⊥ layer contains pure receivers.
+- **`Base.length(m::BiCM)` threw on every call.** It read `m.d⊥_ᵣ` and `m.d⊤_ᵣ`; the fields are `d⊥ᵣ` and
+  `d⊤ᵣ`. The method is listed on the public API page, and its docstring said "UBCM".
+- **`rand(m::BiCM; precomputed=true)` returned a directed graph**, and `rand(m, n; precomputed=true)`
+  therefore threw, because the batch method preallocates a `Vector{SimpleGraph{Int}}`. Only the
+  precomputed path was affected; the default path was already correct.
+
+### Added
+- **`BiCM` now rejects degree sequences that no bipartite graph can realise.** `Σd⊥` and `Σd⊤` both count
+  the edges of the same graph, so a pair that disagrees has no maximum-likelihood point at all: the ⊥
+  block of the gradient wants `Σᵢ⟨kᵢ⟩ = Σd⊥` while the ⊤ block wants that same sum to equal `Σd⊤`. Such
+  input previously ran to the iteration cap and then threw a bare `ConvergenceError` that said nothing
+  about why. It is now a `DomainError` quoting both sums. This can only fire for models built from
+  explicit sequences — graph-built models satisfy it automatically.
+
+  The package's own `BiCM` docstring carried such a pair (`Σd⊥ = 18` against `Σd⊤ = 35`); its examples
+  now use realisable sequences.
+
+### Changed
+- The `BiCM` `:fixedpoint` Anderson memory ladder moved to `_gauge_fixedpoint_ladder` in
+  `src/Models/models.jl`, so the bipartite models can share one copy of the recipe and of the
+  measurements justifying it. Pure extraction — no behavioural change.
+
 ## v0.8.0
 
 Solver correctness and robustness across the `BiCM`, `DBCM`, `UECM` and `DECM`, and Julia 1.13.
