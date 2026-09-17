@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## v0.8.0
+
+Solver correctness and robustness across the `BiCM`, `DBCM`, `UECM` and `DECM`, and Julia 1.13.
+
+**This release supersedes v0.7.1, which was never tagged**: its changes (the `NLsolve` 5 / `Optim` 2
+compatibility work) ship here. The version is `0.8.0` rather than `0.7.2` because of the breaking `BiCM`
+constructor change below.
 
 ### Fixed
 - **`BiCM`: the `:fixedpoint` default aborted on ~1 bipartite graph in 7.** Measured: **25 of 183** random
@@ -166,7 +172,7 @@
 - `DECM` `solve_model!` now defaults to `maxiters = 10_000` (was `1000`), and `:Newton` defaults to a
   `ForwardDiff` Hessian rather than the Zygote `SecondOrder` path. Both documented on the method.
 
-## v0.7.1
+## v0.7.1 — never released; folded into v0.8.0
 
 Compatibility with the modern SciML optimisation stack (`NLsolve` 5 / `Optim` 2).
 
