@@ -142,6 +142,32 @@ if get(ENV, "MEG_SKIP_SYMBOLIC", "0") != "1"
         @test ratzero(dB2 - B2 * (1/u + 1/(u - 1)), [u => (5, 50)])
     end
 
+    @testset "DBiCM" begin
+        # The four-state dyad (B⁺, B⁻) ∈ {0,1}² with weight a^B⁺·b^B⁻, a = x⊥out·x⊤in and
+        # b = x⊥in·x⊤out. The model's whole structure rests on this factorising.
+        xo, wi, yi, zo = svars(:xo, :wi, :yi, :zo)
+        doms = [xo => (1//100, 20), wi => (1//100, 20), yi => (1//100, 20), zo => (1//100, 20)]
+        a = xo * wi
+        b = yi * zo
+        W(mp, mm) = a^mp * b^mm
+        Z    = sum(W(mp, mm) for mp in 0:1, mm in 0:1)
+        Ep   = sum(mp      * W(mp, mm) for mp in 0:1, mm in 0:1) / Z
+        Em   = sum(mm      * W(mp, mm) for mp in 0:1, mm in 0:1) / Z
+        Ep2  = sum(mp^2    * W(mp, mm) for mp in 0:1, mm in 0:1) / Z
+        Epm  = sum(mp * mm * W(mp, mm) for mp in 0:1, mm in 0:1) / Z
+        pp = a / (1 + a)
+        pm = b / (1 + b)
+        # the separation: ⟨B⁺⟩ carries none of the ⁻ parameters, and vice versa
+        @test ratzero(Ep - pp, doms)
+        @test ratzero(Em - pm, doms)
+        # Var[B⁺] = p⁺(1−p⁺)
+        @test ratzero((Ep2 - Ep^2) - pp * (1 - pp), doms)
+        # no reciprocity coupling: the two channels are independent WITHIN a dyad, which is
+        # what distinguishes this model from the RBCM and makes all three directed V-motif
+        # kernels exactly Poisson-binomial
+        @test ratzero(Epm - Ep * Em, doms)
+    end
+
     @testset "UECM" begin
         # Bernoulli–geometric dyad weight via the probability generating function
         # G(t) = ⟨tʷ⟩ = (1 + x t y/(1 − t y))/Z with Z = 1 + x y/(1 − y)

@@ -40,8 +40,8 @@ sampling. It further performs motif-based analysis and extracts statistically
 validated projections of bipartite networks. All graphs
 are standard objects from the Julia graph ecosystem [@graphs2021], so models
 integrate directly with existing tooling. The currently supported models are the
-Undirected, Directed and Bipartite Binary Configuration Models (UBCM, DBCM,
-BiCM), the Reciprocal Binary Configuration Model (RBCM)
+Undirected, Directed, Bipartite and Directed Bipartite Binary Configuration
+Models (UBCM, DBCM, BiCM, DBiCM), the Reciprocal Binary Configuration Model (RBCM)
 [@squartini2011analytical], the Undirected and Directed Enhanced Configuration
 Models (UECM, DECM), the undirected and directed Conditional Reconstruction
 Methods (CReM, DCReM) [@parisi2020faster], and the Conditionally Reciprocal
