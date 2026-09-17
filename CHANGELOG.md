@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+Groundwork for the `DBiCM` (directed bipartite configuration model): four `BiCM` correctness fixes and
+one shared-solver extraction. No new model yet.
+
+### Fixed
+- **`BiCM(::SimpleDiGraph)` silently produced the wrong layers *and* the wrong degrees.** The constructor
+  warns that "the directional information will be lost" and then called `Graphs.is_bipartite` and
+  `Graphs.bipartite_map` on the directed graph. That map BFSes over `outneighbors` only, so it explores
+  just the out-reachable set of its seed and leaves every other vertex at the default colour: on
+  `2→1, 2→3, 4→1` it returns `[1,1,1,1]` — one layer — while `is_bipartite` still reports `true`, because
+  an empty traversal encounters no conflict. Separately, `Graphs.degree` on a digraph is in-degree plus
+  out-degree, so a reciprocated pair was counted as two undirected edges rather than one, which also broke
+  link conservation between the layers. Membership, the degree sequences and the isolated-vertex guard are
+  now all read off the undirected skeleton. The failure was data-dependent — when every ⊥ vertex has
+  out-edges the traversal happens to reach everything — so it survived casual use and would have
+  mis-partitioned any network whose ⊥ layer contains pure receivers.
+- **`Base.length(m::BiCM)` threw on every call.** It read `m.d⊥_ᵣ` and `m.d⊤_ᵣ`; the fields are `d⊥ᵣ` and
+  `d⊤ᵣ`. The method is listed on the public API page, and its docstring said "UBCM".
+- **`rand(m::BiCM; precomputed=true)` returned a directed graph**, and `rand(m, n; precomputed=true)`
+  therefore threw, because the batch method preallocates a `Vector{SimpleGraph{Int}}`. Only the
+  precomputed path was affected; the default path was already correct.
+
+### Added
+- **`BiCM` now rejects degree sequences that no bipartite graph can realise.** `Σd⊥` and `Σd⊤` both count
+  the edges of the same graph, so a pair that disagrees has no maximum-likelihood point at all: the ⊥
+  block of the gradient wants `Σᵢ⟨kᵢ⟩ = Σd⊥` while the ⊤ block wants that same sum to equal `Σd⊤`. Such
+  input previously ran to the iteration cap and then threw a bare `ConvergenceError` that said nothing
+  about why. It is now a `DomainError` quoting both sums. This can only fire for models built from
+  explicit sequences — graph-built models satisfy it automatically.
+
+  The package's own `BiCM` docstring carried such a pair (`Σd⊥ = 18` against `Σd⊤ = 35`); its examples
+  now use realisable sequences.
+
+### Changed
+- The `BiCM` `:fixedpoint` Anderson memory ladder moved to `_gauge_fixedpoint_ladder` in
+  `src/Models/models.jl`, so the bipartite models can share one copy of the recipe and of the
+  measurements justifying it. Pure extraction — no behavioural change.
+
 ## v0.8.0
 
 Solver correctness and robustness across the `BiCM`, `DBCM`, `UECM` and `DECM`, and Julia 1.13.

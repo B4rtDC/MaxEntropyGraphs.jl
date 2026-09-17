@@ -683,6 +683,55 @@
             
         end
         
+        @testset "BiCM - directed input, layers and degrees from the skeleton" begin
+            # `Graphs.bipartite_map` BFSes over `outneighbors` only, so on a directed graph it explores
+            # just the out-reachable set of its seed and leaves everything else at the default colour.
+            # Here the whole ⊥ layer consists of pure receivers, so the traversal finds nothing at all
+            # and the map collapses to a single layer — while `is_bipartite` still reports `true`,
+            # because an empty traversal encounters no conflict.
+            # ⊥ = {1,2,3}, ⊤ = {4,5,6}; every edge points ⊤ → ⊥
+            G = MaxEntropyGraphs.Graphs.SimpleDiGraph(6)
+            for (a,b) in ((4,1),(4,2),(5,2),(5,3),(6,3))
+                MaxEntropyGraphs.Graphs.add_edge!(G, a, b)
+            end
+            @test length(unique(MaxEntropyGraphs.Graphs.bipartite_map(G))) == 1   # the trap itself
+            @test MaxEntropyGraphs.Graphs.is_bipartite(G)                         # and it looks fine
+
+            model = @test_logs (:warn, "The graph is directed, while the BiCM model is undirected, the directional information will be lost") MaxEntropyGraphs.BiCM(G)
+            @test model.status[:N⊥] == 3 && model.status[:N⊤] == 3
+            @test model.⊥nodes == [1,2,3] && model.⊤nodes == [4,5,6]
+            @test model.d⊥ == [1,2,2] && model.d⊤ == [2,2,1]
+
+            # a reciprocated pair is ONE undirected edge: `Graphs.degree` on a digraph is in+out and
+            # would count it twice, which would also break link conservation between the layers.
+            Gr = MaxEntropyGraphs.Graphs.SimpleDiGraph(6)
+            for (a,b) in ((1,4),(4,1),(2,5),(3,6),(3,5))
+                MaxEntropyGraphs.Graphs.add_edge!(Gr, a, b)
+            end
+            modelr = @test_logs (:warn, "The graph is directed, while the BiCM model is undirected, the directional information will be lost") MaxEntropyGraphs.BiCM(Gr)
+            @test modelr.d⊥ == [1,1,2]
+            @test sum(modelr.d⊥) == sum(modelr.d⊤) == 4
+        end
+
+        @testset "BiCM - link conservation between the layers" begin
+            # Σd⊥ and Σd⊤ both count the edges of the same bipartite graph, so a pair that disagrees
+            # describes no graph at all: the likelihood has no stationary point and the solver used to
+            # burn its whole iteration budget before throwing a bare `ConvergenceError`.
+            @test_throws DomainError MaxEntropyGraphs.BiCM(d⊥=[1,1,2], d⊤=[5,5,5])
+            err = try MaxEntropyGraphs.BiCM(d⊥=[1,1,2], d⊤=[5,5,5]) catch e; sprint(showerror, e) end
+            @test occursin("Σd⊥ = 4", err) && occursin("Σd⊤ = 15", err)
+            # a conserving pair is still accepted, and graph-built models satisfy it automatically
+            @test MaxEntropyGraphs.BiCM(d⊥=[1,1,2], d⊤=[2,1,1]) isa MaxEntropyGraphs.BiCM
+            cc = MaxEntropyGraphs.BiCM(MaxEntropyGraphs.corporateclub())
+            @test sum(cc.d⊥) == sum(cc.d⊤)
+        end
+
+        @testset "BiCM - Base.length" begin
+            model = MaxEntropyGraphs.BiCM(MaxEntropyGraphs.corporateclub())
+            # used to read `m.d⊥_ᵣ`/`m.d⊤_ᵣ`, which are not fields, so every call threw
+            @test length(model) == length(model.d⊥ᵣ) + length(model.d⊤ᵣ)
+        end
+
         @testset "BiCM - log-Likelihood" begin
             G = MaxEntropyGraphs.corporateclub()
             model = MaxEntropyGraphs.BiCM(G)
@@ -764,6 +813,13 @@
             S = rand(model, 100)
             @test length(S) == 100
             @test all(MaxEntropyGraphs.Graphs.nv.(S) .== MaxEntropyGraphs.Graphs.nv(model.G))
+            # the precomputed path used to build a SimpleDiGraph, so it returned the wrong type and the
+            # batch method - which preallocates Vector{SimpleGraph{Int}} - threw on assignment.
+            @test rand(model, precomputed=true) isa MaxEntropyGraphs.Graphs.SimpleGraph{Int}
+            Sp = rand(model, 10, precomputed=true)
+            @test Sp isa Vector{MaxEntropyGraphs.Graphs.SimpleGraph{Int}}
+            @test length(Sp) == 10
+            @test all(MaxEntropyGraphs.Graphs.nv.(Sp) .== MaxEntropyGraphs.Graphs.nv(model.G))
         end
 
         @testset "BiCM - degree metrics" begin
