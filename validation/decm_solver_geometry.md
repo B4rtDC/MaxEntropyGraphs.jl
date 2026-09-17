@@ -289,6 +289,59 @@ demands. This is the same reasoning already recorded for the `UECM`.
 
 ---
 
+## 5b. The `:fixedpoint` map: gauge-equivariant too, but that is *not* why it fails
+
+Tested after the `BiCM`'s fixed point turned out to fail for a purely gauge-theoretic reason (see
+[`bicm_uecm_solver_geometry.md` §3c](bicm_uecm_solver_geometry.md)). The prediction was that the DECM would
+be the same, only worse. **It is not**, and the negative result is recorded here so that the remedy which
+works for the BiCM is not tried again on this model.
+
+**What does transfer.** `DECM_reduced_iter!` is gauge-equivariant in *both* modes: under
+`α_out → α_out + c`, `α_in → α_in − c` every product `x_out,ᵢ·x_in,ⱼ` is unchanged while the out-block
+accumulator scales by `e^c` and the in-block by `e^{−c}`, which the outer `−log` returns as `±c`; the
+β-gauge does the same through `c2`. Measured `‖G(θ+cg) − G(θ) − cg‖∞ ≈ 1e-15` for both, `J·g = g` for both,
+and
+
+```
+rank(J_f) = 38 of 40   — a rank-TWO deficiency, against the BiCM's rank-one.
+```
+
+So the structural defect really is twice as bad here.
+
+**What does not transfer — and this is the point.** For the BiCM the remedy was to shrink Anderson's
+least-squares, and plain Picard (`m = 0`, no least-squares at all) was a perfect 183/183. For the DECM, over
+120 random weighted digraphs:
+
+| Anderson memory | ok | non-finite |
+|---|---|---|
+| `m = 0` (Picard) | **0** | **120** |
+| `m = 2` | 0 | 120 |
+| default | 0 | 120 |
+| `m = 20` | 0 | 120 |
+
+Everything fails, *including the setting that has no least-squares to go singular*. The gauge deficiency is
+real but is not the binding constraint.
+
+**The binding constraint is that the map leaves its own domain.** The DECM is defined only where
+`β_out,ᵢ + β_in,ⱼ > 0` (§3), and the iteration divides by `(1 − c2)` with `c2 = y_out,ᵢ·y_in,ⱼ`. Nothing in
+the iteration keeps it inside. Traced on the rhesus macaques network from the default guess:
+
+| iteration | `min(β_out,ᵢ + β_in,ⱼ)` | feasible? |
+|---|---|---|
+| 0 | 3.383 | yes |
+| 1 | **−19.97** | **no** |
+| 2 | `NaN` | dead |
+
+It leaves the feasible region on the **first step**. No choice of accelerator repairs that; the fix would
+have to be a domain-preserving reformulation (or a feasibility-limited step), which is a different and much
+larger change.
+
+**So the existing documentation is correct**, and its second sentence is verified too: starting the fixed
+point *at* a converged `BFGS` solution (constraint residual `9.6e-8`) keeps every iterate finite, so it does
+work to fine-tune an existing solution — it simply cannot find one from a cold start.
+
+---
+
 ## 6. A note on automatic differentiation for `Newton`
 
 Not geometry, but it belongs with the record. `:Newton` needs second derivatives. Given a *first-order*
