@@ -965,6 +965,25 @@ By default the parameters are computed using the BFGS method with the strength s
 **Notes**
 - the fixed-point method is very unstable for this model and should not be used. From an acceptable solution it can be used to fine-tune an existing one.
 - the L-BFGS method is known to be unstable for this model and should not be used.
+- **`:Newton` requires the default `initial = :strengths`.** The UECM likelihood lives on the open box
+  `βᵢ > 0`; the first-order methods carry that box explicitly (via `Fminbox`), but `Fminbox` does not
+  accept `Newton`, so `:Newton` solves the box-constrained problem without box protection. From
+  `:strengths` that is fine (residuals `1e-9`–`1e-14` on every network tested), but from a far start —
+  `:uniform` sets `β = 6.9`, i.e. `y ≈ 1e-3`, against an optimum near `β ≈ 8e-3` — the Newton step
+  overshoots past `β = 0`, where the objective is `NaN`, and the solve aborts with a `ConvergenceError`.
+  That honest failure is deliberate: `IPNewton` with the box removes the failures but reports success
+  far from the optimum instead (measured off by up to `5·10³` in `-L`), which is worse. See
+  `validation/bicm_uecm_solver_geometry.md`.
+
+**Conditioning**
+
+Unlike the `DECM`, the UECM has **no gauge freedom**: its pair terms couple `αᵢ + αⱼ` within one block,
+so a shift adds `2c` rather than cancelling, and the Hessian has no null directions. On clean data it is
+well conditioned (`κ ≈ 250`–`7000`). It does share the `DECM`'s runaway constraints, though: a saturated
+degree (`k = n-1`) drives `α → -∞`, and a node all of whose links carry weight `1` (`s = k`) drives
+`β → +∞`. In the extreme where *every* weight is `1`, `s = k` holds for every node, the whole `β` block
+is unidentifiable and the model degenerates to a [`UBCM`](@ref) — the strength sequence then carries no
+information beyond the degree sequence.
 """
 function solve_model!(m::UECM;  # common settings
                                 method::Symbol=:BFGS,
@@ -987,8 +1006,13 @@ function solve_model!(m::UECM;  # common settings
     ftol = isnothing(ftol) ? _DEFAULT_FTOL : ftol
     # initial guess
     θ₀ = initial_guess(m, method=initial)
-    # find Inf values (zero-degree/zero-strength nodes)
-    ind_inf = findall(isinf, θ₀)
+    # Dead channels (classes with a zero degree / zero strength): their parameter belongs at Inf, i.e.
+    # x = exp(-θ) = 0, so the channel can never carry a link. Derive them from the DATA, not from
+    # `isinf(θ₀)`: only the `:degrees`/`:strengths`-family guesses put an Inf there, so an initial guess
+    # such as `:uniform` or `:random` left every dead channel finite and the solve then returned a
+    # silently wrong fit (BiCM on a planted bipartite graph: degree residual 9.85, reported as Success).
+    # The RBCM already derived this from the data; the other models did not.
+    ind_inf = vcat(findall(iszero, m.dᵣ), length(m.dᵣ) .+ findall(iszero, m.sᵣ))
     # Neutralise them before solving: the optimisation branch hands θ₀ straight to Optim, and
     # Optim 2 aborts the whole solve on a non-finite iterate (`accept_step!`). Both branches restore
     # the Inf entries on `m.θᵣ` afterwards, so this only fixes where the solver *starts*.
@@ -1024,8 +1048,16 @@ function solve_model!(m::UECM;  # common settings
             grad! = (G, θ, p) -> ∇L_UECM_reduced_minus!(G, θ, m.dᵣ, m.sᵣ, m.f, x_buffer, y_buffer, length(m.dᵣ));
         end
         # define objective function and its AD method
-        f = AD_method ∈ keys(AD_methods) ? Optimization.OptimizationFunction( (θ, p) -> - L_UECM_reduced(θ, m.dᵣ, m.sᵣ, m.f, length(m.dᵣ)),
-                                                                                        AD_methods[AD_method],
+        # `Newton` needs second derivatives. Given a first-order ADtype, OptimizationBase wraps it as
+        # `SecondOrder(inner, AutoForwardDiff)` (it warns that it is doing so) — and with Zygote as the inner
+        # backend that nested HVP path *aborts the process* (`signal 4: illegal instruction`, inside
+        # DifferentiationInterface's `hvp!`) as soon as Symbolics is loaded into the same session, which the
+        # package's own test suite does. ForwardDiff differentiates the Hessian directly, needs no nesting,
+        # and is what the upstream warning recommends anyway, so second-order methods use it in place of the
+        # Zygote default. An explicitly requested non-Zygote backend is honoured as given.
+        AD_for_method = (method === :Newton && AD_method === :AutoZygote) ? :AutoForwardDiff : AD_method
+        f = AD_for_method ∈ keys(AD_methods) ? Optimization.OptimizationFunction( (θ, p) -> - L_UECM_reduced(θ, m.dᵣ, m.sᵣ, m.f, length(m.dᵣ)),
+                                                                                        AD_methods[AD_for_method],
                                                                                         grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
 
         # The UECM is only defined where `yᵢyⱼ < 1`. The diagonal self-pair term of `L_UECM_reduced`

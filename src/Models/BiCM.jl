@@ -160,6 +160,32 @@ function BiCM(G::T; d⊥::Union{Nothing, Vector}=nothing,
             @warn "The graph is weighted, while the BiCM model is unweighted, the weight information will be lost"
         end
 
+        # An isolated vertex has NO determinable layer: nothing in the data says which side of the
+        # bipartition it belongs to. `Graphs.bipartite_map` colours each connected component starting
+        # from 1, so every isolated vertex silently lands in the ⊥ layer — a graph built as 18×40 comes
+        # back as a 44×14 model, with 26 ⊤-vertices moved to ⊥. The *fit* of the live vertices is still
+        # correct (their rows of `Ĝ` are exact and the isolated rows are zero), but `|⊥|` and `|⊤|` are
+        # wrong, so the ensemble `rand(m)` samples from — and anything else keyed on the layer sizes —
+        # is not the one the user asked for. Since the input genuinely does not determine the model,
+        # refuse it rather than pick a side silently.
+        #
+        # This is NOT the `k = 0` constraint being unsatisfiable: it is satisfiable exactly (`α → +∞`,
+        # `p_ij = 0 ∀j`), and the other models fit isolated vertices without trouble. It is specific to
+        # the BiCM, where a vertex must also be *assigned to a layer*.
+        if Graphs.nv(G) > 0
+            isolated = findall(v -> iszero(Graphs.degree(G, v)), Graphs.vertices(G))
+            if !isempty(isolated)
+                throw(ArgumentError("""
+                The graph has $(length(isolated)) isolated vertex/vertices $(length(isolated) > 6 ? string(first(isolated, 6), " …") : string(isolated)), whose layer membership is not determined by the data.
+
+                A vertex with no edges belongs to neither side of the bipartition as far as the graph is concerned, and `Graphs.bipartite_map` would place all of them in the ⊥ layer, silently changing |⊥| and |⊤| and therefore the ensemble this model represents.
+
+                Either drop the isolated vertices from the graph, or state the partition yourself by building the model from the degree sequences, which may contain zeros:
+
+                    BiCM(nothing; d⊥ = ..., d⊤ = ...)
+                """))
+            end
+        end
         # get layer membership
         membership = Graphs.bipartite_map(G)
         ⊥nodes, ⊤nodes = findall(membership .== 1), findall(membership .== 2)
@@ -851,8 +877,13 @@ function solve_model!(m::BiCM;  # common settings
     ftol = isnothing(ftol) ? _DEFAULT_FTOL : ftol
     # initial guess
     θ₀ = initial_guess(m, method=initial)
-    # find Inf values
-    ind_inf = findall(isinf, θ₀)
+    # Dead channels (classes with a zero degree / zero strength): their parameter belongs at Inf, i.e.
+    # x = exp(-θ) = 0, so the channel can never carry a link. Derive them from the DATA, not from
+    # `isinf(θ₀)`: only the `:degrees`/`:strengths`-family guesses put an Inf there, so an initial guess
+    # such as `:uniform` or `:random` left every dead channel finite and the solve then returned a
+    # silently wrong fit (BiCM on a planted bipartite graph: degree residual 9.85, reported as Success).
+    # The RBCM already derived this from the data; the other models did not.
+    ind_inf = vcat(findall(iszero, m.d⊥ᵣ), length(m.d⊥ᵣ) .+ findall(iszero, m.d⊤ᵣ))
     # Neutralise them before solving: the optimisation branch hands θ₀ straight to Optim, and
     # Optim 2 aborts the whole solve on a non-finite iterate (`accept_step!`). Both branches restore
     # the Inf entries on `m.θᵣ` afterwards, so this only fixes where the solver *starts*.
@@ -895,8 +926,16 @@ function solve_model!(m::BiCM;  # common settings
         # inside the AD path (this is why only the BiCM AD-gradient solve was affected).
         d⊥ᵣ, d⊤ᵣ, f⊥, f⊤, d⊥ᵣ_nz, d⊤ᵣ_nz = m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz
         d⊥_unique = m.status[:d⊥_unique]::Int
-        f = AD_method ∈ keys(AD_methods)            ? Optimization.OptimizationFunction( (θ, p) ->   -L_BiCM_reduced(θ, d⊥ᵣ, d⊤ᵣ, f⊥, f⊤, d⊥ᵣ_nz, d⊤ᵣ_nz, d⊥_unique),
-                                                                                            AD_methods[AD_method],
+        # `Newton` needs second derivatives. Given a first-order ADtype, OptimizationBase wraps it as
+        # `SecondOrder(inner, AutoForwardDiff)` (it warns that it is doing so) — and with Zygote as the inner
+        # backend that nested HVP path *aborts the process* (`signal 4: illegal instruction`, inside
+        # DifferentiationInterface's `hvp!`) as soon as Symbolics is loaded into the same session, which the
+        # package's own test suite does. ForwardDiff differentiates the Hessian directly, needs no nesting,
+        # and is what the upstream warning recommends anyway, so second-order methods use it in place of the
+        # Zygote default. An explicitly requested non-Zygote backend is honoured as given.
+        AD_for_method = (method === :Newton && AD_method === :AutoZygote) ? :AutoForwardDiff : AD_method
+        f = AD_for_method ∈ keys(AD_methods)        ? Optimization.OptimizationFunction( (θ, p) ->   -L_BiCM_reduced(θ, d⊥ᵣ, d⊤ᵣ, f⊥, f⊤, d⊥ᵣ_nz, d⊤ᵣ_nz, d⊥_unique),
+                                                                                            AD_methods[AD_for_method],
                                                                                             grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
         prob = Optimization.OptimizationProblem(f, θ₀);
         # obtain solution

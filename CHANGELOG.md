@@ -3,6 +3,27 @@
 ## Unreleased
 
 ### Fixed
+- **Dead channels were read off the initial guess instead of the data, so `initial = :uniform` or
+  `:random` returned a silently wrong fit.** A class with zero degree (or zero strength) is a *dead
+  channel*: its parameter belongs at `Inf`, so `x = e^{-θ} = 0` and the channel can never carry a link.
+  `solve_model!` collects those indices in `ind_inf`, neutralises them for the solve and restores `Inf`
+  afterwards — but it collected them as `findall(isinf, θ₀)`. Only the `:degrees`/`:strengths` family
+  puts an `Inf` there (via `-log(0)`), so for every other initial guess `ind_inf` came back **empty**,
+  each dead channel kept a finite parameter, and the corresponding rows of `Ĝ` picked up spurious edges
+  — with the solver reporting `Success`. Measured on a planted bipartite graph with one zero-degree
+  class: degree residual **9.85**, on all three optimisation methods.
+
+  `ind_inf` is now derived from the degree/strength sequences in the `BiCM`, `DBCM`, `UECM` and `DECM`
+  (the `RBCM` already did this, which is what made the discrepancy visible). On the
+  `:degrees`/`:strengths` guesses the set is *identical* to before — `-log(x) = Inf ⟺ x = 0` — so the
+  default path is unchanged; the other guesses are simply no longer wrong.
+
+- **`BiCM` and `UECM`: `:Newton` aborted the Julia process when `Symbolics` was loaded**, the same crash
+  fixed for the `DECM` in #14: `OptimizationBase` wraps the `:AutoZygote` default as
+  `SecondOrder(AutoZygote, AutoForwardDiff)` for second-order methods, and that nested HVP path dies with
+  `signal 4: illegal instruction` inside `DifferentiationInterface`'s `hvp!`. Both now build the `Newton`
+  Hessian with `ForwardDiff` directly. An explicitly requested non-Zygote backend is honoured as given.
+
 - **`DECM`: `:Newton` aborted the whole Julia process when `Symbolics` was loaded.** `:Newton` needs second
   derivatives; handed a first-order ADtype, `OptimizationBase` wraps it as `SecondOrder(inner,
   AutoForwardDiff)` (it warns that it is doing so), and with our `:AutoZygote` default as the inner backend
@@ -40,6 +61,28 @@
   only a cap, so it costs the faster methods nothing. `:LBFGS` remains not recommended for this model.
 
 ### Added
+- **`validation/symbolic/bicm_uecm_geometry.jl`** (30 checks) and
+  **`validation/bicm_uecm_solver_geometry.md`** — the companion analysis for the `BiCM` and `UECM`. The
+  contrast between them is the useful part:
+
+  | | gauge modes | runaways possible | κ off the gauge | `:Newton` |
+  |---|---|---|---|---|
+  | `BiCM` | **1** | **none** | **9 – 23** | fine everywhere |
+  | `UECM` | **0** | `k = n-1`, `s = k` | 249 – 7 250 | fine from `:strengths` |
+  | `DECM` | 2 | `k = N-1`, `s = k` | `10¹⁵` – `10¹⁷` | needs gauge-fixing |
+
+  The `BiCM` has an exact gauge `(α, β) → (α + c, β - c)` (from `Σ f⊥·k⊥ = Σ f⊤·k⊤ = E`) and *nothing
+  else* degenerate — a saturated degree is rejected at construction and there is no strength constraint —
+  so a rank-1 deficiency in an otherwise well-conditioned Hessian costs `Newton` nothing, and **no
+  gauge-fixing was added**. The lesson for the `DECM` is that it is not the singularity that breaks
+  Newton but the singularity *plus* a `10¹⁵` condition number.
+
+  The `UECM` has **no gauge at all** (its pair terms couple `αᵢ + αⱼ` within one block, so a shift adds
+  `2c`) but does share the runaways: a saturated degree fits at `α ≈ -40.5`, and when *every* weight is
+  `1` then `s = k` for every node, the whole `β` block runs away (`min β = 184`, far enough to overflow
+  the Hessian) and the model degenerates to a `UBCM` — the strength sequence carries no information
+  beyond the degree sequence.
+
 - **`validation/symbolic/decm_gauge.jl`** (49 checks) — proves the gauge invariance and records the
   *degeneracy taxonomy* of the DECM Hessian. Beyond the two gauge modes it gains one near-null direction per
   constraint pinned at the edge of its feasible range, because the conjugate parameter runs away:
@@ -65,6 +108,28 @@
   identities, so neither failure mode can regress silently.
 
 ### Changed
+- **`BiCM` now rejects a graph containing isolated vertices** (`ArgumentError`, naming them). An isolated
+  vertex has no determinable layer — the data says nothing about which side of the bipartition it belongs
+  to — and `Graphs.bipartite_map` colours each component from 1, so every one of them silently landed in
+  ⊥. Measured: a graph built as 18×40 came back as a **44×14** model, with 26 ⊤-vertices moved to ⊥. The
+  *fit* was unaffected (live-vertex residual `2.7e-12`, isolated rows of `Ĝ` exactly zero), but `|⊥|` and
+  `|⊤|` were wrong, so `rand(m)` sampled the wrong ensemble.
+
+  This is **not** the `k = 0` constraint being unsatisfiable — it is satisfied exactly (`α → +∞`,
+  `p_ij = 0`), and the other models fit isolated vertices without trouble. It is specific to the BiCM,
+  where a vertex must also be placed in a layer. To state the partition yourself, build from the degree
+  sequences, which may contain zeros: `BiCM(nothing; d⊥ = ..., d⊤ = ...)`.
+
+  ⚠️ **Breaking** for callers passing such a graph — though their model was silently mis-specified before.
+  The package's own `_planted_bipartite()` test fixture was one: a 24×100 graph being built as 57×67.
+- `UECM` `solve_model!` documents that `:Newton` requires the default `initial = :strengths`. It is the
+  one UECM method without box protection — `Fminbox` (which carries the `βᵢ > 0` domain for the
+  first-order methods) does not accept `Newton` — so from a far start the Newton step overshoots past
+  `β = 0`, where the objective is `NaN`, and the solve aborts. That honest `ConvergenceError` is
+  deliberate: `IPNewton` with the box removes the failures but reports success far from the optimum
+  instead (measured off by up to `5·10³` in `-L`, and it also breaks cases the unconstrained solver gets
+  right), and line-search tuning likewise introduced a silent wrong answer. Both were rejected; see
+  `validation/bicm_uecm_solver_geometry.md`.
 - `DECM` `solve_model!` now defaults to `maxiters = 10_000` (was `1000`), and `:Newton` defaults to a
   `ForwardDiff` Hessian rather than the Zygote `SecondOrder` path. Both documented on the method.
 
