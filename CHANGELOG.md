@@ -9,6 +9,70 @@ compatibility work) ship here. The version is `0.8.0` rather than `0.7.2` becaus
 constructor change below.
 
 ### Fixed
+- **`UECM`/`DECM`: `:fixedpoint` could not be started from a cold guess at all — 0 of 150 each.** The
+  method shipped with the warning *"very unstable … should not be used"*; measured over 150 random
+  weighted networks and 150 random weighted digraphs from the package's own default `:strengths` guess, it
+  converged on **none** of them. The reason is exact, not empirical, and it is an asymmetry between the two
+  blocks of the Picard recipe. With `g = xᵢxⱼ`, `t = yᵢyⱼ` and `D(t) = (1-t)(1-t+gt)`:
+
+  the degree step divides by a factor `A` with `∂A/∂xᵢ = -c²/(d₀+cxᵢ)² < 0`, so it **undershoots** — it
+  always lands in `(xᵢ, xᵢ*)` — and `x` has no upper constraint, so it is safe. The strength step divides
+  by `B ∝ Σⱼ wⱼ gⱼyⱼ/D(yᵢyⱼ)`, and `D'(0) = g - 2 < 0` throughout the sparse regime, so `B` *increases* in
+  its own `yᵢ` and the step **overshoots** — without bound, since `B → xᵢΣⱼ wⱼxⱼyⱼ` as `yᵢ → 0`, giving
+  `yᵢ ← O(1/(x²y))`. But the model is only defined for `t < 1`. Measured on the symmetrised rhesus
+  network: the strength step overshoots its own root by **208×–1383×** on *every* class and every class
+  lands outside its own feasibility ceiling, i.e. the map is out of the domain after **one** iteration.
+  There was never any slack to absorb it — the optimum there sits at `max yᵢyⱼ = 0.974`.
+
+  `:fixedpoint` is now **block coordinate ascent** (`UECM_reduced_coordinate_iter!` /
+  `DECM_reduced_coordinate_iter!`), which solves each block *exactly* instead of freezing a factor. Both
+  constraint functions are monotone in their own parameter, so this is unconditionally well posed:
+  `⟨kᵢ⟩(xᵢ)` rises from `0` to `Σⱼ wⱼ` (a root exists unless the degree is saturated), and `⟨sᵢ⟩(yᵢ)` rises
+  from `0` to `∞` on `(0, ȳᵢ)` — because `d/dt[gt/D] = g(1-(1-g)t²)/D² > 0` — so the strength root
+  **always** exists, is unique, and is **feasible by construction**. A safeguarded 2×2 Newton step per node
+  follows the runaway ridges that alternating 1-D moves only crawl along.
+
+  | | `:fixedpoint` before | `:fixedpoint` now | `:BFGS` |
+  |---|---|---|---|
+  | UECM, well-posed (100) | **0** | **98** | 86 |
+  | UECM, runaway constraint (50) | **0** | 8 | 38 |
+  | DECM, well-posed (71) | **0** | **71** | 71 |
+  | DECM, runaway constraint (79) | **0** | 22 | 78 |
+
+  On a well-posed network it is now the *most accurate* path as well as much the cheapest: median residual
+  `3·10⁻⁹` (UECM) and `1.5·10⁻⁹` (DECM) against `2.5·10⁻⁷` and `3.1·10⁻⁸` for `:BFGS`, and on a 250-vertex
+  weighted network `9·10⁻⁹` in `0.28 s` against `1.4·10⁻⁵` in `57 s` (a 150-vertex weighted digraph:
+  `9.9·10⁻⁹` in `0.19 s` against `1.7·10⁻⁶` in `593 s`). When a **runaway** constraint is
+  present (`k = 0`, `k = N-1`, `s = k`) the optimum is at an infinite parameter and it usually cannot
+  settle at `ftol`; it then fails loudly, with a diagnosis naming the offending constraint, reporting the
+  best residual it reached, and pointing at `:BFGS`. Full derivation in
+  `validation/uecm_decm_fixedpoint.md`, backed by `validation/symbolic/uecm_decm_fixedpoint.jl`.
+
+  Two designs were tried and rejected, both recorded in the note: accepting the Newton step **per node on
+  its own residual** with no sweep-level safeguard makes the iteration **cycle** (a global residual
+  bouncing around `4·10⁻¹` forever), and a fixed-point-*increment* stopping test **hides** that, because a
+  cycle occasionally passes near a repeat and reports success at an arbitrary residual. Line-searching each
+  node on its own concave block likelihood instead is provably monotone but measurably worse on the
+  runaway sets (2/50 and 11/79). The shipped form keeps the residual merit and safeguards the *pass* on the
+  global residual.
+
+- **`UECM`: `L_UECM_reduced` returned `NaN` on part of its own domain.** The same-class term was evaluated
+  for every class and then multiplied by `Fᵢ(Fᵢ-1)/2`. For a **singleton** class that weight is zero — but
+  the out-of-domain branch returns `NaN`, and `0 * NaN = NaN`, so the whole likelihood went non-finite
+  whenever a singleton class had `βᵢ ≤ 0`, however comfortably every *real* pair satisfied `βᵢ + βⱼ > 0`.
+  The term is now skipped when `Fᵢ = 1`. (`L_DECM_reduced` already guarded this with
+  `iszero(w) && continue`; only the UECM's separately written diagonal term was missing it.)
+
+- **`UECM`: the first-order box excluded genuine optima and reported `Success` from the wall.** The UECM is
+  defined by the *pairwise* condition `βᵢ + βⱼ > 0`; only a class of multiplicity `Fᵢ ≥ 2` has a same-class
+  pair and therefore needs `βᵢ > 0` itself. `_UECM_β_FLOOR` was applied to the whole `β` block (a
+  consequence of the `NaN` above: the optimiser could not see past it). On **5 of 128** random weighted
+  networks the ML optimum has a `βᵢ < 0` on a singleton class, and there `:BFGS` stopped against the floor
+  and reported `Success` with a degree/strength residual between **0.17 and 2.31** — a silently wrong fit,
+  the same failure mode as the dead-channel bug below. Evaluated with the corrected likelihood the true
+  optimum is strictly better every time (`ΔL` from `+3·10⁻⁴` to `+0.20`). The floor now applies only to
+  classes with `Fᵢ ≥ 2`; singleton classes are held in the domain by the objective, as the `DECM` does.
+
 - **`BiCM`: the `:fixedpoint` default aborted on ~1 bipartite graph in 7.** Measured: **25 of 183** random
   bipartite graphs with no isolated vertices and no dead channels. The cause is the gauge freedom of §1.1
   of `validation/bicm_uecm_solver_geometry.md`, arriving through the solver rather than the likelihood.
@@ -147,6 +211,15 @@ constructor change below.
   identities, so neither failure mode can regress silently.
 
 ### Changed
+- **`ftol` on the `UECM`/`DECM` `:fixedpoint` path now bounds the constraint residual**, not the
+  parameter-space increment the binary models use (the `CReM`/`DCReM`/`CRWCM` layers already used it this
+  way). The increment is not a usable test on these models: a runaway constraint has no finite fixed point,
+  so the iterate keeps moving while the residual it is chasing falls — and a cycling orbit can dip under an
+  increment threshold and report success at an arbitrary residual.
+- `UECM_reduced_coordinate_iter!` and `DECM_reduced_coordinate_iter!` are exported. The legacy Picard maps
+  `UECM_reduced_iter!` / `DECM_reduced_iter!` remain exported and unchanged, but are no longer used by
+  `solve_model!`.
+
 - **`BiCM` now rejects a graph containing isolated vertices** (`ArgumentError`, naming them). An isolated
   vertex has no determinable layer — the data says nothing about which side of the bipartition it belongs
   to — and `Graphs.bipartite_map` colours each component from 1, so every one of them silently landed in

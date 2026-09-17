@@ -43,13 +43,23 @@ const _DEFAULT_FTOL = 1e-8
 """
     _UECM_β_FLOOR
 
-Lower bound imposed on the `β` block when the [`UECM`](@ref) is solved with a first-order method.
+Lower bound imposed on the `β` entries of **degree/strength classes of multiplicity `Fᵢ ≥ 2`** when the
+[`UECM`](@ref) is solved with a first-order method.
 
-The UECM likelihood is only defined on the open box `βᵢ > 0` (see `L_UECM_reduced`); a closed box needs a
-strictly positive floor. It is deliberately tiny — it is a feasibility guard, not a regularisation, so it
-does not move a well-posed solution. Networks whose ML solution genuinely pushes a `βᵢ` to the boundary
-(degenerate strength constraints) will report that `βᵢ` sitting at this floor instead of at an arbitrary
-value near zero produced by the barrier.
+The UECM is defined wherever every pair that actually exists satisfies `yᵢyⱼ < 1`, i.e. `βᵢ + βⱼ > 0` — a
+*pairwise* condition, not a per-coordinate one. The only per-coordinate case is the **same-class** pair,
+which needs `2βᵢ > 0`; a class of multiplicity `Fᵢ = 1` contains a single vertex and therefore has no
+same-class pair, so nothing in the model bounds the sign of its own `βᵢ`.
+
+Applying this floor to every class — as versions up to `v0.7.0` did — is therefore too tight, and it is
+not a harmless over-restriction: on 5 of 128 random weighted networks the ML optimum genuinely has a
+`βᵢ < 0` on a singleton class, and a solver pinned at the floor reported `Success` with a degree/strength
+residual between `0.17` and `2.31`. Singleton classes now get `-Inf` and are held inside the domain by
+the objective itself (`L_UECM_reduced` returns `NaN` off it), exactly as the [`DECM`](@ref) does.
+
+The value is deliberately tiny — a feasibility guard, not a regularisation, so it does not move a
+well-posed solution. A class whose ML solution genuinely pushes `βᵢ` to the boundary will report that
+`βᵢ` sitting at this floor.
 """
 const _UECM_β_FLOOR = 1e-10
 
@@ -117,6 +127,44 @@ end
 
 
 """
+    _ECM_LOGCAP
+
+Cap on `|log x|` and `|log y|` inside the `UECM`/`DECM` `:fixedpoint` block solvers.
+
+A degenerate constraint (a saturated degree, or a class whose links all carry weight 1) puts the optimum
+at an infinite parameter, and the two-dimensional Newton polish will march towards it. `exp(±80)` is
+`10^±35`, which keeps every pair product `xᵢxⱼ·yᵢyⱼ` representable in `Float64` while being far enough
+out that the constraint it is chasing is already satisfied to well below `eps()`.
+"""
+const _ECM_LOGCAP = 80.0
+
+
+"""
+    _monotone_root(φ, lo, hi, target, v0; maxit)
+
+Solve `φ(v) = target` for a function that is **strictly increasing** on `(lo, hi)` and brackets the
+target there, using Newton steps safeguarded by bisection. `φ` returns the tuple `(value, derivative)`.
+
+Used by the `UECM`/`DECM` `:fixedpoint` solvers for the one-dimensional block updates, where the
+monotonicity and the bracket are both established analytically (see `UECM_reduced_coordinate_iter!`).
+Because every accepted iterate stays inside the initial bracket, the returned root is feasible by
+construction — which is the property the Picard recipe those solvers replaced did not have.
+"""
+function _monotone_root(φ, lo::N, hi::N, target::N, v0::N; maxit::Int=100) where {N<:Real}
+    lo < hi || return lo
+    v = clamp(v0, nextfloat(lo), prevfloat(hi))
+    for _ in 1:maxit
+        val, der = φ(v)
+        (!isfinite(val) || val > target) ? (hi = v) : (lo = v)
+        hi - lo <= eps(N) * max(one(N), abs(hi)) && break
+        vn = (isfinite(der) && der > zero(N)) ? v - (val - target) / der : (lo + hi) / 2
+        v = (lo < vn < hi) ? vn : (lo + hi) / 2
+    end
+    return (lo + hi) / 2
+end
+
+
+"""
     AbstractMaxEntropyModel
 
 An abstract type for a MaxEntropyModel. Each model has one or more structural constraints  
@@ -139,6 +187,35 @@ struct ConvergenceError <: Exception
 end
 
 Base.showerror(io::IO, e::ConvergenceError) = print(io, """method `$(e.method)` did not converge $(isnothing(e.retcode) ? "" : "(Optimization.jl return code: $(e.retcode))")""")
+
+
+"""
+    _ecm_runaway_message(model, iters, residual, ftol, offenders)
+
+Message explaining a `UECM`/`DECM` `:fixedpoint` non-convergence caused by a **runaway constraint**.
+
+A constraint at the edge of its feasible range — a saturated degree (`k = N-1`), or a node whose links all
+carry weight `1` (`s = k`) — has its maximum-likelihood parameter at `±∞`. The block-coordinate map
+approaches such a point only geometrically (measured rate `0.9998` per sweep), so it cannot reach `ftol`
+in any practical number of sweeps, and raising `maxiters` does not help. The gradient methods do reach a
+usable answer on these networks, because they are free to travel a long way in `θ` per step.
+
+`offenders` is a list of `description => indices` pairs, already restricted to the classes at fault.
+"""
+function _ecm_runaway_message(model::AbstractString, iters::Int, residual::Real, ftol::Real,
+                              offenders::Vector{<:Pair{<:AbstractString,<:AbstractVector}})
+    lines = ["`:fixedpoint` stopped after $(iters) sweeps; best constraint residual reached was $(residual) (ftol = $(ftol)).",
+             "This $(model) has a runaway constraint, whose maximum-likelihood parameter is infinite:"]
+    for (what, idx) in offenders
+        isempty(idx) && continue
+        push!(lines, "  • $(what): reduced class(es) $(idx)")
+    end
+    push!(lines, "The fixed point approaches an infinite parameter only geometrically, so it does not settle")
+    push!(lines, "at `ftol`, and raising `maxiters` will not help — it only makes the failure slower. Use")
+    push!(lines, "`method = :BFGS` for this network; if the best residual above is good enough for your")
+    push!(lines, "purpose, a looser `ftol` will accept it.")
+    return join(lines, "\n")
+end
 
 
 """

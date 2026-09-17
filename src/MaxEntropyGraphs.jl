@@ -85,8 +85,8 @@ module MaxEntropyGraphs
     export DBCM, L_DBCM_reduced, ∇L_DBCM_reduced!, DBCM_reduced_iter!
     export RBCM, L_RBCM_reduced, ∇L_RBCM_reduced!, RBCM_reduced_iter!
     export BiCM, L_BiCM_reduced, ∇L_BiCM_reduced!, BiCM_reduced_iter!
-    export UECM, L_UECM_reduced, ∇L_UECM_reduced!, UECM_reduced_iter!
-    export DECM, L_DECM_reduced, ∇L_DECM_reduced!, DECM_reduced_iter!
+    export UECM, L_UECM_reduced, ∇L_UECM_reduced!, UECM_reduced_iter!, UECM_reduced_coordinate_iter!
+    export DECM, L_DECM_reduced, ∇L_DECM_reduced!, DECM_reduced_iter!, DECM_reduced_coordinate_iter!
     export CReM, L_CReM, ∇L_CReM!, CReM_iter!
     export DCReM, L_DCReM, ∇L_DCReM!, DCReM_iter!
     export CRWCM, L_CRWCM, ∇L_CRWCM!, CRWCM_iter!

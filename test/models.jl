@@ -969,10 +969,18 @@
                         @test isapprox(vec(sum(W, dims=2)), model.s, rtol=1e-6)
                     end
                     @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ) == precision, eltype(model.yᵣ) == precision])
-                    # the fixed point method emits its instability warning
-                    @test_logs (:warn, "The fixed point method is very unstable for this model and should not be used. `BFGS` is prefered for quasinewton methods.") match_mode=:any try
-                        MaxEntropyGraphs.solve_model!(model, method=:fixedpoint)
-                    catch
+                    # `:fixedpoint` is block coordinate ascent (v0.8.0), not the Picard recipe it
+                    # replaced: it converges from the cold start and reproduces both constraint
+                    # sequences, where the old map left the model's domain on the first iteration.
+                    @testset "fixedpoint (block coordinate ascent)" begin
+                        fp = UECM(Gw, precision=precision)
+                        MaxEntropyGraphs.solve_model!(fp, method=:fixedpoint)
+                        @test fp.status[:params_computed]
+                        @test MaxEntropyGraphs.constraint_residual(fp) < 1e-6
+                        # and it agrees with the gradient path (the UECM has no gauge freedom)
+                        ref = UECM(Gw, precision=precision)
+                        MaxEntropyGraphs.solve_model!(ref, method=:BFGS)
+                        @test isapprox(fp.θᵣ, ref.θᵣ, atol=1e-5)
                     end
                 end
             end
@@ -1213,10 +1221,19 @@
                     @test all([eltype(model.θᵣ) == precision, eltype(model.xᵣ_out) == precision, eltype(model.xᵣ_in) == precision, eltype(model.yᵣ_out) == precision, eltype(model.yᵣ_in) == precision])
                     # the constraint residual diagnostic covers all four sequences
                     @test MaxEntropyGraphs.constraint_residual(model) < 1e-4
-                    # the fixed point method emits its instability warning
-                    @test_logs (:warn, "The fixed point method is very unstable for this model and should not be used. `BFGS` is prefered for quasinewton methods.") match_mode=:any try
-                        MaxEntropyGraphs.solve_model!(model, method=:fixedpoint)
-                    catch
+                    # `:fixedpoint` is block coordinate ascent (v0.8.0), not the Picard recipe it
+                    # replaced. `rhesus_macaques` carries a runaway `s = k` constraint, so this also
+                    # exercises the 2x2 Newton polish that follows such a ridge.
+                    @testset "fixedpoint (block coordinate ascent)" begin
+                        fp = DECM(Gw, precision=precision)
+                        MaxEntropyGraphs.solve_model!(fp, method=:fixedpoint)
+                        @test fp.status[:params_computed]
+                        @test MaxEntropyGraphs.constraint_residual(fp) < 1e-6
+                        # the DECM HAS a two-fold gauge freedom: compare gauge-invariant quantities
+                        ref = DECM(Gw, precision=precision)
+                        MaxEntropyGraphs.solve_model!(ref, method=:BFGS)
+                        @test isapprox(MaxEntropyGraphs.Ĝ(fp), MaxEntropyGraphs.Ĝ(ref), atol=1e-5)
+                        @test isapprox(MaxEntropyGraphs.Ŵ(fp), MaxEntropyGraphs.Ŵ(ref), atol=1e-4)
                     end
                 end
             end

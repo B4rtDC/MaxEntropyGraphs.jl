@@ -200,13 +200,19 @@ function L_UECM_reduced(θ::AbstractVector, d::Vector, s::Vector, F::Vector, n::
             acc  += F[j] * (om_c2 > zero(om_c2) ? log1p(c1 * c2 / om_c2) : oftype(c1, NaN))
         end
         res -= Fᵢ * acc
-        # diagonal self-pairs (within class i): Fᵢ·(Fᵢ-1)/2 pairs
-        @inbounds begin
-            c1    = exp(-2αᵢ)
-            c2    = exp(-2βᵢ)
-            om_c2 = -expm1(-2βᵢ)
-            contrib = om_c2 > zero(om_c2) ? log1p(c1 * c2 / om_c2) : oftype(c1, NaN)
-            res  -= Fᵢ * (Fᵢ - 1) * contrib * 0.5
+        # diagonal self-pairs (within class i): Fᵢ·(Fᵢ-1)/2 pairs.
+        # A SINGLETON class (Fᵢ == 1) has no same-class pair, so it carries no domain constraint on its
+        # own βᵢ either — and the term must be SKIPPED rather than multiplied by its zero weight: the
+        # out-of-domain branch below returns NaN, and `0 * NaN == NaN` would poison the whole sum, making
+        # `L` non-finite on part of its own domain. (`L_DECM_reduced` already guards this way.)
+        if Fᵢ > 1
+            @inbounds begin
+                c1    = exp(-2αᵢ)
+                c2    = exp(-2βᵢ)
+                om_c2 = -expm1(-2βᵢ)
+                contrib = om_c2 > zero(om_c2) ? log1p(c1 * c2 / om_c2) : oftype(c1, NaN)
+                res  -= Fᵢ * (Fᵢ - 1) * contrib * 0.5
+            end
         end
     end
 
@@ -291,12 +297,14 @@ function ∇L_UECM_reduced_minus!(∇L::AbstractVector, θ::AbstractVector, d::V
         @inbounds yᵢ = y[i]
         accα = zero(eltype(∇L))
         accβ = zero(eltype(∇L))
-        @inbounds @simd for j in eachindex(α)
+        @inbounds for j in eachindex(α)
+            w     = F[j] - (i == j)
+            iszero(w) && continue                 # singleton diagonal: no pair exists, and `1 - c2` may
+                                                  # be ≤ 0 there, so `Inf * 0` must not be formed
             c1    = xᵢ * x[j]
             c2    = yᵢ * y[j]
             denom = 1 + c1 * c2 - c2
             p     = (c1 * c2) / denom
-            w     = F[j] - (i == j)
             accα += p * w
             accβ += (p / (1 - c2)) * w
         end
@@ -354,6 +362,243 @@ function UECM_reduced_iter!(θ::AbstractVector, d::Vector, s::Vector, F::Vector,
     end
 
     return G
+end
+
+
+"""
+    _uecm_pair_k(i, u, x, y, F, live)
+
+`(⟨kᵢ⟩, ∂⟨kᵢ⟩/∂xᵢ)` of the reduced UECM as a function of `xᵢ = u` alone, every other parameter frozen.
+Only live classes contribute; a zero-weight pair is skipped rather than multiplied by its zero weight.
+"""
+@inline function _uecm_pair_k(i::Int, u::N, x::AbstractVector, y::AbstractVector, F::Vector, live::AbstractVector{Int}) where {N<:Real}
+    val = zero(N); der = zero(N); yᵢ = y[i]
+    @inbounds for j in live
+        w = F[j] - (i == j); iszero(w) && continue
+        if j == i                                    # same-class pair: BOTH factors are xᵢ
+            t = yᵢ*yᵢ; den = one(N) - t + u*u*t
+            val += w * u*u*t/den
+            der += w * 2*u*t*(one(N) - t)/(den*den)
+        else
+            t = yᵢ*y[j]; c = x[j]*t; d₀ = one(N) - t; den = d₀ + c*u
+            val += w * c*u/den
+            der += w * c*d₀/(den*den)
+        end
+    end
+    return (val, der)
+end
+
+"""
+    _uecm_pair_s(i, v, x, y, F, live)
+
+`(⟨sᵢ⟩, ∂⟨sᵢ⟩/∂yᵢ)` of the reduced UECM as a function of `yᵢ = v` alone, every other parameter frozen.
+"""
+@inline function _uecm_pair_s(i::Int, v::N, x::AbstractVector, y::AbstractVector, F::Vector, live::AbstractVector{Int}) where {N<:Real}
+    val = zero(N); der = zero(N); xᵢ = x[i]
+    @inbounds for j in live
+        w = F[j] - (i == j); iszero(w) && continue
+        g = (j == i) ? xᵢ*xᵢ : xᵢ*x[j]
+        t, dtdv = (j == i) ? (v*v, 2v) : (v*y[j], y[j])
+        D = (one(N) - t)*(one(N) - t + g*t)
+        val += w * g*t/D
+        der += w * dtdv * g*(one(N) - (one(N) - g)*t*t)/(D*D)
+    end
+    return (val, der)
+end
+
+"""
+    _uecm_ybar(i, y, F, live)
+
+Upper end of the feasible interval for `yᵢ`: the model needs `yᵢyⱼ < 1` over the pairs that exist, so
+`ȳᵢ = minⱼ 1/yⱼ` over live `j ≠ i`, intersected with `1` when class `i` has a same-class pair.
+"""
+@inline function _uecm_ybar(i::Int, y::AbstractVector{N}, F::Vector, live::AbstractVector{Int}) where {N<:Real}
+    b = N(Inf)
+    @inbounds for j in live
+        w = F[j] - (i == j); iszero(w) && continue
+        b = min(b, j == i ? one(N) : inv(y[j]))
+    end
+    return b
+end
+
+"""
+    _uecm_node(i, a, b, x, y, F, live)
+
+`(⟨kᵢ⟩, ⟨sᵢ⟩)` and their Jacobian with respect to `(a, b) = (log xᵢ, log yᵢ)`, used by the two-dimensional
+Newton polish. Log-space because the degenerate directions of this model are multiplicative.
+"""
+@inline function _uecm_node(i::Int, a::N, b::N, x::AbstractVector, y::AbstractVector, F::Vector, live::AbstractVector{Int}) where {N<:Real}
+    xᵢ = exp(a); yᵢ = exp(b)
+    k = zero(N); s = zero(N); ka = zero(N); kb = zero(N); sa = zero(N); sb = zero(N)
+    @inbounds for j in live
+        w = F[j] - (i == j); iszero(w) && continue
+        if j == i
+            g = xᵢ*xᵢ; t = yᵢ*yᵢ; dga = 2g; dtb = 2t
+        else
+            g = xᵢ*x[j]; t = yᵢ*y[j]; dga = g;  dtb = t
+        end
+        Q = one(N) - t + g*t; D = (one(N) - t)*Q; Q² = Q*Q
+        k  += w * g*t/Q
+        s  += w * g*t/D
+        ka += w * dga * t*(one(N) - t)/Q²        # ∂p/∂g = t(1-t)/Q²
+        kb += w * dtb * g/Q²                     # ∂p/∂t = g/Q²
+        sa += w * dga * t/Q²                     # ∂(p/(1-t))/∂g = t/Q²
+        sb += w * dtb * g*(one(N) - (one(N) - g)*t*t)/(D*D)
+    end
+    return (k, s, ka, kb, sa, sb)
+end
+
+
+"""
+    _uecm_polish!(i, x, y, d, s, F, live, ȳ)
+
+Safeguarded two-dimensional Newton step on class `i`'s own pair of constraints, in `(log xᵢ, log yᵢ)`.
+
+The alternating one-dimensional solves converge for a well-posed problem but crawl along a **runaway
+ridge** — a class with `sᵢ = dᵢ` (all its links carry weight 1) has its optimum at `xᵢ → ∞, yᵢ → 0`
+*jointly*, a direction no single coordinate move can follow; measured rate `0.9998` per sweep, i.e. some
+`7·10⁴` sweeps to reach `10⁻⁹`. Solving the class's two equations together follows that ridge directly.
+
+Every trial point must stay inside the domain (`log yᵢ < log ȳᵢ`) **and** reduce this node's residual.
+That per-node test is deliberately local — it is what lets the step travel far along a ridge — so it is
+**not** a convergence guarantee on its own: near a runaway the node Jacobian is nearly singular and a step
+that helps this node can wreck the others. The caller therefore accepts the whole polish pass only when it
+lowers the *global* residual (see [`UECM_reduced_coordinate_iter!`](@ref)).
+"""
+function _uecm_polish!(i::Int, x::AbstractVector{N}, y::AbstractVector{N}, d::Vector, s::Vector,
+                       F::Vector, live::AbstractVector{Int}, ȳ::N; maxit::Int=25) where {N<:Real}
+    bmax = log(ȳ)
+    a = clamp(log(x[i]), -N(_ECM_LOGCAP), N(_ECM_LOGCAP))
+    b = min(clamp(log(y[i]), -N(_ECM_LOGCAP), N(_ECM_LOGCAP)), prevfloat(bmax))
+    (isfinite(a) && isfinite(b)) || return nothing
+    dᵢ = N(d[i]); sᵢ = N(s[i]); scale = max(one(N), dᵢ + sᵢ)
+    moved = false
+    for _ in 1:maxit
+        k, sv, ka, kb, sa, sb = _uecm_node(i, a, b, x, y, F, live)
+        r₁ = k - dᵢ; r₂ = sv - sᵢ; nr = hypot(r₁, r₂)
+        nr < eps(N)*scale && break
+        det = ka*sb - kb*sa
+        (isfinite(det) && !iszero(det)) || break
+        da = (-r₁*sb + r₂*kb)/det
+        db = (-r₂*ka + r₁*sa)/det
+        (isfinite(da) && isfinite(db)) || break
+        τ = one(N); stepped = false
+        for _ in 1:60
+            aⁿ = a + τ*da; bⁿ = b + τ*db
+            if -N(_ECM_LOGCAP) <= aⁿ <= N(_ECM_LOGCAP) && -N(_ECM_LOGCAP) <= bⁿ < min(N(_ECM_LOGCAP), bmax)
+                k₂, s₂, _, _, _, _ = _uecm_node(i, aⁿ, bⁿ, x, y, F, live)
+                if isfinite(k₂) && isfinite(s₂) && hypot(k₂ - dᵢ, s₂ - sᵢ) < nr
+                    a = aⁿ; b = bⁿ; stepped = true; moved = true; break
+                end
+            end
+            τ /= 2
+        end
+        stepped || break
+    end
+    if moved
+        x[i] = exp(a); y[i] = exp(b)
+    end
+    return nothing
+end
+
+
+"""
+    _uecm_constraint_residual(x, y, d, s, F, live)
+
+`max(|⟨kᵢ⟩ - dᵢ|, |⟨sᵢ⟩ - sᵢ|)` over the live classes of the reduced UECM, at the current `(x, y)`.
+
+This — not the sweep-to-sweep increment — is what the `:fixedpoint` driver converges on. A constraint at
+the edge of its feasible range (a saturated degree, or `sᵢ = dᵢ`) has its optimum at an **infinite**
+parameter, so the iterate travels along a ridge for as long as it is refined and the increment never
+settles, while the residual it is chasing falls monotonically to zero. Testing the increment there asks
+for a finite fixed point that does not exist.
+"""
+function _uecm_constraint_residual(x::AbstractVector{N}, y::AbstractVector{N}, d::Vector, s::Vector,
+                                   F::Vector, live::AbstractVector{Int}) where {N<:Real}
+    r = zero(N)
+    @inbounds for i in live
+        k, sv, _, _, _, _ = _uecm_node(i, log(x[i]), log(y[i]), x, y, F, live)
+        r = max(r, abs(k - d[i]), abs(sv - s[i]))
+    end
+    return r
+end
+
+"""
+    UECM_reduced_coordinate_iter!(θ, d, s, F, x, y, live, n=length(θ)÷2)
+
+One sweep of **block coordinate ascent** on the reduced UECM log-likelihood. `θ` is updated in place and
+returned; the buffers `x`, `y` are overwritten. This is the map behind `solve_model!(m, method=:fixedpoint)`.
+
+# Why not the Picard recipe
+
+The classical recipe (still available as [`UECM_reduced_iter!`](@ref)) writes `⟨kᵢ⟩ = xᵢ·Aᵢ` and
+`⟨sᵢ⟩ = yᵢ·Bᵢ` and updates `xᵢ ← dᵢ/Aᵢ`, `yᵢ ← sᵢ/Bᵢ` with `Aᵢ`, `Bᵢ` frozen at the previous iterate. With
+`g = xᵢxⱼ`, `t = yᵢyⱼ` and `D(t) = (1-t)(1-t+gt)`:
+
+* `Aᵢ` is strictly **decreasing** in `xᵢ` (`∂/∂xᵢ [c/(d₀+cxᵢ)] = -c²/(d₀+cxᵢ)² < 0`), so the degree step
+  *undershoots*: it always lands in `(xᵢ, xᵢ*)`. It is safe.
+* `Bᵢ = Σⱼ wⱼ gⱼyⱼ/D(yᵢyⱼ)` is strictly **increasing** in `yᵢ` whenever `D'(0) = xᵢxⱼ - 2 < 0`, which
+  holds throughout the sparse regime, so the strength step *overshoots* — and without bound: as `yᵢ → 0`,
+  `Bᵢ → xᵢΣⱼ wⱼxⱼyⱼ`, giving `yᵢ ← sᵢ/(xᵢΣⱼ wⱼxⱼyⱼ) = O(1/(x²y))`.
+
+The model is only defined for `yᵢyⱼ < 1`, and nothing in that recipe enforces it. From the `:strengths`
+cold start on the symmetrised rhesus network the strength step overshoots its own root by a factor
+`208`–`1383` on *every* class, leaving the domain on the first iteration; the optimum there sits at
+`max yᵢyⱼ = 0.974`, so there is no slack to absorb it. Measured over 150 random weighted networks the
+Picard/Anderson path converged on **0**.
+
+# What this map does instead
+
+Each class is solved **exactly**, one block at a time, which is possible because both blocks are monotone:
+
+* `⟨kᵢ⟩(xᵢ)` increases from `0` to `Σⱼ wⱼ`, so a root exists iff `dᵢ` is below that ceiling (it is not
+  for a saturated degree, which is a genuine runaway) and is unique;
+* `⟨sᵢ⟩(yᵢ)` increases from `0` to `∞` on `(0, ȳᵢ)` — `d/dt [gt/D] = g(1-(1-g)t²)/D² > 0` for every
+  `t ∈ (0,1)` and `g > 0` — so a root **always** exists, is unique, and is feasible by construction.
+
+A two-dimensional Newton polish ([`_uecm_polish!`](@ref)) then follows runaway ridges that the
+alternating solves only crawl along. Both steps are exact block maximisations of a concave objective, so
+the sweep increases the likelihood monotonically and can never leave the domain.
+
+See also [`_monotone_root`](@ref), [`UECM_reduced_iter!`](@ref) and `validation/uecm_decm_fixedpoint.md`.
+"""
+function UECM_reduced_coordinate_iter!(θ::AbstractVector{N}, d::Vector, s::Vector, F::Vector,
+                                       x::AbstractVector{N}, y::AbstractVector{N},
+                                       live::AbstractVector{Int}, n::Int=length(θ)÷2) where {N<:Real}
+    @inbounds for i in live
+        x[i] = exp(-θ[i]); y[i] = exp(-θ[i+n])
+    end
+    ceiling = sum(F) - 1                       # sup over xᵢ of ⟨kᵢ⟩ (every pair saturated)
+    # Pass 1 — exact one-dimensional block solves. Each is the exact maximisation of a concave objective
+    # in one coordinate, so this pass alone increases L monotonically and converges.
+    @inbounds for i in live
+        if d[i] < ceiling                      # else: saturated degree, xᵢ* = ∞ — left to the polish
+            hi = max(x[i], N(1e-8))
+            while _uecm_pair_k(i, hi, x, y, F, live)[1] < d[i] && hi < N(1e14)
+                hi *= 4
+            end
+            x[i] = _monotone_root(u -> _uecm_pair_k(i, u, x, y, F, live), zero(N), hi, N(d[i]), x[i])
+        end
+        ȳ = _uecm_ybar(i, y, F, live)
+        y[i] = _monotone_root(v -> _uecm_pair_s(i, v, x, y, F, live), zero(N), ȳ, N(s[i]), min(y[i], ȳ/2))
+    end
+    # Pass 2 — the Newton polish. Each node's step is accepted on that node's own residual, which is what
+    # follows a runaway ridge quickly; but the PASS is then accepted only if it lowers the GLOBAL residual.
+    # Without that safeguard a near-singular runaway Jacobian takes a huge step that improves one node and
+    # wrecks the rest, the next node undoes it, and the sweep cycles indefinitely (measured: a global
+    # residual bouncing around `4e-1` forever instead of converging).
+    r_plain = _uecm_constraint_residual(x, y, d, s, F, live)
+    x_plain = copy(x); y_plain = copy(y)
+    @inbounds for i in live
+        _uecm_polish!(i, x, y, d, s, F, live, _uecm_ybar(i, y, F, live))
+    end
+    if !(_uecm_constraint_residual(x, y, d, s, F, live) < r_plain)
+        copyto!(x, x_plain); copyto!(y, y_plain)
+    end
+    @inbounds for i in live
+        θ[i] = -log(x[i]); θ[i+n] = -log(y[i])
+    end
+    return θ
 end
 
 
@@ -956,14 +1201,25 @@ By default the parameters are computed using the BFGS method with the strength s
 - `initial::Symbol`: initial guess, `:strengths` (default), `:strengths_minor`, `:random`, or `:uniform`.
 - `maxiters::Int`: maximum number of iterations (defaults to 1000).
 - `verbose::Bool`: show log messages (defaults to false).
-- `ftol::Union{Real, Nothing}`: tolerance for the fixedpoint method (defaults to `nothing`, i.e. 1e-8). It bounds the fixed-point *increment* ``\\|G(\\theta) - \\theta\\|_\\infty`` in **parameter** space; it is **not** the constraint residual. ❗ It applies to the `:fixedpoint` method only, and so is **ignored on this model's default `:BFGS` path** (passing it there warns). Use [`constraint_residual`](@ref) to measure how well the expected degrees and strengths actually match the observed ones.
+- `ftol::Union{Real, Nothing}`: tolerance for the fixedpoint method (defaults to `nothing`, i.e. 1e-8). On this model it bounds the **constraint residual** — the largest absolute mismatch between an expected and an observed reduced degree or strength — rather than the parameter-space increment used by the binary models. (The `CReM`/`DCReM`/`CRWCM` layers already use `ftol` this way.) The increment is not a usable test here: a runaway constraint has no finite fixed point, so the iterate keeps moving while the residual it is chasing falls, and an orbit that cycles can dip under an increment threshold and report success at an arbitrary residual. ❗ It applies to the `:fixedpoint` method only, and so is **ignored on this model's default `:BFGS` path** (passing it there warns). Use [`constraint_residual`](@ref) to check any solve.
 - `abstol`, `reltol`: absolute/relative tolerances for the optimisation methods (default `nothing`).
 - `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`). The gradient of this model *is* its constraint residual (up to the multiplicities), and it is the tolerance to reach for on the default path, but `g_abstol` is a stopping criterion rather than a guarantee: Optim can also stop on its function or parameter convergence checks and report success without the gradient ever reaching `g_tol`. Verify what was actually achieved with [`constraint_residual`](@ref).
 - `AD_method::Symbol`: autodiff method, any of :$(join(keys(MaxEntropyGraphs.AD_methods), ", :", " and :")) (defaults to `:AutoZygote`).
 - `analytical_gradient::Bool`: use the analytical gradient instead of autodiff (defaults to `false`).
 
 **Notes**
-- the fixed-point method is very unstable for this model and should not be used. From an acceptable solution it can be used to fine-tune an existing one.
+- `:fixedpoint` is **block coordinate ascent** ([`UECM_reduced_coordinate_iter!`](@ref)), not the Picard
+  recipe that this model used up to `v0.7.0`. That recipe's strength step provably overshoots its own root
+  without bound and left the model's domain on the first iteration from any cold start: measured over 150
+  random weighted networks it converged on **0**. The replacement solves each block exactly and is feasible
+  by construction; on the 100 of those networks that are **well posed** it converges on **98**, against 86
+  for `:BFGS`, and it is both the most accurate and much the cheapest path — on a 250-vertex weighted
+  network it reaches a degree/strength residual of `9·10⁻⁹` in `0.28 s`, against `1.4·10⁻⁵` in `57 s` for
+  `:BFGS`. On the 50 networks carrying a **runaway** constraint (see *Conditioning* below) it reaches
+  `ftol` on only 8; there the optimum is at an infinite parameter and `:BFGS` (38/50) is the method to
+  use — `solve_model!` says so, naming the offending constraint, rather than failing silently. Such a
+  solve runs the full `maxiters` before giving up, so lower it if you want the answer sooner.
+  The legacy map is still exported as [`UECM_reduced_iter!`](@ref).
 - the L-BFGS method is known to be unstable for this model and should not be used.
 - **`:Newton` requires the default `initial = :strengths`.** The UECM likelihood lives on the open box
   `βᵢ > 0`; the first-order methods carry that box explicitly (via `Fminbox`), but `Fminbox` does not
@@ -974,6 +1230,16 @@ By default the parameters are computed using the BFGS method with the strength s
   That honest failure is deliberate: `IPNewton` with the box removes the failures but reports success
   far from the optimum instead (measured off by up to `5·10³` in `-L`), which is worse. See
   `validation/bicm_uecm_solver_geometry.md`.
+
+**The feasible set**
+
+The UECM is defined wherever every pair that exists has `yᵢyⱼ < 1`, i.e. `βᵢ + βⱼ > 0` — a *pairwise*
+condition. The only per-coordinate case is the **same-class** pair, needing `2βᵢ > 0`, and a class of
+multiplicity `Fᵢ = 1` has no same-class pair. The `Fminbox` used by the first-order methods therefore
+floors only the `βᵢ` of classes with `Fᵢ ≥ 2` (see [`MaxEntropyGraphs._UECM_β_FLOOR`](@ref)); flooring
+every class, as `v0.7.0` did, pinned singleton classes against a wall that is not part of the model and
+reported `Success` from it (measured: 5 of 128 networks, degree/strength residual `0.17`–`2.31`).
+`:fixedpoint` carries the exact feasible set and is unaffected either way.
 
 **Conditioning**
 
@@ -1018,25 +1284,55 @@ function solve_model!(m::UECM;  # common settings
     # the Inf entries on `m.θᵣ` afterwards, so this only fixes where the solver *starts*.
     θ₀[ind_inf] .= zero(N);
     if method==:fixedpoint
-        @warn "The fixed point method is very unstable for this model and should not be used. `BFGS` is prefered for quasinewton methods."
-        # initiate buffers
-        x_buffer = zeros(N, length(m.dᵣ)); # buffer for x = exp(-α)
-        y_buffer = zeros(N, length(m.sᵣ));  # buffer for y = exp(-β)
-        G_buffer = zeros(N, length(m.θᵣ)); # buffer for G(x)
-        # define fixed point function
-        FP_model! = (θ::Vector) -> UECM_reduced_iter!(θ, m.dᵣ, m.sᵣ, m.f, x_buffer, y_buffer, G_buffer, m.nz, length(m.dᵣ));
-        # obtain solution
-        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
-        if NLsolve.converged(sol)
-            if verbose
-                @info "Fixed point iteration converged after $(sol.iterations) iterations"
+        # Block coordinate ascent (`UECM_reduced_coordinate_iter!`), NOT the Picard/Anderson recipe: the
+        # latter's strength step provably overshoots without bound and leaves the model's domain
+        # (`yᵢyⱼ < 1`) on the very first iteration — 0 of 150 random weighted networks converged. The
+        # coordinate map solves each block exactly, which is feasible by construction.
+        nθ = length(m.dᵣ)
+        x_buffer = zeros(N, nθ);           # buffer for x = exp(-α)
+        y_buffer = zeros(N, nθ);           # buffer for y = exp(-β)
+        θ = copy(θ₀); θ_prev = copy(θ₀)
+        live = m.nz
+        moving = vcat(live, nθ .+ live)    # the fixed-point increment is measured on live entries only
+        iters = 0; converged = false; residual = N(Inf); best = N(Inf)
+        for k in 1:maxiters
+            UECM_reduced_coordinate_iter!(θ, m.dᵣ, m.sᵣ, m.f, x_buffer, y_buffer, live, nθ)
+            residual = _uecm_constraint_residual(x_buffer, y_buffer, m.dᵣ, m.sᵣ, m.f, live)
+            increment = zero(N)
+            @inbounds for i in moving
+                increment = max(increment, abs(θ[i] - θ_prev[i]))
             end
-            m.θᵣ .= sol.zero;
+            copyto!(θ_prev, θ)
+            iters = k
+            best = min(best, residual)
+            if !isfinite(residual)
+                break
+            elseif residual < ftol
+                converged = true; break
+            elseif iszero(increment)
+                break                      # the sweep is a fixed point but the constraints are not met
+            end
+        end
+        # mirrors the fields of the `NLsolve` result the other models' fixed-point paths return
+        sol = (zero = θ, iterations = iters, residual = residual, converged = converged)
+        if converged
+            if verbose
+                @info "Fixed point iteration converged after $(iters) iterations"
+            end
+            m.θᵣ .= θ;
             m.θᵣ[ind_inf] .= N(Inf);
             m.status[:params_computed] = true;
             set_xᵣ!(m);
             set_yᵣ!(m);
         else
+            # Say WHY when the cause is structural, rather than leaving a bare failure.
+            ceiling = sum(m.f) - 1
+            offenders = Pair{String,Vector{Int}}[
+                "saturated degree (k = N-1) ⇒ α → -∞" => findall(==(ceiling), m.dᵣ),
+                "minimum strength (s = k) ⇒ β → +∞"   => findall(i -> !iszero(m.dᵣ[i]) && m.sᵣ[i] == m.dᵣ[i],
+                                                                 eachindex(m.dᵣ))]
+            any(!isempty, last.(offenders)) &&
+                @warn _ecm_runaway_message("UECM", iters, best, ftol, offenders)
             throw(ConvergenceError(method, nothing))
         end
     else
@@ -1060,22 +1356,31 @@ function solve_model!(m::UECM;  # common settings
                                                                                         AD_methods[AD_for_method],
                                                                                         grad = analytical_gradient ? grad! : nothing)                      : throw(ArgumentError("The AD method $(AD_method) is not supported (yet)"))
 
-        # The UECM is only defined where `yᵢyⱼ < 1`. The diagonal self-pair term of `L_UECM_reduced`
-        # (`om_c2 = -expm1(-2βᵢ)`) is evaluated for every class, so that domain is *exactly* the open box
-        # `βᵢ > 0 ∀i` — which also implies `βᵢ + βⱼ > 0` for the off-diagonal pairs. Solving it as a genuinely
-        # box-constrained problem keeps every iterate feasible. Previously we relied on the out-of-domain
-        # `NaN` to repel the line search: Optim 1 muddled through that, but Optim 2 (with LineSearches 7.8)
-        # aborts the whole solve on a non-finite iterate, which pinned BFGS against the barrier at `β ≈ 0`.
+        # The UECM is only defined where `yᵢyⱼ < 1` over the pairs that EXIST, i.e. `βᵢ + βⱼ > 0`. Solving
+        # the part of that which is a genuine box as a box-constrained problem keeps the iterates feasible:
+        # we used to rely on the out-of-domain `NaN` to repel the line search, and Optim 2 (with
+        # LineSearches 7.8) aborts the whole solve on a non-finite iterate instead of backtracking.
+        #
+        # The box is only the SAME-CLASS pair condition `2βᵢ > 0`, and a class of multiplicity `Fᵢ = 1` has
+        # no same-class pair — so its `βᵢ` is unbounded below and must NOT be floored. Flooring every class
+        # (as `v0.7.0` did) pinned singleton classes against a wall that is not part of the model: measured
+        # on 5 of 128 random weighted networks whose optimum has a `βᵢ < 0`, `BFGS` stopped at the floor and
+        # reported `Success` with a degree/strength residual of `0.17`–`2.31` (against `10⁻⁸` for the true
+        # optimum, which also has the strictly larger likelihood). Singleton classes keep `-Inf` and are
+        # held in the domain by the objective, exactly as the `DECM` does. See `_UECM_β_FLOOR` and
+        # `validation/uecm_decm_fixedpoint.md`.
+        #
         # `Fminbox` does not accept `Newton`, which converges unconstrained anyway, so bound only the
-        # first-order methods. Both give the same optimum under Optim 1 and Optim 2.
+        # first-order methods.
         prob = if method === :Newton
             Optimization.OptimizationProblem(f, θ₀)
         else
             nθ = length(m.dᵣ)
+            βlo = N[m.f[i] > 1 ? N(_UECM_β_FLOOR) : N(-Inf) for i in 1:nθ]
             # start strictly inside the box: `ind_inf` entries were zeroed above, which sits on the boundary
-            @views θ₀[nθ+1:end] .= max.(θ₀[nθ+1:end], N(_UECM_β_FLOOR))
+            @views θ₀[nθ+1:end] .= max.(θ₀[nθ+1:end], βlo)
             Optimization.OptimizationProblem(f, θ₀;
-                                             lb = vcat(fill(N(-Inf), nθ), fill(N(_UECM_β_FLOOR), nθ)),
+                                             lb = vcat(fill(N(-Inf), nθ), βlo),
                                              ub = fill(N(Inf), 2nθ))
         end
         # obtain solution

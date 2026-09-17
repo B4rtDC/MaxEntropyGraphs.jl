@@ -550,6 +550,248 @@ end
 
 
 """
+    _decm_pair_k(i, u, x_opp, y_me, y_opp, F, live)
+
+`(⟨kᵢ⟩, ∂⟨kᵢ⟩/∂xᵢ)` for one orientation of class `i` of the reduced DECM, as a function of its own `x = u`.
+
+Out- and in-parameters are distinct even within a class, so every pair term is **linear** in the varying
+variable and the `UECM`'s same-class quadratic case does not arise here.
+"""
+@inline function _decm_pair_k(i::Int, u::N, x_opp::AbstractVector, y_me::N, y_opp::AbstractVector,
+                              F::Vector, live::AbstractVector{Int}) where {N<:Real}
+    val = zero(N); der = zero(N)
+    @inbounds for j in live
+        w = F[j] - (i == j); iszero(w) && continue
+        t = y_me*y_opp[j]; c = x_opp[j]*t; d₀ = one(N) - t; den = d₀ + c*u
+        val += w * c*u/den
+        der += w * c*d₀/(den*den)
+    end
+    return (val, der)
+end
+
+"""
+    _decm_pair_s(i, v, x_me, x_opp, y_opp, F, live)
+
+`(⟨sᵢ⟩, ∂⟨sᵢ⟩/∂yᵢ)` for one orientation of class `i` of the reduced DECM, as a function of its own `y = v`.
+"""
+@inline function _decm_pair_s(i::Int, v::N, x_me::N, x_opp::AbstractVector, y_opp::AbstractVector,
+                              F::Vector, live::AbstractVector{Int}) where {N<:Real}
+    val = zero(N); der = zero(N)
+    @inbounds for j in live
+        w = F[j] - (i == j); iszero(w) && continue
+        g = x_me*x_opp[j]; t = v*y_opp[j]
+        D = (one(N) - t)*(one(N) - t + g*t)
+        val += w * g*t/D
+        der += w * y_opp[j] * g*(one(N) - (one(N) - g)*t*t)/(D*D)
+    end
+    return (val, der)
+end
+
+"""
+    _decm_ybar(i, y_opp, F, live)
+
+Upper end of the feasible interval for one orientation of `yᵢ`: the DECM needs `y_out,ᵢ·y_in,ⱼ < 1` over
+the ordered pairs that exist, so `ȳᵢ = minⱼ 1/y_opp,ⱼ` over those `j`.
+"""
+@inline function _decm_ybar(i::Int, y_opp::AbstractVector{N}, F::Vector, live::AbstractVector{Int}) where {N<:Real}
+    b = N(Inf)
+    @inbounds for j in live
+        w = F[j] - (i == j); iszero(w) && continue
+        b = min(b, inv(y_opp[j]))
+    end
+    return b
+end
+
+"""
+    _decm_node(i, a, b, x_opp, y_opp, F, live)
+
+`(⟨kᵢ⟩, ⟨sᵢ⟩)` and their Jacobian with respect to `(a, b) = (log xᵢ, log yᵢ)` for one orientation.
+"""
+@inline function _decm_node(i::Int, a::N, b::N, x_opp::AbstractVector, y_opp::AbstractVector,
+                            F::Vector, live::AbstractVector{Int}) where {N<:Real}
+    xᵢ = exp(a); yᵢ = exp(b)
+    k = zero(N); s = zero(N); ka = zero(N); kb = zero(N); sa = zero(N); sb = zero(N)
+    @inbounds for j in live
+        w = F[j] - (i == j); iszero(w) && continue
+        g = xᵢ*x_opp[j]; t = yᵢ*y_opp[j]
+        Q = one(N) - t + g*t; D = (one(N) - t)*Q; Q² = Q*Q
+        k  += w * g*t/Q
+        s  += w * g*t/D
+        ka += w * g * t*(one(N) - t)/Q²
+        kb += w * t * g/Q²
+        sa += w * g * t/Q²
+        sb += w * t * g*(one(N) - (one(N) - g)*t*t)/(D*D)
+    end
+    return (k, s, ka, kb, sa, sb)
+end
+
+
+"""
+    _decm_polish(a₀, b₀, bmax, i, x_opp, y_opp, F, live, d, s)
+
+Safeguarded two-dimensional Newton step on one orientation of class `i`, in `(log xᵢ, log yᵢ)`; returns
+the polished `(a, b)`.
+
+The directed twin of [`_uecm_polish!`](@ref), and it matters more here: the rhesus macaques network has
+an out-class with `k = s = 1`, whose optimum is at `β_out → +∞`. With the one-dimensional solves alone
+the residual stalls at `2·10⁻⁴` with a per-sweep rate of `0.999823` — some `7·10⁴` sweeps to reach
+`10⁻⁹`. Every trial point must stay in the domain and reduce this channel's residual; that test is local,
+so the caller accepts the pass as a whole only when it lowers the *global* residual (see
+[`DECM_reduced_coordinate_iter!`](@ref)).
+"""
+function _decm_polish(a₀::N, b₀::N, bmax::N, i::Int, x_opp::AbstractVector, y_opp::AbstractVector,
+                      F::Vector, live::AbstractVector{Int}, d::N, s::N; maxit::Int=25) where {N<:Real}
+    a = clamp(a₀, -N(_ECM_LOGCAP), N(_ECM_LOGCAP))
+    b = min(clamp(b₀, -N(_ECM_LOGCAP), N(_ECM_LOGCAP)), prevfloat(bmax))
+    (isfinite(a) && isfinite(b)) || return (a₀, b₀)
+    scale = max(one(N), d + s)
+    for _ in 1:maxit
+        k, sv, ka, kb, sa, sb = _decm_node(i, a, b, x_opp, y_opp, F, live)
+        r₁ = k - d; r₂ = sv - s; nr = hypot(r₁, r₂)
+        nr < eps(N)*scale && break
+        det = ka*sb - kb*sa
+        (isfinite(det) && !iszero(det)) || break
+        da = (-r₁*sb + r₂*kb)/det
+        db = (-r₂*ka + r₁*sa)/det
+        (isfinite(da) && isfinite(db)) || break
+        τ = one(N); stepped = false
+        for _ in 1:60
+            aⁿ = a + τ*da; bⁿ = b + τ*db
+            if -N(_ECM_LOGCAP) <= aⁿ <= N(_ECM_LOGCAP) && -N(_ECM_LOGCAP) <= bⁿ < min(N(_ECM_LOGCAP), bmax)
+                k₂, s₂, _, _, _, _ = _decm_node(i, aⁿ, bⁿ, x_opp, y_opp, F, live)
+                if isfinite(k₂) && isfinite(s₂) && hypot(k₂ - d, s₂ - s) < nr
+                    a = aⁿ; b = bⁿ; stepped = true; break
+                end
+            end
+            τ /= 2
+        end
+        stepped || break
+    end
+    return (a, b)
+end
+
+
+"""
+    _decm_constraint_residual(x_out, x_in, y_out, y_in, d_out, d_in, s_out, s_in, F, nz_out, nz_in)
+
+Largest absolute violation of the four constrained sequences of the reduced DECM at the current
+parameters. As for the `UECM`, this — not the sweep-to-sweep increment — is what the `:fixedpoint` driver
+converges on: a runaway constraint has its optimum at an infinite parameter, so the iterate keeps
+travelling along a ridge while the residual falls monotonically to zero (see
+[`MaxEntropyGraphs._uecm_constraint_residual`](@ref)).
+"""
+function _decm_constraint_residual(x_out::AbstractVector{N}, x_in::AbstractVector{N},
+                                   y_out::AbstractVector{N}, y_in::AbstractVector{N},
+                                   d_out::Vector, d_in::Vector, s_out::Vector, s_in::Vector,
+                                   F::Vector, nz_out::Vector, nz_in::Vector) where {N<:Real}
+    r = zero(N)
+    @inbounds for i in nz_out
+        k, sv, _, _, _, _ = _decm_node(i, log(x_out[i]), log(y_out[i]), x_in, y_in, F, nz_in)
+        r = max(r, abs(k - d_out[i]), abs(sv - s_out[i]))
+    end
+    @inbounds for i in nz_in
+        k, sv, _, _, _, _ = _decm_node(i, log(x_in[i]), log(y_in[i]), x_out, y_out, F, nz_out)
+        r = max(r, abs(k - d_in[i]), abs(sv - s_in[i]))
+    end
+    return r
+end
+
+"""
+    DECM_reduced_coordinate_iter!(θ, d_out, d_in, s_out, s_in, F, nz_out, nz_in, x_out, x_in, y_out, y_in, n=length(θ)÷4)
+
+One sweep of **block coordinate ascent** on the reduced DECM log-likelihood. `θ` is updated in place and
+returned; the four parameter buffers are overwritten. This is the map behind
+`solve_model!(m, method=:fixedpoint)`.
+
+The directed twin of [`UECM_reduced_coordinate_iter!`](@ref), and it replaces the Picard recipe
+([`DECM_reduced_iter!`](@ref)) for the same reason: with `g = x_out,ᵢx_in,ⱼ`, `t = y_out,ᵢy_in,ⱼ`, the
+degree step divides by a factor strictly decreasing in its own `x` and therefore *undershoots* safely,
+while the strength step divides by `Bᵢ = Σⱼ wⱼ gⱼy_in,ⱼ/D(t)` — strictly **increasing** in its own `y`
+whenever `g < 2` — and therefore *overshoots* without bound, leaving the domain `t < 1` on the first
+iteration. Measured over 150 random weighted digraphs, the Picard/Anderson path converged on **0**.
+
+Each block is instead solved exactly: `⟨kᵢ⟩(xᵢ)` rises monotonically from `0` to `Σⱼ wⱼ` and `⟨sᵢ⟩(yᵢ)`
+from `0` to `∞` on `(0, ȳᵢ)`, so the strength root always exists, is unique, and is feasible by
+construction. A two-dimensional Newton polish ([`_decm_polish`](@ref)) follows runaway ridges.
+
+See also `validation/uecm_decm_fixedpoint.md`.
+"""
+function DECM_reduced_coordinate_iter!(θ::AbstractVector{N},
+                                       d_out::Vector, d_in::Vector, s_out::Vector, s_in::Vector,
+                                       F::Vector, nz_out::Vector, nz_in::Vector,
+                                       x_out::AbstractVector{N}, x_in::AbstractVector{N},
+                                       y_out::AbstractVector{N}, y_in::AbstractVector{N},
+                                       n::Int=length(θ)÷4) where {N<:Real}
+    @inbounds for i in nz_out
+        x_out[i] = exp(-θ[i]);       y_out[i] = exp(-θ[i+2*n])
+    end
+    @inbounds for i in nz_in
+        x_in[i]  = exp(-θ[i+n]);     y_in[i]  = exp(-θ[i+3*n])
+    end
+    ceil_out = sum(F[j] for j in nz_in;  init=0)     # sup over x_out,ᵢ of ⟨k_out,ᵢ⟩
+    ceil_in  = sum(F[j] for j in nz_out; init=0)
+    # Pass 1 — exact one-dimensional block solves, out-blocks (i→j) then in-blocks (j→i). Each is the
+    # exact maximisation of a concave objective in one coordinate, so this pass is monotone in L.
+    @inbounds for i in nz_out
+        cap = ceil_out - (i in nz_in ? 1 : 0)
+        if d_out[i] < cap
+            hi = max(x_out[i], N(1e-8))
+            while _decm_pair_k(i, hi, x_in, y_out[i], y_in, F, nz_in)[1] < d_out[i] && hi < N(1e14)
+                hi *= 4
+            end
+            x_out[i] = _monotone_root(u -> _decm_pair_k(i, u, x_in, y_out[i], y_in, F, nz_in),
+                                      zero(N), hi, N(d_out[i]), x_out[i])
+        end
+        ȳ = _decm_ybar(i, y_in, F, nz_in)
+        y_out[i] = _monotone_root(v -> _decm_pair_s(i, v, x_out[i], x_in, y_in, F, nz_in),
+                                  zero(N), ȳ, N(s_out[i]), min(y_out[i], ȳ/2))
+    end
+    @inbounds for i in nz_in
+        cap = ceil_in - (i in nz_out ? 1 : 0)
+        if d_in[i] < cap
+            hi = max(x_in[i], N(1e-8))
+            while _decm_pair_k(i, hi, x_out, y_in[i], y_out, F, nz_out)[1] < d_in[i] && hi < N(1e14)
+                hi *= 4
+            end
+            x_in[i] = _monotone_root(u -> _decm_pair_k(i, u, x_out, y_in[i], y_out, F, nz_out),
+                                     zero(N), hi, N(d_in[i]), x_in[i])
+        end
+        ȳ = _decm_ybar(i, y_out, F, nz_out)
+        y_in[i] = _monotone_root(v -> _decm_pair_s(i, v, x_in[i], x_out, y_out, F, nz_out),
+                                 zero(N), ȳ, N(s_in[i]), min(y_in[i], ȳ/2))
+    end
+    # Pass 2 — the Newton polish. Each channel's step is accepted on that channel's own residual (which is
+    # what follows a runaway ridge quickly), but the PASS as a whole only if it lowers the GLOBAL residual.
+    # Without that safeguard a near-singular runaway Jacobian takes a huge step that improves one channel
+    # and wrecks the rest, the next channel undoes it, and the sweep cycles indefinitely.
+    r_plain = _decm_constraint_residual(x_out, x_in, y_out, y_in, d_out, d_in, s_out, s_in, F, nz_out, nz_in)
+    xo_p = copy(x_out); xi_p = copy(x_in); yo_p = copy(y_out); yi_p = copy(y_in)
+    @inbounds for i in nz_out
+        ȳ = _decm_ybar(i, y_in, F, nz_in)
+        a, b = _decm_polish(log(x_out[i]), log(y_out[i]), log(ȳ), i, x_in, y_in, F, nz_in,
+                            N(d_out[i]), N(s_out[i]))
+        x_out[i] = exp(a); y_out[i] = exp(b)
+    end
+    @inbounds for i in nz_in
+        ȳ = _decm_ybar(i, y_out, F, nz_out)
+        a, b = _decm_polish(log(x_in[i]), log(y_in[i]), log(ȳ), i, x_out, y_out, F, nz_out,
+                            N(d_in[i]), N(s_in[i]))
+        x_in[i] = exp(a); y_in[i] = exp(b)
+    end
+    if !(_decm_constraint_residual(x_out, x_in, y_out, y_in, d_out, d_in, s_out, s_in, F, nz_out, nz_in) < r_plain)
+        copyto!(x_out, xo_p); copyto!(x_in, xi_p); copyto!(y_out, yo_p); copyto!(y_in, yi_p)
+    end
+    @inbounds for i in nz_out
+        θ[i]       = -log(x_out[i]); θ[i+2*n] = -log(y_out[i])
+    end
+    @inbounds for i in nz_in
+        θ[i+n]     = -log(x_in[i]);  θ[i+3*n] = -log(y_in[i])
+    end
+    return θ
+end
+
+
+"""
     initial_guess(m::DECM; method::Symbol=:strengths)
 
 Compute an initial guess `θ₀ = [α_out; α_in; β_out; β_in]` for the maximum likelihood parameters of the DECM model `m`.
@@ -1322,16 +1564,27 @@ By default the parameters are computed using the BFGS method with the strength s
 - `initial::Symbol`: initial guess, `:strengths` (default), `:strengths_minor`, `:random`, or `:uniform`.
 - `maxiters::Int`: maximum number of iterations (defaults to 10_000 — larger than the other models, see the notes on conditioning below).
 - `verbose::Bool`: show log messages (defaults to false).
-- `ftol::Union{Real, Nothing}`: tolerance for the fixedpoint method (defaults to `nothing`, i.e. 1e-8). It bounds the fixed-point *increment* ``\\|G(\\theta) - \\theta\\|_\\infty`` in **parameter** space; it is **not** the constraint residual. ❗ It applies to the `:fixedpoint` method only, and so is **ignored on this model's default `:BFGS` path** (passing it there warns). Use [`constraint_residual`](@ref) to measure how well the expected degrees and strengths actually match the observed ones.
+- `ftol::Union{Real, Nothing}`: tolerance for the fixedpoint method (defaults to `nothing`, i.e. 1e-8). On this model it bounds the **constraint residual** — the largest absolute mismatch over the four constrained sequences — rather than the parameter-space increment used by the binary models. (The `CReM`/`DCReM`/`CRWCM` layers already use `ftol` this way.) The increment is not a usable test here: a runaway constraint has no finite fixed point, so the iterate keeps moving while the residual it is chasing falls, and an orbit that cycles can dip under an increment threshold and report success at an arbitrary residual. ❗ It applies to the `:fixedpoint` method only, and so is **ignored on this model's default `:BFGS` path** (passing it there warns). Use [`constraint_residual`](@ref) to measure how well the expected degrees and strengths actually match the observed ones.
 - `abstol`, `reltol`: absolute/relative tolerances for the optimisation methods (default `nothing`).
 - `g_tol::Union{Number, Nothing}`: gradient tolerance for the gradient-based methods (maps to Optim's `g_abstol`, default `nothing`). The gradient of this model *is* its constraint residual (up to the multiplicities), and it is the tolerance to reach for on the default path, but `g_abstol` is a stopping criterion rather than a guarantee: Optim can also stop on its function or parameter convergence checks and report success without the gradient ever reaching `g_tol`. Verify what was actually achieved with [`constraint_residual`](@ref).
 - `AD_method::Symbol`: autodiff method, any of :$(join(keys(MaxEntropyGraphs.AD_methods), ", :", " and :")) (defaults to `:AutoZygote`).
 - `analytical_gradient::Bool`: use the analytical gradient instead of autodiff (defaults to `false`).
 
 **Notes**
-- the fixed-point method is very unstable for this model and should not be used. From an acceptable solution it can be used to fine-tune an existing one.
-- **`:BFGS` (the default) and `:Newton` are the recommended methods**; `:LBFGS` converges to the same
-  optimum but needs an order of magnitude more iterations (see below).
+- `:fixedpoint` is **block coordinate ascent** ([`DECM_reduced_coordinate_iter!`](@ref)), not the Picard
+  recipe that this model used up to `v0.7.0`. That recipe's strength step provably overshoots its own root
+  without bound and left the model's domain on the first iteration from any cold start: measured over 150
+  random weighted digraphs it converged on **0**. The replacement solves each block exactly and is feasible
+  by construction; on the 71 of those digraphs that are **well posed** it converges on **71/71**, with a
+  median residual of `1.5·10⁻⁹` against `3.1·10⁻⁸` for `:BFGS`, and at a fraction of the cost — a
+  150-vertex weighted digraph takes `0.19 s` against `593 s` for `:BFGS`, at a residual `170×` smaller. On the 79 carrying a **runaway** constraint (see *Conditioning* below) it
+  reaches `ftol` on 22; there the optimum is at an infinite parameter and `:BFGS` (78/79) is the method to
+  use — `solve_model!` says so, naming the offending constraint, rather than failing silently. Such a solve
+  runs the full `maxiters` (`10_000` by default on this model) before giving up, so lower it if you want
+  the answer sooner.
+  The legacy map is still exported as [`DECM_reduced_iter!`](@ref).
+- **`:BFGS` (the default) and `:Newton` are the recommended gradient methods**; `:LBFGS` converges to the
+  same optimum but needs an order of magnitude more iterations (see below).
 
 **Conditioning of the DECM likelihood**
 
@@ -1404,27 +1657,66 @@ function solve_model!(m::DECM;  # common settings
     # the Inf entries on `m.θᵣ` afterwards, so this only fixes where the solver *starts*.
     θ₀[ind_inf] .= zero(N);
     if method==:fixedpoint
-        @warn "The fixed point method is very unstable for this model and should not be used. `BFGS` is prefered for quasinewton methods."
-        # initiate buffers
+        # Block coordinate ascent (`DECM_reduced_coordinate_iter!`), NOT the Picard/Anderson recipe: the
+        # latter's strength step provably overshoots without bound and leaves the model's domain
+        # (`y_out,ᵢ·y_in,ⱼ < 1`) on the very first iteration — 0 of 150 random weighted digraphs
+        # converged. The coordinate map solves each block exactly, which is feasible by construction.
         x_out_buffer = zeros(N, n); # buffer for x_out = exp(-α_out)
         x_in_buffer  = zeros(N, n); # buffer for x_in  = exp(-α_in)
         y_out_buffer = zeros(N, n); # buffer for y_out = exp(-β_out)
         y_in_buffer  = zeros(N, n); # buffer for y_in  = exp(-β_in)
-        G_buffer     = zeros(N, length(m.θᵣ)); # buffer for G(x)
-        # define fixed point function
-        FP_model! = (θ::Vector) -> DECM_reduced_iter!(θ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f, m.dᵣ_out_nz, m.dᵣ_in_nz, x_out_buffer, x_in_buffer, y_out_buffer, y_in_buffer, G_buffer, n);
-        # obtain solution
-        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
-        if NLsolve.converged(sol)
-            if verbose
-                @info "Fixed point iteration converged after $(sol.iterations) iterations"
+        θ = copy(θ₀); θ_prev = copy(θ₀)
+        # the fixed-point increment is measured on live entries only
+        moving = vcat(m.dᵣ_out_nz, n .+ m.dᵣ_in_nz, 2*n .+ m.dᵣ_out_nz, 3*n .+ m.dᵣ_in_nz)
+        iters = 0; converged = false; residual = N(Inf); best = N(Inf)
+        for k in 1:maxiters
+            DECM_reduced_coordinate_iter!(θ, m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f,
+                                          m.dᵣ_out_nz, m.dᵣ_in_nz,
+                                          x_out_buffer, x_in_buffer, y_out_buffer, y_in_buffer, n)
+            residual = _decm_constraint_residual(x_out_buffer, x_in_buffer, y_out_buffer, y_in_buffer,
+                                                 m.dᵣ_out, m.dᵣ_in, m.sᵣ_out, m.sᵣ_in, m.f,
+                                                 m.dᵣ_out_nz, m.dᵣ_in_nz)
+            increment = zero(N)
+            @inbounds for i in moving
+                increment = max(increment, abs(θ[i] - θ_prev[i]))
             end
-            m.θᵣ .= sol.zero;
+            copyto!(θ_prev, θ)
+            iters = k
+            best = min(best, residual)
+            if !isfinite(residual)
+                break
+            elseif residual < ftol
+                converged = true; break
+            elseif iszero(increment)
+                break                      # the sweep is a fixed point but the constraints are not met
+            end
+        end
+        # mirrors the fields of the `NLsolve` result the other models' fixed-point paths return
+        sol = (zero = θ, iterations = iters, residual = residual, converged = converged)
+        if converged
+            if verbose
+                @info "Fixed point iteration converged after $(iters) iterations"
+            end
+            m.θᵣ .= θ;
             m.θᵣ[ind_inf] .= N(Inf);
             m.status[:params_computed] = true;
             set_xᵣ!(m);
             set_yᵣ!(m);
         else
+            # Say WHY when the cause is structural, rather than leaving a bare failure.
+            cap_o = sum(m.f[j] for j in m.dᵣ_in_nz;  init=0)
+            cap_i = sum(m.f[j] for j in m.dᵣ_out_nz; init=0)
+            offenders = Pair{String,Vector{Int}}[
+                "saturated out-degree ⇒ α_out → -∞" => findall(i -> m.dᵣ_out[i] >= cap_o - (i in m.dᵣ_in_nz),
+                                                               eachindex(m.dᵣ_out)),
+                "saturated in-degree ⇒ α_in → -∞"   => findall(i -> m.dᵣ_in[i]  >= cap_i - (i in m.dᵣ_out_nz),
+                                                               eachindex(m.dᵣ_in)),
+                "minimum out-strength (s = k) ⇒ β_out → +∞" => findall(i -> !iszero(m.dᵣ_out[i]) && m.sᵣ_out[i] == m.dᵣ_out[i],
+                                                                       eachindex(m.dᵣ_out)),
+                "minimum in-strength (s = k) ⇒ β_in → +∞"   => findall(i -> !iszero(m.dᵣ_in[i]) && m.sᵣ_in[i] == m.dᵣ_in[i],
+                                                                       eachindex(m.dᵣ_in))]
+            any(!isempty, last.(offenders)) &&
+                @warn _ecm_runaway_message("DECM", iters, best, ftol, offenders)
             throw(ConvergenceError(method, nothing))
         end
     else

@@ -638,4 +638,112 @@ end
         @test total_loose > total_strict
     end
 
+
+    @testset "fixed point: block coordinate ascent (UECM/DECM)" begin
+        SWG = MaxEntropyGraphs.SimpleWeightedGraphs
+        rhesus_u = SWG.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques())
+
+        # (a) REGRESSION GUARD on the documented negative: the Picard recipe that `:fixedpoint` used up
+        #     to v0.7.0 leaves the model's domain (yᵢyⱼ < 1) on its very FIRST iteration from the default
+        #     cold start. It is still exported, so guard that it is not quietly reinstated as the default.
+        let m = UECM(rhesus_u)
+            n = length(m.dᵣ)
+            xb = zeros(n); yb = zeros(n); Gb = zeros(2n)
+            θ₀ = MaxEntropyGraphs.initial_guess(m); θ₀[isinf.(θ₀)] .= 0.0
+            start = maximum(exp(-θ₀[n+i])*exp(-θ₀[n+j]) for i in 1:n, j in 1:n if m.f[j]-(i==j) != 0)
+            @test start < 1                      # the start itself is comfortably feasible
+            θ₁ = copy(MaxEntropyGraphs.UECM_reduced_iter!(copy(θ₀), m.dᵣ, m.sᵣ, m.f, xb, yb, Gb, m.nz, n))
+            y₁ = exp.(-θ₁[n+1:end])
+            @test maximum(y₁[i]*y₁[j] for i in 1:n, j in 1:n if m.f[j]-(i==j) != 0) > 1
+        end
+
+        # (b) the replacement converges from that same cold start, and agrees with the gradient path
+        let mf = UECM(rhesus_u), mb = UECM(rhesus_u)
+            solve_model!(mf, method = :fixedpoint)
+            solve_model!(mb, method = :BFGS)
+            @test MaxEntropyGraphs.constraint_residual(mf) < 1e-7
+            @test isapprox(mf.θᵣ, mb.θᵣ, atol = 1e-5)   # the UECM has no gauge freedom
+            # the optimum sits very close to the domain wall, which is why overshooting is fatal
+            n = length(mf.dᵣ); y = mf.yᵣ
+            wall = maximum(y[i]*y[j] for i in 1:n, j in 1:n if mf.f[j]-(i==j) != 0)
+            @test 0.9 < wall < 1
+        end
+
+        # (c) a spread of well-posed random weighted networks: every one converges. `wug` guarantees no
+        #     isolated vertex; the filter drops the runaway cases, which are covered by (d).
+        let rng = MaxEntropyGraphs.Xoshiro(2026), tested = 0
+            wug = function (nv, p, wmax)
+                A = zeros(Int, nv, nv)
+                for i in 1:nv, j in i+1:nv
+                    rand(rng) < p && (A[i,j] = A[j,i] = rand(rng, 1:wmax))
+                end
+                for i in 1:nv
+                    if all(iszero, @view A[i,:]); j = mod1(i+1, nv); A[i,j] = A[j,i] = rand(rng, 1:wmax); end
+                end
+                SWG.SimpleWeightedGraph(A)
+            end
+            for _ in 1:40
+                g = wug(rand(rng, 8:16), 0.25 + 0.3rand(rng), rand(rng, 2:6))
+                m = UECM(g); N = sum(m.f)
+                runaway = any(iszero, m.dᵣ) || any(==(N-1), m.dᵣ) ||
+                          any(i -> m.sᵣ[i] == m.dᵣ[i], eachindex(m.dᵣ))
+                runaway && continue
+                tested += 1
+                solve_model!(m, method = :fixedpoint)
+                @test MaxEntropyGraphs.constraint_residual(m) < 1e-6
+            end
+            @test tested >= 10          # the filter must not have emptied the corpus
+        end
+
+        # (d) a runaway constraint (`s = k`, every incident link of weight 1) puts the optimum at an
+        #     INFINITE parameter. The coordinate map may or may not reach `ftol` on such a network — what
+        #     must never happen is a silent wrong answer. So: either it converges to a genuinely small
+        #     residual, or it throws. This is the invariant that matters, and it does not pin behaviour
+        #     that is legitimately data-dependent.
+        let cases = ([2,4,3,1,2,2,1,1] => [5,15,8,2,4,5,2,1],
+                     [1,2,2,3,3,1]     => [1,5,2,7,9,1],
+                     [2,2,3,3,2,2]     => [2,6,3,11,2,5],
+                     [1,3,3,2,2,1]     => [1,8,4,2,6,1])
+            for (d, s) in cases
+                m = UECM(d = collect(d), s = collect(s))
+                @test any(i -> m.sᵣ[i] == m.dᵣ[i], eachindex(m.dᵣ))   # it really is a runaway
+                converged = try
+                    solve_model!(m, method = :fixedpoint, initial = :strengths_minor); true
+                catch e
+                    @test e isa MaxEntropyGraphs.ConvergenceError
+                    false
+                end
+                if converged
+                    @test MaxEntropyGraphs.constraint_residual(m) < 1e-6
+                else
+                    @test !m.status[:params_computed]
+                end
+            end
+        end
+
+        # (e) `L_UECM_reduced` must be finite on all of its own domain. The same-class term is weighted
+        #     Fᵢ(Fᵢ-1)/2, which is zero for a SINGLETON class — and `0 * NaN = NaN` used to poison the
+        #     whole sum whenever such a class had βᵢ ≤ 0, even with every real pair strictly feasible.
+        let d = [1, 2, 2], s = [3, 5, 6], F = [1, 1, 1], n = 3, α = [0.5, 0.4, 0.3]
+            inside  = [-0.20, 0.5, 0.5]        # every EXISTING pair has βᵢ + βⱼ > 0
+            outside = [-0.51, 0.5, 0.5]        # β₁ + β₂ < 0 — genuinely out of the domain
+            @test all(inside[i] + inside[j] > 0 for i in 1:n for j in 1:i-1)
+            @test isfinite(MaxEntropyGraphs.L_UECM_reduced(vcat(α, inside), d, s, F, n))
+            @test isnan(MaxEntropyGraphs.L_UECM_reduced(vcat(α, outside), d, s, F, n))
+            # a class of multiplicity F ≥ 2 DOES have a same-class pair, so βᵢ < 0 is out of ITS domain
+            @test isnan(MaxEntropyGraphs.L_UECM_reduced(vcat(α, inside), d, s, [2, 1, 1], n))
+        end
+
+        # (f) the `Fminbox` floor must apply only to classes with a same-class pair. This network's ML
+        #     optimum has βᵢ < 0 on a singleton class; flooring the whole β block pinned `:BFGS` against
+        #     a wall that is not part of the model and reported Success at a residual of 0.22.
+        let mb = UECM(d = [2,1,3,2,2,2], s = [5,5,9,5,5,3])
+            solve_model!(mb, method = :BFGS, initial = :strengths_minor)
+            nθ = length(mb.dᵣ)
+            @test minimum(mb.θᵣ[nθ+1:end]) < 0                      # reached, not pinned at the floor
+            @test MaxEntropyGraphs.constraint_residual(mb) < 1e-6
+            @test any(i -> mb.f[i] == 1, eachindex(mb.f))           # ... on a singleton class
+        end
+    end
+
 end
