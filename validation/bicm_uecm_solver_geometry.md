@@ -369,6 +369,59 @@ Two claims in earlier drafts were wrong, both from generalising a single probe:
 
 ---
 
+## 3d. The UECM `:fixedpoint`: the control experiment
+
+The `UECM` fixed point is also documented as unstable, and testing it settles what the gauge does and does
+not explain — because the UECM has **no gauge at all** (§2.1).
+
+Everything the BiCM analysis predicts for a gauge-free model holds:
+
+| | measured |
+|---|---|
+| `(α+c, β−c)` equivariance | `7.4e-3` — **not** zero |
+| uniform α shift | `0.6` — **not** zero |
+| `rank(J_f)` | **32 of 32 — full rank** |
+
+So Anderson's least-squares is *not* structurally singular here, and the BiCM's remedy has nothing to fix.
+And indeed it does not help: over 120 random weighted undirected graphs the UECM fixed point fails
+**120/120 at every Anderson memory, including `m = 0`**.
+
+The cause is the same as the DECM's ([`decm_solver_geometry.md` §5b](decm_solver_geometry.md)): the map
+leaves its own domain. The UECM needs `βᵢ > 0` (§2.4) and the iteration divides by `(1 − c2)` with
+`c2 = yᵢ·yⱼ`. Traced on the rhesus macaques network from the default guess:
+
+| iteration | `min βᵢ` | feasible? |
+|---|---|---|
+| 0 | 1.883 | yes |
+| 1 | **−9.19** | **no** |
+| 2 | `NaN` | dead |
+
+Out of the feasible region after the **first step**, exactly like the DECM.
+
+### What the three models together show
+
+| model | gauge modes | `rank(J_f)` | Anderson LSQ singular? | what actually fails | fixable by the accelerator? |
+|---|---|---|---|---|---|
+| **BiCM** | 1 | `n−1` | **yes** | NaN out of the singular least-squares | **yes** — the memory ladder, 183/183 |
+| **DECM** | 2 | `n−2` | yes | **domain exit on step 1** | no |
+| **UECM** | **0** | **`n`, full** | **no** | **domain exit on step 1** | no |
+
+Two independent mechanisms, and each model isolates one:
+
+- the **gauge** deficiency is what breaks the BiCM, and it is repairable by shrinking (or removing) the
+  least-squares that it makes singular;
+- **domain exit** is what breaks the enhanced models, and no accelerator can repair it — the remedy would
+  be a domain-preserving reformulation or a feasibility-limited step.
+
+The UECM is the clean control for the second point: it has no gauge, a full-rank residual Jacobian, and it
+still dies on the first iterate. So the gauge is neither necessary nor sufficient for domain exit, and the
+two failures should not be conflated. (The DECM has *both* defects; only the second one binds.)
+
+This is also why the `UECM`/`DECM` "very unstable, should not be used" documentation is correct while the
+BiCM's default is now fine: they fail for a reason that lives in the map, not in the accelerator.
+
+---
+
 ## 4. Automatic differentiation for `:Newton`
 
 Both models were subject to the crash derived in
