@@ -913,6 +913,194 @@
 
     end
 
+    @testset "DBiCM" begin
+        # A deterministic directed bipartite fixture. Synthetic and labelled as such: the package's
+        # bundled networks are real data, and there is no real directed bipartite network among them.
+        # Leftover vertices are attached deterministically so that none is isolated (an isolated vertex
+        # has no determinable layer and the constructor refuses it).
+        function _planted_dibipartite(seed=17, Nb=13, Nt=8, p⁺=0.32, p⁻=0.25)
+            rng = MaxEntropyGraphs.Xoshiro(seed)
+            g = MaxEntropyGraphs.Graphs.SimpleDiGraph(Nb + Nt)
+            for i in 1:Nb, j in 1:Nt
+                rand(rng) < p⁺ && MaxEntropyGraphs.Graphs.add_edge!(g, i, Nb + j)
+                rand(rng) < p⁻ && MaxEntropyGraphs.Graphs.add_edge!(g, Nb + j, i)
+            end
+            for v in MaxEntropyGraphs.Graphs.vertices(g)
+                if iszero(MaxEntropyGraphs.Graphs.degree(g, v))
+                    v <= Nb ? MaxEntropyGraphs.Graphs.add_edge!(g, v, Nb + 1 + (v % Nt)) :
+                              MaxEntropyGraphs.Graphs.add_edge!(g, 1 + (v % Nb), v)
+                end
+            end
+            return g
+        end
+        G = _planted_dibipartite()
+
+        @testset "DBiCM - generation" begin
+            for precision in [Float64; Float32; Float16]
+                model = DBiCM(G, precision=precision)
+                @test isa(model, DBiCM)
+                @test typeof(model).parameters[2] == precision
+                @test MaxEntropyGraphs.precision(model) == precision
+                @test typeof(model).parameters[1] == typeof(G)
+                @test eltype(model.θᵣ) == precision
+                @test eltype(model.x⊥ᵣ_out) == precision
+                # from the four sequences, without a graph
+                ms = DBiCM(d⊥_out=model.d⊥_out, d⊥_in=model.d⊥_in, d⊤_out=model.d⊤_out, d⊤_in=model.d⊤_in, precision=precision)
+                @test typeof(ms).parameters[1] == Nothing
+                @test ms.status[:N⊥] == model.status[:N⊥] && ms.status[:N⊤] == model.status[:N⊤]
+            end
+            # the constructor names the problem itself rather than letting a kwarg default fail first
+            @test_throws TypeError DBiCM(1)
+            @test_throws ArgumentError DBiCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(0))
+            @test_throws ArgumentError DBiCM(MaxEntropyGraphs.Graphs.SimpleDiGraph(1))
+            # an undirected graph is read as reciprocal in both channels, with a warning
+            @test_logs (:warn, "The graph is undirected, while the DBiCM model is directed; each edge is read as present in both directions, so the two channels will be identical") DBiCM(MaxEntropyGraphs.corporateclub())
+            # an isolated vertex has no determinable layer
+            Giso = MaxEntropyGraphs.Graphs.SimpleDiGraph(5)
+            MaxEntropyGraphs.Graphs.add_edge!(Giso, 1, 3); MaxEntropyGraphs.Graphs.add_edge!(Giso, 2, 4)
+            @test_throws ArgumentError DBiCM(Giso)
+            # ... but a pure receiver (or pure sender) does have one, and must be accepted
+            Grec = MaxEntropyGraphs.Graphs.SimpleDiGraph(6)
+            for (a,b) in ((4,1),(4,2),(5,2),(5,3),(6,3)); MaxEntropyGraphs.Graphs.add_edge!(Grec, a, b); end
+            @test DBiCM(Grec) isa DBiCM
+            # link conservation, one condition per channel
+            @test_throws DomainError DBiCM(d⊥_out=[1,1], d⊥_in=[0,0], d⊤_out=[0,0], d⊤_in=[5,5])
+            @test_throws DomainError DBiCM(d⊥_out=[1,1], d⊥_in=[5,5], d⊤_out=[0,0], d⊤_in=[1,1])
+            # saturation, per channel
+            @test_throws DomainError DBiCM(d⊥_out=[2,2], d⊥_in=[0,0], d⊤_out=[0,0], d⊤_in=[2,2])
+            @test_throws ArgumentError DBiCM(d⊥_out=[1], d⊥_in=[1], d⊤_out=[1], d⊤_in=[1])
+            @test_throws DimensionMismatch DBiCM(d⊥_out=[1,1,1], d⊥_in=[1,1], d⊤_out=[1,1], d⊤_in=[1,1])
+        end
+
+        @testset "DBiCM - likelihood and gradient" begin
+            model = DBiCM(G)
+            θ₀ = MaxEntropyGraphs.initial_guess(model, method=:uniform)
+            bufs = (zeros(length(model.d⊥ᵣ_out)), zeros(length(model.d⊤ᵣ_in)),
+                    zeros(length(model.d⊥ᵣ_in)),  zeros(length(model.d⊤ᵣ_out)))
+            ∇L     = zeros(length(θ₀));  ∇L_min = zeros(length(θ₀))
+            MaxEntropyGraphs.∇L_DBiCM_reduced!(∇L, θ₀, model, bufs...)
+            MaxEntropyGraphs.∇L_DBiCM_reduced_minus!(∇L_min, θ₀, model, bufs...)
+            @test ∇L ≈ -∇L_min
+            # the DBiCM introduces no new mathematics: L is the two channels' BiCM likelihoods summed.
+            # Passing the full four-block θ to a BiCM kernel with an offset would silently let the ⁺
+            # channel's ⊤ block swallow the entire ⁻ channel, so the split is pinned here.
+            n⁺ = model.status[:n⁺]
+            n1 = length(model.d⊥ᵣ_out); n3 = length(model.d⊥ᵣ_in)
+            L⁺ = MaxEntropyGraphs.L_BiCM_reduced(θ₀[1:n⁺], model.d⊥ᵣ_out, model.d⊤ᵣ_in, model.f⊥_out, model.f⊤_in,
+                                                 model.d⊥ᵣ_out_nz, model.d⊤ᵣ_in_nz, n1)
+            L⁻ = MaxEntropyGraphs.L_BiCM_reduced(θ₀[n⁺+1:end], model.d⊥ᵣ_in, model.d⊤ᵣ_out, model.f⊥_in, model.f⊤_out,
+                                                 model.d⊥ᵣ_in_nz, model.d⊤ᵣ_out_nz, n3)
+            @test MaxEntropyGraphs.L_DBiCM_reduced(θ₀, model) ≈ L⁺ + L⁻
+            @test_throws ArgumentError MaxEntropyGraphs.initial_guess(model, method=:strange)
+            for initial in (:degrees, :uniform, :random, :chung_lu)
+                @test length(MaxEntropyGraphs.initial_guess(model, method=initial)) == length(model.θᵣ)
+            end
+        end
+
+        @testset "DBiCM - parameter computation" begin
+            ref = DBiCM(G)
+            d⊥o, d⊥i = Float64.(ref.d⊥_out), Float64.(ref.d⊥_in)
+            d⊤o, d⊤i = Float64.(ref.d⊤_out), Float64.(ref.d⊤_in)
+            model = DBiCM(G)
+            @test_throws ArgumentError MaxEntropyGraphs.Ĝ(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σˣ(model)
+            @test_throws ArgumentError MaxEntropyGraphs.set_xᵣ!(model)
+            @test_throws ArgumentError MaxEntropyGraphs.constraint_residual(model)
+            @test_throws ArgumentError MaxEntropyGraphs.solve_model!(DBiCM(G), method=:not_a_method)
+            for initial in (:degrees, :uniform, :chung_lu)
+                for method in (:fixedpoint, :BFGS, :LBFGS, :Newton)
+                    @testset "initial: $initial, method: $method" begin
+                        m = DBiCM(G)
+                        MaxEntropyGraphs.solve_model!(m, initial=initial, method=method)
+                        @test m.status[:params_computed]
+                        @test MaxEntropyGraphs.constraint_residual(m) < 1e-7
+                        # all four constrained sequences are reproduced
+                        P⁺ = MaxEntropyGraphs.Ĝ(m, channel=:to_top)
+                        P⁻ = MaxEntropyGraphs.Ĝ(m, channel=:to_bottom)
+                        @test reshape(sum(P⁺, dims=2), :) ≈ d⊥o
+                        @test reshape(sum(P⁺, dims=1), :) ≈ d⊤i
+                        @test reshape(sum(P⁻, dims=1), :) ≈ d⊤o
+                        @test reshape(sum(P⁻, dims=2), :) ≈ d⊥i
+                    end
+                end
+            end
+        end
+
+        @testset "DBiCM - sampling" begin
+            model = DBiCM(G)
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=false)
+            MaxEntropyGraphs.solve_model!(model)
+            @test_throws ArgumentError MaxEntropyGraphs.rand(model, precomputed=true)
+            g = rand(model)
+            @test g isa MaxEntropyGraphs.Graphs.SimpleDiGraph{Int}
+            @test MaxEntropyGraphs.Graphs.nv(g) == MaxEntropyGraphs.Graphs.nv(model.G)
+            # a sample must stay bipartite: no ⊥-⊥ or ⊤-⊤ edge can ever be drawn
+            @test all(e -> model.is⊥[MaxEntropyGraphs.Graphs.src(e)] != model.is⊥[MaxEntropyGraphs.Graphs.dst(e)],
+                      MaxEntropyGraphs.Graphs.edges(g))
+            MaxEntropyGraphs.set_Ĝ!(model)
+            @test size(MaxEntropyGraphs.Ĝ(model)) == (model.status[:N⊥], model.status[:N⊤])
+            @test size(MaxEntropyGraphs.Ĝ(model, channel=:both)) == (2*model.status[:N⊥], model.status[:N⊤])
+            @test eltype(MaxEntropyGraphs.Ĝ(model)) == MaxEntropyGraphs.precision(model)
+            S = rand(model, 20, precomputed=true)
+            @test S isa Vector{MaxEntropyGraphs.Graphs.SimpleDiGraph{Int}}
+            @test length(S) == 20
+            @test all(MaxEntropyGraphs.Graphs.nv.(S) .== MaxEntropyGraphs.Graphs.nv(model.G))
+            # `channel` is absolute; `:out`/`:in` belong to the projection API and are refused here
+            @test_throws ArgumentError MaxEntropyGraphs.Ĝ(model, channel=:out)
+            @test_throws ArgumentError MaxEntropyGraphs.Ĝ(model, channel=:nonsense)
+        end
+
+        @testset "DBiCM - degree metrics" begin
+            model = DBiCM(G)
+            @test_throws ArgumentError MaxEntropyGraphs.outdegree(model, 1)
+            MaxEntropyGraphs.solve_model!(model, method=:BFGS)
+            @test isa(MaxEntropyGraphs.A(model, 1, 2), MaxEntropyGraphs.precision(model))
+            @test_throws ArgumentError MaxEntropyGraphs.outdegree(model, model.status[:N] + 1)
+            @test_throws ArgumentError MaxEntropyGraphs.outdegree(model, 1, method=:unknown_method)
+            obs_out = [MaxEntropyGraphs.Graphs.outdegree(G, i) for i in 1:model.status[:N]]
+            obs_in  = [MaxEntropyGraphs.Graphs.indegree(G, i)  for i in 1:model.status[:N]]
+            for method in (:reduced, :full)
+                @test isapprox(MaxEntropyGraphs.outdegree(model, method=method), obs_out, atol=1e-6)
+                @test isapprox(MaxEntropyGraphs.indegree(model, method=method), obs_in, atol=1e-6)
+            end
+            @test_throws ArgumentError MaxEntropyGraphs.outdegree(model, 1, method=:adjacency)
+            MaxEntropyGraphs.set_Ĝ!(model)
+            @test isapprox(MaxEntropyGraphs.outdegree(model, method=:adjacency), obs_out, atol=1e-6)
+            @test isapprox(MaxEntropyGraphs.indegree(model, method=:adjacency), obs_in, atol=1e-6)
+            @test isapprox(MaxEntropyGraphs.degree(model), obs_out .+ obs_in, atol=1e-6)
+        end
+
+        @testset "DBiCM - (B/A)IC(c)" begin
+            model = DBiCM(G)
+            @test_throws ArgumentError MaxEntropyGraphs.AIC(model)
+            @test_throws ArgumentError MaxEntropyGraphs.AICc(model)
+            @test_throws ArgumentError MaxEntropyGraphs.BIC(model)
+            MaxEntropyGraphs.solve_model!(model, method=:BFGS)
+            @test_logs (:warn, "The number of observations is small with respect to the number of parameters (n/k < 40). Consider using the corrected AIC (AICc) instead.") MaxEntropyGraphs.AIC(model)
+            @test isa(MaxEntropyGraphs.AICc(model), MaxEntropyGraphs.precision(model))
+        end
+
+        @testset "DBiCM - biadjacency matrix variance" begin
+            model = DBiCM(G)
+            MaxEntropyGraphs.solve_model!(model, method=:BFGS)
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum)
+            MaxEntropyGraphs.set_Ĝ!(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum)
+            MaxEntropyGraphs.set_σ!(model)
+            @test_throws ArgumentError MaxEntropyGraphs.σₓ(model, sum, gradient_method=:unknown)
+            for method in (:ForwardDiff, :ReverseDiff, :Zygote)
+                @testset "gradient_method: $(method)" begin
+                    # every entry is independent, so there are no covariance terms in either channel
+                    @test MaxEntropyGraphs.σₓ(model, sum, channel=:to_top, gradient_method=method) ≈ sqrt(sum(model.σ⁺ .^ 2))
+                    @test MaxEntropyGraphs.σₓ(model, sum, channel=:to_bottom, gradient_method=method) ≈ sqrt(sum(model.σ⁻ .^ 2))
+                    # ... and the two channels are independent of each other, so they add in quadrature
+                    @test MaxEntropyGraphs.σₓ(model, sum, channel=:both, gradient_method=method) ≈
+                          sqrt(sum(model.σ⁺ .^ 2) + sum(model.σ⁻ .^ 2))
+                end
+            end
+        end
+    end
+
     @testset "UECM" begin
         # small, self-contained integer-weighted undirected graph for the constructor tests
         Usrc = [1, 1, 2, 3]; Udst = [2, 3, 3, 4]; Uw = [2, 1, 3, 4]

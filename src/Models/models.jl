@@ -180,13 +180,19 @@ Exception thrown when the optimisation method does not converge.
 
 When using and optimisation method from the `Optimisation.jl` framework, the return code of the optimisation method is stored in the `retcode` field.
 When using the fixed point iteration method, the `retcode` field is set to `nothing`.
+
+Models that are solved in several independent pieces (such as the two channels of a `DBiCM`) set the
+optional `context` field to name the piece that failed; it is `nothing` otherwise.
 """
 struct ConvergenceError <: Exception
     method::Symbol
     retcode::Any  # Optimization.jl return code, or `nothing` for the fixed-point method
+    context::Union{Nothing, String}  # which sub-problem failed, for models solved in several pieces
 end
 
-Base.showerror(io::IO, e::ConvergenceError) = print(io, """method `$(e.method)` did not converge $(isnothing(e.retcode) ? "" : "(Optimization.jl return code: $(e.retcode))")""")
+ConvergenceError(method::Symbol, retcode) = ConvergenceError(method, retcode, nothing)
+
+Base.showerror(io::IO, e::ConvergenceError) = print(io, """method `$(e.method)` did not converge$(isnothing(e.context) ? "" : " for channel $(e.context)")$(isnothing(e.retcode) ? "" : " (Optimization.jl return code: $(e.retcode))")""")
 
 
 """

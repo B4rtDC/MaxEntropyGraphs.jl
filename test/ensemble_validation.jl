@@ -1,5 +1,6 @@
 using Test
 using MaxEntropyGraphs
+import LinearAlgebra
 
 # End-to-end validation of the package's headline scientific claims, complementing the
 # unit tests in models.jl / metrics.jl:
@@ -743,6 +744,130 @@ end
             @test minimum(mb.θᵣ[nθ+1:end]) < 0                      # reached, not pinned at the floor
             @test MaxEntropyGraphs.constraint_residual(mb) < 1e-6
             @test any(i -> mb.f[i] == 1, eachindex(mb.f))           # ... on a singleton class
+        end
+    end
+    @testset "DBiCM: the two channels are exactly two BiCM" begin
+        # The DBiCM's defining claim is that its Hamiltonian separates: no term couples the ⊥→⊤ and
+        # ⊤→⊥ channels, so each is a BiCM on its own pair of sequences and the two are independent.
+        # Everything here is a consequence of that, checked against references that are correct by
+        # construction rather than against a tolerance.
+        function _planted_dibipartite(seed=17, Nb=13, Nt=8, p⁺=0.32, p⁻=0.25)
+            rng = MaxEntropyGraphs.Xoshiro(seed)
+            g = MaxEntropyGraphs.Graphs.SimpleDiGraph(Nb + Nt)
+            for i in 1:Nb, j in 1:Nt
+                rand(rng) < p⁺ && MaxEntropyGraphs.Graphs.add_edge!(g, i, Nb + j)
+                rand(rng) < p⁻ && MaxEntropyGraphs.Graphs.add_edge!(g, Nb + j, i)
+            end
+            for v in MaxEntropyGraphs.Graphs.vertices(g)
+                if iszero(MaxEntropyGraphs.Graphs.degree(g, v))
+                    v <= Nb ? MaxEntropyGraphs.Graphs.add_edge!(g, v, Nb + 1 + (v % Nt)) :
+                              MaxEntropyGraphs.Graphs.add_edge!(g, 1 + (v % Nb), v)
+                end
+            end
+            return g
+        end
+        G = _planted_dibipartite()
+        model = DBiCM(G); MaxEntropyGraphs.solve_model!(model, method=:BFGS)
+
+        @testset "each channel equals a standalone BiCM on its own sequences" begin
+            # The BiCM performs its own class reduction, builds its own θ layout and runs its own
+            # solve, so agreeing with it validates the DBiCM's four independent reductions and all
+            # four class-index maps against a genuinely separate implementation.
+            b⁺ = BiCM(nothing; d⊥ = model.d⊥_out, d⊤ = model.d⊤_in)
+            b⁻ = BiCM(nothing; d⊥ = model.d⊥_in,  d⊤ = model.d⊤_out)
+            MaxEntropyGraphs.solve_model!(b⁺, method=:BFGS); MaxEntropyGraphs.solve_model!(b⁻, method=:BFGS)
+            @test maximum(abs.(MaxEntropyGraphs.Ĝ(model, channel=:to_top)    .- MaxEntropyGraphs.Ĝ(b⁺))) < 1e-6
+            @test maximum(abs.(MaxEntropyGraphs.Ĝ(model, channel=:to_bottom) .- MaxEntropyGraphs.Ĝ(b⁻))) < 1e-6
+            @test MaxEntropyGraphs.L_DBiCM_reduced(model) ≈ MaxEntropyGraphs.L_BiCM_reduced(b⁺) + MaxEntropyGraphs.L_BiCM_reduced(b⁻)
+        end
+
+        @testset "gauge structure: exactly two flat directions, no cross-channel curvature" begin
+            θ = copy(model.θᵣ); live = findall(isfinite, θ)
+            posmap = Dict(i => k for (k,i) in enumerate(live))
+            # dead classes lie outside every `nz` range, so their value is never read
+            f = t -> MaxEntropyGraphs.L_DBiCM_reduced(map(i -> haskey(posmap,i) ? t[posmap[i]] : zero(eltype(t)), eachindex(θ)), model)
+            H = MaxEntropyGraphs.ForwardDiff.hessian(f, θ[live])
+            ev = sort(abs.(LinearAlgebra.eigvals(LinearAlgebra.Symmetric(H))))
+            # one gauge per channel: `L` depends on θ only through αᵢ + δ_α within each block
+            @test ev[1] < 1e-8 && ev[2] < 1e-8
+            @test ev[3] > 1e-4                       # and nothing else is flat
+            # the block-diagonal structure is what licenses solving the two channels separately
+            n⁺live = count(<=(model.status[:n⁺]), live)
+            @test maximum(abs.(H[1:n⁺live, n⁺live+1:end])) < 1e-10
+            # off the gauge the problem is as well conditioned as the BiCM's (measured 9-23 there),
+            # which is why :Newton needs no gauge-fixing here either
+            @test ev[end]/ev[3] < 1e3
+        end
+
+        @testset "fully reciprocal network" begin
+            U  = MaxEntropyGraphs.corporateclub()
+            Gr = MaxEntropyGraphs.Graphs.SimpleDiGraph(U)     # every edge present both ways
+            mb = BiCM(U);   MaxEntropyGraphs.solve_model!(mb, method=:BFGS)
+            md = @test_logs match_mode=:any DBiCM(Gr)
+            MaxEntropyGraphs.solve_model!(md, method=:BFGS)
+            Pb = MaxEntropyGraphs.Ĝ(mb)
+            @test maximum(abs.(MaxEntropyGraphs.Ĝ(md, channel=:to_top)    .- Pb)) < 1e-6
+            @test maximum(abs.(MaxEntropyGraphs.Ĝ(md, channel=:to_bottom) .- Pb)) < 1e-6
+            # The DBiCM does not constrain reciprocity, so it cannot reproduce the observed r = 1 even
+            # here: with p⁺ = p⁻ = p the ratio of expectations is Σp²/Σp < 1. Under-predicting
+            # reciprocity is the model's defining property - it is the bipartite analogue of the DBCM,
+            # not of the RBCM.
+            @test MaxEntropyGraphs.reciprocity(Gr) ≈ 1.0
+            @test MaxEntropyGraphs.reciprocity(md) ≈ sum(Pb .^ 2) / sum(Pb)
+            @test MaxEntropyGraphs.reciprocity(md) < 1.0
+        end
+
+        @testset "purely one-directional network" begin
+            # Every edge ⊥ → ⊤. This is an ordinary input, not an edge case, and the ⁻ channel's
+            # optimum is θ ≡ Inf exactly - running the fixed point map on it would evaluate -log(0/0).
+            U = MaxEntropyGraphs.corporateclub()
+            G1 = MaxEntropyGraphs.Graphs.SimpleDiGraph(MaxEntropyGraphs.Graphs.nv(U))
+            for e in MaxEntropyGraphs.Graphs.edges(U)
+                MaxEntropyGraphs.Graphs.add_edge!(G1, MaxEntropyGraphs.Graphs.src(e), MaxEntropyGraphs.Graphs.dst(e))
+            end
+            m1 = DBiCM(G1); MaxEntropyGraphs.solve_model!(m1)
+            @test m1.status[:E⁻] == 0
+            @test m1.status[:params_computed]
+            @test all(isinf, m1.θᵣ[m1.status[:n⁺]+1:end])
+            @test all(iszero, MaxEntropyGraphs.Ĝ(m1, channel=:to_bottom))
+            @test iszero(MaxEntropyGraphs.reciprocity(m1))
+            mb = BiCM(U); MaxEntropyGraphs.solve_model!(mb, method=:BFGS)
+            @test maximum(abs.(MaxEntropyGraphs.Ĝ(m1, channel=:to_top) .- MaxEntropyGraphs.Ĝ(mb))) < 1e-6
+            # and no sample can contain a ⊤ → ⊥ edge
+            S = rand(m1, 5; rng=MaxEntropyGraphs.Xoshiro(3))
+            @test all(g -> all(e -> m1.is⊥[MaxEntropyGraphs.Graphs.src(e)], MaxEntropyGraphs.Graphs.edges(g)), S)
+        end
+
+        @testset "reverse-graph swap" begin
+            # Reversing every edge must swap the two channels exactly. This is the cheapest check that
+            # catches a transposed θ block layout, which would otherwise solve cleanly and be wrong.
+            mR = DBiCM(MaxEntropyGraphs.Graphs.reverse(G)); MaxEntropyGraphs.solve_model!(mR, method=:BFGS)
+            @test maximum(abs.(MaxEntropyGraphs.Ĝ(mR, channel=:to_top)    .- MaxEntropyGraphs.Ĝ(model, channel=:to_bottom))) < 1e-6
+            @test maximum(abs.(MaxEntropyGraphs.Ĝ(mR, channel=:to_bottom) .- MaxEntropyGraphs.Ĝ(model, channel=:to_top))) < 1e-6
+            @test MaxEntropyGraphs.reciprocity(mR) ≈ MaxEntropyGraphs.reciprocity(model)
+        end
+
+        @testset "analytical ensemble averages vs sampling" begin
+            rng = MaxEntropyGraphs.Xoshiro(4242)
+            S = rand(model, 2000; rng=rng)
+            N⊥ = model.status[:N⊥]
+            chan(g) = (A = Matrix(MaxEntropyGraphs.Graphs.adjacency_matrix(g));
+                       (A[model.⊥nodes, model.⊤nodes], permutedims(A[model.⊤nodes, model.⊥nodes])))
+            B⁺s = [chan(g)[1] for g in S]; B⁻s = [chan(g)[2] for g in S]
+            mean⁺ = sum(B⁺s) ./ length(S); mean⁻ = sum(B⁻s) ./ length(S)
+            @test maximum(abs.(mean⁺ .- MaxEntropyGraphs.Ĝ(model, channel=:to_top)))    < 0.06
+            @test maximum(abs.(mean⁻ .- MaxEntropyGraphs.Ĝ(model, channel=:to_bottom))) < 0.06
+            # reciprocity is a ratio OF expectations, so it is compared to the same ratio built from
+            # the sampled means, not to a mean of ratios
+            r_samp = 2*sum(mean⁺ .* mean⁻) / sum(mean⁺ .+ mean⁻)
+            @test isapprox(MaxEntropyGraphs.reciprocity(model), r_samp, rtol=0.15)
+            # the delta method, per channel and for the two at once
+            MaxEntropyGraphs.set_Ĝ!(model); MaxEntropyGraphs.set_σ!(model)
+            n⁺s = [sum(b) for b in B⁺s]; n⁻s = [sum(b) for b in B⁻s]
+            @test isapprox(MaxEntropyGraphs.σₓ(model, sum, channel=:to_top),    _var(n⁺s)^0.5, rtol=0.15)
+            @test isapprox(MaxEntropyGraphs.σₓ(model, sum, channel=:to_bottom), _var(n⁻s)^0.5, rtol=0.15)
+            # the channels are independent, so the total's variance is the sum of theirs
+            @test isapprox(MaxEntropyGraphs.σₓ(model, sum, channel=:both), _var(n⁺s .+ n⁻s)^0.5, rtol=0.15)
         end
     end
 

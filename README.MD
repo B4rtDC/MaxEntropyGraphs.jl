@@ -76,6 +76,7 @@ The package currently implements the following models (see the [Models](https://
 | **DBCM** | directed, binary | out- and in-degree sequences |
 | **RBCM** | directed, binary | non-reciprocated out-/in-degree and reciprocated degree sequences |
 | **BiCM** | bipartite, binary | degree sequences of both layers |
+| **DBiCM** | bipartite, directed, binary | out- and in-degree sequences of both layers |
 | **UECM** | undirected, weighted (integer) | degree and strength sequences |
 | **DECM** | directed, weighted (integer) | out-/in-degree and out-/in-strength sequences |
 | **CReM** | undirected, weighted (continuous) | strength sequence, conditional on a UBCM topology |
