@@ -19,8 +19,8 @@
 #   BENCH_MIN_SCALE     small | medium | large (default: small). Skips the problems below it,
 #                       so a run can target only what is missing (e.g. BENCH_MIN_SCALE=large
 #                       BENCH_MAX_SCALE=large re-runs just the large problems).
-#   BENCH_MODELS        Space-separated subset of "UBCM BiCM DBCM UECM DECM CReM RBCM DCReM CRWCM"
-#                       (default: all nine). Only the listed models are benchmarked and plotted.
+#   BENCH_MODELS        Space-separated subset of "UBCM BiCM DBiCM DBCM UECM DECM CReM RBCM DCReM
+#                       CRWCM" (default: all ten). Only the listed models are benchmarked and plotted.
 #   BENCH_JOB_TIMEOUT   Per-job wall-clock budget in seconds for every generated Python benchmark
 #                       job (default: 0 = no limit). A job over budget has its whole process group
 #                       killed (see run_with_timeout.sh); the event lands in benchmarks/timeouts.log
@@ -38,7 +38,7 @@ export JULIA_NUM_THREADS="${JULIA_NUM_THREADS:-$BENCH_CORES}"
 export BENCH_MAX_SCALE="${BENCH_MAX_SCALE:-large}"
 export BENCH_MIN_SCALE="${BENCH_MIN_SCALE:-small}"
 export BENCH_JOB_TIMEOUT="${BENCH_JOB_TIMEOUT:-0}"
-BENCH_MODELS="${BENCH_MODELS:-UBCM BiCM DBCM UECM DECM CReM RBCM DCReM CRWCM}"
+BENCH_MODELS="${BENCH_MODELS:-UBCM BiCM DBiCM DBCM UECM DECM CReM RBCM DCReM CRWCM}"
 export BENCH_QUICK="${BENCH_QUICK:-0}"
 [ "${BENCH_QUICK}" = "1" ] && export BENCH_MAX_SCALE="small"
 # Exported so the generated Python projection test can honour it too (not just the Julia driver).

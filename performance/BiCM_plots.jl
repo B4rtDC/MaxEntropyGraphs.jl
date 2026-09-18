@@ -50,8 +50,12 @@ function find_latest_files(path::String, model, language)
 end
 
 # 2. Load the benchmark files
-py_bench = find_latest_files(joinpath(@__DIR__,"benchmarks"), "BiCM", "Python")
-ju_bench = find_latest_files(joinpath(@__DIR__,"benchmarks"), "BiCM", "Julia")
+# The pattern is anchored with underscores on both sides: a bare "BiCM" also matches the DBiCM's
+# result files, and since both models write a "small"/"medium"/"large" category the newer file
+# would silently win and this figure would be plotted from directed-bipartite data. The same
+# anchoring is why the CReM, DBCM, RBCM, DCReM and CRWCM scripts already use "_CReM_" and friends.
+py_bench = find_latest_files(joinpath(@__DIR__,"benchmarks"), "_BiCM_", "Python")
+ju_bench = find_latest_files(joinpath(@__DIR__,"benchmarks"), "_BiCM_", "Julia")
 
 
 

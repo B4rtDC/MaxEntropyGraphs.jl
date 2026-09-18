@@ -54,6 +54,20 @@ function constraint_violation(model::BiCM)
     return (maximum(Δ), sum(Δ) / length(Δ))
 end
 
+# The DBiCM constrains four sequences, two per link channel. They are checked together: a bug that
+# swapped the two theta blocks would leave each channel internally consistent and only show up here.
+function constraint_violation(model::DBiCM)
+    # `Ĝ`, not `biadjacency_matrices`: the latter returns the graph's OBSERVED channel matrices,
+    # against which the violation is identically zero.
+    B⁺ = MaxEntropyGraphs.Ĝ(model, channel = :to_top)
+    B⁻ = MaxEntropyGraphs.Ĝ(model, channel = :to_bottom)
+    Δ = vcat(abs.(vec(sum(B⁺, dims = 2)) .- model.d⊥_out),
+             abs.(vec(sum(B⁺, dims = 1)) .- model.d⊤_in),
+             abs.(vec(sum(B⁻, dims = 2)) .- model.d⊥_in),
+             abs.(vec(sum(B⁻, dims = 1)) .- model.d⊤_out))
+    return (maximum(Δ), sum(Δ) / length(Δ))
+end
+
 # The UECM constrains both the degree and the (integer) strength sequence, so the violation combines
 # the expected-adjacency row sums (degree) and the expected-weight row sums (strength).
 function constraint_violation(model::UECM)
@@ -212,6 +226,44 @@ function nemtropy_violation(name::AbstractString; variant::AbstractString = "")
 end
 
 """
+    dbicm_channel_agreement(model, name) -> Union{Nothing, Dict}
+
+Compare each channel of a solved `DBiCM` against an independent NEMtropy `BipartiteGraph` fit of
+that same channel. No Python package implements a directed bipartite model, but the DBiCM
+factorises exactly into two BiCMs, so two separate NEMtropy fits are the *exact* reference rather
+than an approximation of one: disagreement here would mean the channel separation is wrong.
+
+Two things make this comparison less direct than it looks. Neither package's parameters are
+comparable (each channel carries its own gauge), so the comparison is on the gauge-invariant
+expected sequences. And NEMtropy infers its node set from the edge list, so a vertex with no link
+in a given channel is simply absent from that fit, while the DBiCM keeps every vertex and assigns
+it `p = 0`. The expected sequences are therefore restricted to the live vertices and sorted, which
+also removes any need to align node orderings.
+"""
+function dbicm_channel_agreement(model, name::AbstractString)
+    f = joinpath(accuracypath, "$(name)_nemtropy.json")
+    isfile(f) || return nothing
+    d = JSON.parsefile(f)
+    B⁺ = MaxEntropyGraphs.Ĝ(model, channel = :to_top)
+    B⁻ = MaxEntropyGraphs.Ĝ(model, channel = :to_bottom)
+    out = Dict{String,Any}()
+    for (tag, B, orow, ocol) in (("plus",  B⁺, model.d⊥_out, model.d⊤_in),
+                                 ("minus", B⁻, model.d⊥_in,  model.d⊤_out))
+        er, ec = tag * "_expected_dseq_rows", tag * "_expected_dseq_cols"
+        (haskey(d, er) && haskey(d, ec)) || continue
+        jr = sort(vec(sum(B, dims = 2))[.!iszero.(orow)])
+        jc = sort(vec(sum(B, dims = 1))[.!iszero.(ocol)])
+        nr, nc = sort(Float64.(d[er])), sort(Float64.(d[ec]))
+        if length(jr) != length(nr) || length(jc) != length(nc)
+            out[tag] = "live-vertex counts differ: julia ($(length(jr)), $(length(jc))) vs nemtropy ($(length(nr)), $(length(nc)))"
+            continue
+        end
+        out[tag] = max(maximum(abs, jr .- nr), maximum(abs, jc .- nc))
+    end
+    isempty(out) ? nothing : out
+end
+
+"""
     nemtropy_motifs(name) -> Union{Nothing, Vector{Float64}}
 
 Load NEMtropy's expected directed 3-node motif spectrum (`accuracy/<name>_nemtropy.json`, key
@@ -243,7 +295,7 @@ end
 
 ## Representative reference graphs (the small benchmark problems). These are fast to solve and
 ## exercise all three model types; the harness can be extended to the larger graphs if desired.
-const reference_models = [
+reference_models = Any[
     ("UBCM_small", () -> UBCM(Graphs.SimpleGraphs.smallgraph(:karate))),
     ("DBCM_small", () -> DBCM(MaxEntropyGraphs.maspalomas())),
     ("BiCM_small", () -> BiCM(MaxEntropyGraphs.corporateclub())),
@@ -254,6 +306,19 @@ const reference_models = [
     ("DCReM_small", () -> DCReM(MaxEntropyGraphs.rhesus_macaques())),
     ("CRWCM_small", () -> CRWCM(MaxEntropyGraphs.rhesus_macaques())),
 ]
+
+# The DBiCM's reference graph is synthetic and is written by DBiCM_benchmarks.jl rather than
+# shipped with the package, so it is appended only once that file exists. Reading it back, rather
+# than regenerating it here, keeps a single source of truth: a second copy of the generator is
+# exactly how the `_planted_bipartite` fixture drifted between its two homes.
+let f = joinpath(@__DIR__, "data", "DBiCM_small.csv")
+    if isfile(f)
+        push!(reference_models, ("DBiCM_small", () -> DBiCM(Graphs.SimpleDiGraphFromIterator(
+            Graphs.SimpleEdge.(map(x -> Tuple(parse.(Int, x)), split.(readlines(f), ",")))))))
+    else
+        @info "data/DBiCM_small.csv not found: skipping the DBiCM accuracy comparison (run DBiCM_benchmarks.jl first)."
+    end
+end
 
 results = Dict{String,Any}("generated" => string(now()), "models" => Dict{String,Any}())
 
@@ -285,6 +350,15 @@ for (name, builder) in reference_models
             entry["nemtropy_quasinewton_max_violation"] = nvq.max
             entry["nemtropy_quasinewton_mean_violation"] = nvq.mean
             @info "$(name) [quasi-Newton]: MaxEntropyGraphs max = $(qmax) | NEMtropy max = $(nvq.max)"
+        end
+    end
+
+    # Two-BiCM cross-check (DBiCM only).
+    if model isa DBiCM
+        ag = dbicm_channel_agreement(model, name)
+        if ag !== nothing
+            entry["dbicm_channel_agreement"] = ag
+            @info "$(name): channel agreement with two independent NEMtropy BiCM fits = $(ag)"
         end
     end
 
