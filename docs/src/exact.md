@@ -174,7 +174,8 @@ X_full = A -> sum(A)
 # the same metric written on the strict upper triangle: every dyad counted once
 X_triangle = A -> sum(A[i,j] for j in axes(A,2) for i in 1:j-1)
 # the standard deviations scale with the same double-counting factor as the metric itself
-σₓ(model, X_full) / σₓ(model, X_triangle)
+# (rounded: the identity is exact in theory and holds to floating-point precision in practice)
+round(σₓ(model, X_full) / σₓ(model, X_triangle), digits=10)
 
 # output
 

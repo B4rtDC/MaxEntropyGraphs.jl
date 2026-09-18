@@ -2215,17 +2215,17 @@ A = [O B; B' O] where O is the null matrix, then the returned biadjacency matrix
 # Examples
 ```jldoctest biadjacency_matrix
 julia> A = [0 0 0 0 1 0 0;
-0 0 0 0 1 1 0;
-0 0 0 0 0 0 1;
-0 0 0 0 0 1 1;
-1 1 0 0 0 0 0;
-0 1 0 1 0 0 0;
-0 0 1 1 0 0 0];
+            0 0 0 0 1 1 0;
+            0 0 0 0 0 0 1;
+            0 0 0 0 0 1 1;
+            1 1 0 0 0 0 0;
+            0 1 0 1 0 0 0;
+            0 0 1 1 0 0 0];
 
 julia> G = MaxEntropyGraphs.Graphs.SimpleGraph(A);
 
-julia> Array(biadjacency_matrix(A))
-4x3 Matrix{Int64}:
+julia> Array(MaxEntropyGraphs.biadjacency_matrix(G))
+4×3 Matrix{Int64}:
  1  0  0
  1  1  0
  0  0  1

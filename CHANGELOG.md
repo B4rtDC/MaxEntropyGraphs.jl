@@ -1,53 +1,17 @@
 # Changelog
 
-## Unreleased
+## v0.8.0
 
-Adds the `DBiCM` (directed bipartite configuration model), together with four `BiCM` correctness fixes
-and one shared-solver extraction that it is built on.
+Adds the `DBiCM`, a directed bipartite configuration model, and with it the last missing directed
+counterpart in the model table. Alongside it, solver correctness and robustness across the `BiCM`,
+`DBCM`, `UECM` and `DECM`, and Julia 1.13.
 
-### Added
-- **`DBiCM` — a directed bipartite configuration model**, constraining all four degree sequences: the
-  out- and in-degrees of both layers. It fills the one gap in the model table — every other model had a
-  directed counterpart, so a directed bipartite network could previously only be fitted by discarding
-  the directions.
-
-  A directed bipartite graph has two disjoint link channels, `⊥ → ⊤` and `⊤ → ⊥`. Collected per entry
-  the Hamiltonian reads `Σ (αᵢ + δ_α) B⁺ + Σ (βᵢ + γ_α) B⁻`, so **no term couples the two channels**:
-  the model is exactly two `BiCM`s, one on `(d⊥_out, d⊤_in)` and one on `(d⊥_in, d⊤_out)`, and it
-  introduces no new likelihood — `L_DBiCM_reduced` is `L_BiCM_reduced` evaluated on two disjoint blocks
-  of θ and summed. Three consequences, all verified rather than assumed:
-
-  - **Four independent class reductions.** The `DBCM` needs joint `(out, in)` classes only because its
-    sums carry the self-exclusion `i ≠ j`. Bipartite sums range over disjoint vertex sets, the
-    cross-channel second derivatives vanish identically (measured `< 1e-10`), and the joint pair never
-    enters the likelihood. On the test fixture this is 23 parameter classes where a `DBCM`-style
-    reduction would give 50.
-  - **The two channels are solved separately.** This is the exact decomposition, not a compromise: it
-    keeps each solve at a single gauge direction — the regime the `BiCM` fixed-point accelerator is
-    measured on — where a joint four-block solve would make Anderson's least-squares rank-deficient by
-    two, which is untested. The Hessian's null dimension is exactly 2 (measured eigenvalues `2.7e-16`,
-    `2.0e-15`, then `0.99`) and the condition number off the gauge is `12.8`, inside the `BiCM`'s
-    measured 9–23, so `:Newton` needs no gauge-fixing here either.
-  - **A channel carrying no links is not iterated.** A purely one-directional bipartite network is an
-    ordinary input, not an edge case; its reverse channel's optimum is `θ ≡ Inf`, `p ≡ 0` exactly, and
-    running the fixed-point map on it would evaluate `-log(0/0)`.
-
-  All of `:fixedpoint`, `:BFGS`, `:LBFGS` and `:Newton` reach a constraint residual below `1e-7` from
-  every initial guess and reproduce all four constrained sequences.
-
-  `reciprocity(m::DBiCM)` is exact, since `⟨B⁺B⁻⟩ = p⁺p⁻`. Note that the model does **not** constrain
-  reciprocity — it is the bipartite analogue of the `DBCM`, not of the `RBCM` — so it will generally
-  under-predict the reciprocated ⊥–⊤ dyads, and that gap is informative.
-
-  Two selectors appear in the API and mean different things: `channel` is **absolute** (`:to_top` is
-  `⊥ → ⊤`, `:to_bottom` is `⊤ → ⊥`), while `layer` is relative to the projected side. `:out`/`:in` are
-  deliberately refused as a `channel`, with a pointer, because they are the projection API's vocabulary
-  and would select the opposite matrix under `layer = :top`.
-
-  Directed projection tooling (the three V-motif kinds and their significance filters) follows
-  separately.
+**This release supersedes v0.7.1, which was never tagged**: its changes (the `NLsolve` 5 / `Optim` 2
+compatibility work) ship here. The version is `0.8.0` rather than `0.7.2` because of the breaking `BiCM`
+constructor change below.
 
 ### Fixed
+
 - **`BiCM(::SimpleDiGraph)` silently produced the wrong layers *and* the wrong degrees.** The constructor
   warns that "the directional information will be lost" and then called `Graphs.is_bipartite` and
   `Graphs.bipartite_map` on the directed graph. That map BFSes over `outneighbors` only, so it explores
@@ -65,31 +29,6 @@ and one shared-solver extraction that it is built on.
   therefore threw, because the batch method preallocates a `Vector{SimpleGraph{Int}}`. Only the
   precomputed path was affected; the default path was already correct.
 
-### Added
-- **`BiCM` now rejects degree sequences that no bipartite graph can realise.** `Σd⊥` and `Σd⊤` both count
-  the edges of the same graph, so a pair that disagrees has no maximum-likelihood point at all: the ⊥
-  block of the gradient wants `Σᵢ⟨kᵢ⟩ = Σd⊥` while the ⊤ block wants that same sum to equal `Σd⊤`. Such
-  input previously ran to the iteration cap and then threw a bare `ConvergenceError` that said nothing
-  about why. It is now a `DomainError` quoting both sums. This can only fire for models built from
-  explicit sequences — graph-built models satisfy it automatically.
-
-  The package's own `BiCM` docstring carried such a pair (`Σd⊥ = 18` against `Σd⊤ = 35`); its examples
-  now use realisable sequences.
-
-### Changed
-- The `BiCM` `:fixedpoint` Anderson memory ladder moved to `_gauge_fixedpoint_ladder` in
-  `src/Models/models.jl`, so the bipartite models can share one copy of the recipe and of the
-  measurements justifying it. Pure extraction — no behavioural change.
-
-## v0.8.0
-
-Solver correctness and robustness across the `BiCM`, `DBCM`, `UECM` and `DECM`, and Julia 1.13.
-
-**This release supersedes v0.7.1, which was never tagged**: its changes (the `NLsolve` 5 / `Optim` 2
-compatibility work) ship here. The version is `0.8.0` rather than `0.7.2` because of the breaking `BiCM`
-constructor change below.
-
-### Fixed
 - **`UECM`/`DECM`: `:fixedpoint` could not be started from a cold guess at all — 0 of 150 each.** The
   method shipped with the warning *"very unstable … should not be used"*; measured over 150 random
   weighted networks and 150 random weighted digraphs from the package's own default `:strengths` guess, it
@@ -245,6 +184,58 @@ constructor change below.
   only a cap, so it costs the faster methods nothing. `:LBFGS` remains not recommended for this model.
 
 ### Added
+
+- **`DBiCM` — a directed bipartite configuration model**, constraining all four degree sequences: the
+  out- and in-degrees of both layers. It fills the one gap in the model table — every other model had a
+  directed counterpart, so a directed bipartite network could previously only be fitted by discarding
+  the directions.
+
+  A directed bipartite graph has two disjoint link channels, `⊥ → ⊤` and `⊤ → ⊥`. Collected per entry
+  the Hamiltonian reads `Σ (αᵢ + δ_α) B⁺ + Σ (βᵢ + γ_α) B⁻`, so **no term couples the two channels**:
+  the model is exactly two `BiCM`s, one on `(d⊥_out, d⊤_in)` and one on `(d⊥_in, d⊤_out)`, and it
+  introduces no new likelihood — `L_DBiCM_reduced` is `L_BiCM_reduced` evaluated on two disjoint blocks
+  of θ and summed. Three consequences, all verified rather than assumed:
+
+  - **Four independent class reductions.** The `DBCM` needs joint `(out, in)` classes only because its
+    sums carry the self-exclusion `i ≠ j`. Bipartite sums range over disjoint vertex sets, the
+    cross-channel second derivatives vanish identically (measured `< 1e-10`), and the joint pair never
+    enters the likelihood. On the test fixture this is 23 parameter classes where a `DBCM`-style
+    reduction would give 50.
+  - **The two channels are solved separately.** This is the exact decomposition, not a compromise: it
+    keeps each solve at a single gauge direction — the regime the `BiCM` fixed-point accelerator is
+    measured on — where a joint four-block solve would make Anderson's least-squares rank-deficient by
+    two, which is untested. The Hessian's null dimension is exactly 2 (measured eigenvalues `2.7e-16`,
+    `2.0e-15`, then `0.99`) and the condition number off the gauge is `12.8`, inside the `BiCM`'s
+    measured 9–23, so `:Newton` needs no gauge-fixing here either.
+  - **A channel carrying no links is not iterated.** A purely one-directional bipartite network is an
+    ordinary input, not an edge case; its reverse channel's optimum is `θ ≡ Inf`, `p ≡ 0` exactly, and
+    running the fixed-point map on it would evaluate `-log(0/0)`.
+
+  All of `:fixedpoint`, `:BFGS`, `:LBFGS` and `:Newton` reach a constraint residual below `1e-7` from
+  every initial guess and reproduce all four constrained sequences.
+
+  `reciprocity(m::DBiCM)` is exact, since `⟨B⁺B⁻⟩ = p⁺p⁻`. Note that the model does **not** constrain
+  reciprocity — it is the bipartite analogue of the `DBCM`, not of the `RBCM` — so it will generally
+  under-predict the reciprocated ⊥–⊤ dyads, and that gap is informative.
+
+  Two selectors appear in the API and mean different things: `channel` is **absolute** (`:to_top` is
+  `⊥ → ⊤`, `:to_bottom` is `⊤ → ⊥`), while `layer` is relative to the projected side. `:out`/`:in` are
+  deliberately refused as a `channel`, with a pointer, because they are the projection API's vocabulary
+  and would select the opposite matrix under `layer = :top`.
+
+  Directed projection tooling (the three V-motif kinds and their significance filters) follows
+  separately.
+
+- **`BiCM` now rejects degree sequences that no bipartite graph can realise.** `Σd⊥` and `Σd⊤` both count
+  the edges of the same graph, so a pair that disagrees has no maximum-likelihood point at all: the ⊥
+  block of the gradient wants `Σᵢ⟨kᵢ⟩ = Σd⊥` while the ⊤ block wants that same sum to equal `Σd⊤`. Such
+  input previously ran to the iteration cap and then threw a bare `ConvergenceError` that said nothing
+  about why. It is now a `DomainError` quoting both sums. This can only fire for models built from
+  explicit sequences — graph-built models satisfy it automatically.
+
+  The package's own `BiCM` docstring carried such a pair (`Σd⊥ = 18` against `Σd⊤ = 35`); its examples
+  now use realisable sequences.
+
 - **`validation/symbolic/bicm_uecm_geometry.jl`** (30 checks) and
   **`validation/bicm_uecm_solver_geometry.md`** — the companion analysis for the `BiCM` and `UECM`. The
   contrast between them is the useful part:
@@ -292,6 +283,30 @@ constructor change below.
   identities, so neither failure mode can regress silently.
 
 ### Changed
+
+- **Doctests run again, and now run on every CI platform.** `docs/make.jl` had `doctest=false`, which
+  hid **18 broken examples** across `UBCM`, `DBCM`, `BiCM`, `CReM`, `metrics.jl` and `utils.jl` — and a
+  further 23 in the manual pages, which were never checked at all. Among them: a `ParseError` from a
+  matrix literal whose continuation lines were not indented under the `julia>` prompt (so Documenter
+  read them as expected output); two internal helpers called unqualified, which cannot resolve from
+  `Main`; `biadjacency_matrix` handed a matrix where the method takes a graph; a `CReM` example
+  advertising 16 unique degrees where the model reports 8; an undefined `α` in the projection
+  walkthrough; an unseeded `rand` whose output was compared verbatim; and a projection labelled
+  `:organizations` that projected the `:bottom` layer.
+
+  The reason it was switched off is worth recording, because it will recur otherwise: many examples
+  print maximum-likelihood parameters, likelihoods and information criteria to all 17 digits. Those are
+  results of an iterative solve, so their last digits depend on the BLAS, the platform and the optimiser
+  version — pinning them makes the examples fail anywhere but the machine they were written on. They are
+  now compared through a `doctestfilters` entry that truncates to 8 decimals, and the handful whose value
+  is only determined to ~1e-8 by the solve are rounded at the call site instead of being quoted to a
+  precision they never had. `SimpleWeightedGraphs` was also missing from the docs environment, so every
+  weighted-model page failed on its first line.
+
+- The `BiCM` `:fixedpoint` Anderson memory ladder moved to `_gauge_fixedpoint_ladder` in
+  `src/Models/models.jl`, so the bipartite models can share one copy of the recipe and of the
+  measurements justifying it. Pure extraction — no behavioural change.
+
 - **`ftol` on the `UECM`/`DECM` `:fixedpoint` path now bounds the constraint residual**, not the
   parameter-space increment the binary models use (the `CReM`/`DCReM`/`CRWCM` layers already used it this
   way). The increment is not a usable test on these models: a runaway constraint has no finite fixed point,
