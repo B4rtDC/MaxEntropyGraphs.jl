@@ -261,7 +261,7 @@ constructor change below.
   The package's own `BiCM` docstring carried such a pair (`Σd⊥ = 18` against `Σd⊤ = 35`); its examples
   now use realisable sequences.
 
-- **`validation/symbolic/bicm_uecm_geometry.jl`** (30 checks) and
+- **`validation/symbolic/bicm_uecm_geometry.jl`** (42 checks) and
   **`validation/bicm_uecm_solver_geometry.md`** — the companion analysis for the `BiCM` and `UECM`. The
   contrast between them is the useful part:
 

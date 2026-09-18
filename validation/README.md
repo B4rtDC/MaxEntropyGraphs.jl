@@ -23,6 +23,28 @@ Longer write-ups that do not fit in a script header:
 | [`uecm_decm_fixedpoint.md`](uecm_decm_fixedpoint.md) | Why the `UECM`/`DECM` `:fixedpoint` recipe could not be started from a cold guess, and what replaced it in `v0.8.0`. The Picard degree step provably **undershoots** (its factor is decreasing in its own `x`) while the strength step provably **overshoots without bound** (its factor is *increasing* in its own `y` whenever `xᵢxⱼ < 2`), so the iterate leaves the domain `yᵢyⱼ < 1` on the **first** step — measured overshoot 208×–1383× on every class of the rhesus UECM, against an optimum that sits at 97 % of the domain wall. The replacement solves each block exactly (both constraint functions are monotone, and the strength root is feasible *by construction*), plus a safeguarded 2×2 Newton polish for runaway ridges. Also records two traps: a per-node polish accepted on `‖residual‖` **cycles**, and a fixed-point-*increment* stopping test reports success on such a cycle. Plus the `L_UECM_reduced` `0·NaN` defect and the over-tight `β` box it caused. Backed by `symbolic/uecm_decm_fixedpoint.jl`. |
 | [`decm_solver_geometry.md`](decm_solver_geometry.md) | Geometry of the DECM log-likelihood: the exact two-fold gauge freedom and why only `Newton` is hurt by it; the feasible polyhedron and why the `UECM`'s box constraint must **not** be transplanted; the runaway-constraint degeneracy taxonomy (`k = 0`, `k = N-1`, `s = k`) and the `10¹⁵`–`10¹⁷` condition numbers it produces; what that costs each solver; and the `AutoZygote` second-order crash. Backed by `symbolic/decm_gauge.jl`. |
 
+## Where the robustness numbers come from
+
+The convergence tables quoted in these notes — the BiCM Anderson-ladder comparison in
+[`bicm_uecm_solver_geometry.md`](bicm_uecm_solver_geometry.md) and the cold-start counts in
+[`uecm_decm_fixedpoint.md`](uecm_decm_fixedpoint.md) — are produced by
+[`performance/robustness/`](../performance/robustness/), not by anything in this directory. They
+were measured with one-off scripts until v0.8.0, so the argument could be checked but the
+measurement could not be repeated; the harness exists so that both can.
+
+```bash
+cd performance
+julia --project=. robustness/ladder.jl    # reproduces plain 158/183 ... ladder 183/183
+julia --project=. robustness/sweep.jl     # reproduces UECM 98/100, DECM 71/71, and the rest
+julia --project=. robustness/report.jl
+```
+
+The split between this directory and that one is deliberate: `validation/` proves that the
+shipped formulas match the derivations, which is a question about mathematics and is checked over
+exact rationals. `performance/robustness/` measures how the solvers behave on real floating-point
+inputs from different starting points, which is a question about numerics and is answered
+statistically over a corpus.
+
 ## symbolic/ — dyad-level derivations vs the shipped closed forms
 
 `common.jl` provides the equality oracles: structural `simplify∘expand` first, then exact
@@ -43,7 +65,7 @@ exponentials, joint MGF for the reciprocal coupling).
 | `decm.jl` | ALL PASS (37) | directed twin of `uecm.jl` via the per-channel PGF with composite params `x=xᵢ_out·xⱼ_in`, `y=yᵢ_out·yⱼ_in`: p ≡ `f_DECM`, ⟨w⟩ ≡ `Ŵ`, Var[w] ≡ `σʷ`², Cov(a,w)=⟨w⟩(1−p); joint PGF factorizes ⇒ Cov(w_ij,w_ji)=0 |
 | `crem.jl` | ALL PASS (32) | via MGF: ⟨w⟩=f/(θ_i+θ_j) ≡ `Ŵ`, **Var[w]=f(2−f)/(θ_i+θ_j)²** (proposed σʷ, = DCReM code form), Cov(a,w)=⟨w⟩(1−f) |
 | `dcrem.jl` | ALL PASS (12) | MGF moments ≡ `Ŵ`/`σʷ` code; joint MGF factorizes ⇒ Cov(w_ij,w_ji)=0 |
-| `bicm_uecm_geometry.jl` | ALL PASS (30) | BiCM: gauge invariance `(α+c, β−c)` from `Σ f⊥·k⊥ = Σ f⊤·k⊤`, `‖H·g‖ ≈ 7e-17`, null dim exactly 1, κ < 10³, and that a saturated degree is rejected at construction. UECM: **no** gauge (both candidate shifts move `L`, null dim 0), the `k = n−1` runaway (`α ≈ −40.5`) and the all-weights-1 limit (`min β = 184`). Plus: dead channels honoured from **every** initial guess (`:degrees`, `:uniform`, `:random`, `:chung_lu`) |
+| `bicm_uecm_geometry.jl` | ALL PASS (42) | BiCM: gauge invariance `(α+c, β−c)` from `Σ f⊥·k⊥ = Σ f⊤·k⊤`, `‖H·g‖ ≈ 7e-17`, null dim exactly 1, κ < 10³, and that a saturated degree is rejected at construction. UECM: **no** gauge (both candidate shifts move `L`, null dim 0), the `k = n−1` runaway (`α ≈ −40.5`) and the all-weights-1 limit (`min β = 184`). Plus: dead channels honoured from **every** initial guess (`:degrees`, `:uniform`, `:random`, `:chung_lu`) |
 | `uecm_decm_fixedpoint.jl` | ALL PASS (23) | the *solver* rather than the moments: the monotonicity asymmetry that makes the Picard degree step safe and the strength step unbounded (`∂A/∂x = -c²/(d₀+cx)²`, `D'(0) = g-2`), that `D - tD' = 1-(1-g)t² > 0` so `⟨sᵢ⟩` is strictly increasing and its root always exists and is feasible, the measured first-step domain exit and 1383× overshoot, the optimum at `max yᵢyⱼ = 0.974`, agreement of `:fixedpoint` with `:BFGS` (θ for the UECM, gauge-invariant `Ĝ`/`Ŵ` for the DECM), and that `L_UECM_reduced` is finite inside its own domain for a singleton class with `βᵢ < 0` but still `NaN` genuinely outside it |
 | `decm_gauge.jl` | ALL PASS (49) | the *geometry* of the DECM objective rather than its moments: the exact two-fold gauge freedom `(α_out,α_in)→(α_out+c,α_in−c)`, `(β_out,β_in)→(β_out+c,β_in−c)` (invariance follows from `Σ F·k_out = Σ F·k_in` and `Σ F·s_out = Σ F·s_in`), the resulting singular Hessian (`‖H·g‖ ≈ 2e-19`), the degeneracy taxonomy (dead channel `k=0` → `α→+∞`, **saturated** degree `k=N−1` → `α→−∞`, **minimum** strength `s=k` → `β→+∞`; null dim = 2 gauge modes + one per degenerate constraint), that the gauge term changes no gauge-invariant quantity (`Ĝ`/`Ŵ` identical with and without), and a regression guard that `Newton` from `:uniform` fails without it (`-L = 10472` vs `384.49`) |
 | `crwcm.jl` | ALL PASS (23) | joint MGF: ⟨w⟩, Var ≡ `Ŵ`/`σʷ`; ⟨w_ij w_ji⟩=π↔/(r₃r₄) ⇒ Cov ≡ `_covʷ`; binary layer ≡ RBCM |
@@ -52,7 +74,7 @@ exponentials, joint MGF for the reciprocal coupling).
 
 ## numeric/ — Monte-Carlo gates for the changes introduced in v0.6.0
 
-### `undirected_dyad_factor.jl` — the within-dyad covariance bug (FIXED in v0.6.0)
+### `undirected_dyad_factor.jl` — the within-dyad covariance bug (FIXED in v0.6.0) — ALL PASS (14/14)
 Confirmed (UBCM karate 20k samples; UECM/CReM binary layers on symmetrised rhesus, 10k):
 the pre-0.6.0 `σₓ` omitted the cross-term `sum((σ.^2).*∇X.*∇X')` required because a_ij ≡ a_ji.
 Effect: symmetric-gradient metrics (X=sum) low by exactly 1/√2 (measured current/sampled
