@@ -64,8 +64,14 @@ CAMPAIGN_TO="${CAMPAIGN_TO:-3}"
 ## --- Status file ------------------------------------------------------------
 ## One flat JSON, rewritten whole after every state change. A partial write is not worth guarding
 ## against here: the file is a progress report, not an input to anything.
-CURRENT_STAGE="-"
+## The current stage lives in a file, not only in a shell variable. The heartbeat runs in a
+## subshell forked before the first stage begins, so a variable would leave it reporting (and
+## writing) a stale stage forever, which is precisely the field anyone reading this file cares
+## about.
+STAGE_FILE="$(pwd)/.campaign_stage"
 CURRENT_SINCE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "-" > "$STAGE_FILE"
+current_stage() { cat "$STAGE_FILE" 2>/dev/null || echo "-"; }
 STARTED="$CURRENT_SINCE"
 declare -a DONE_STAGES=()
 
@@ -77,11 +83,15 @@ write_status() {
         printf '  "pid": %s,\n' "$$"
         printf '  "started": "%s",\n' "$STARTED"
         printf '  "updated": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        printf '  "stage": "%s",\n' "$CURRENT_STAGE"
+        printf '  "stage": "%s",\n' "$(current_stage)"
         printf '  "stage_since": "%s",\n' "$CURRENT_SINCE"
         printf '  "state": "%s",\n' "$state"
         printf '  "detail": "%s",\n' "$detail"
-        printf '  "completed": [%s]\n' "$(printf '"%s",' "${DONE_STAGES[@]+"${DONE_STAGES[@]}"}" | sed 's/,$//')"
+        if [ "${#DONE_STAGES[@]}" -eq 0 ]; then
+            printf '  "completed": []\n'
+        else
+            printf '  "completed": [%s]\n' "$(printf '"%s",' "${DONE_STAGES[@]}" | sed 's/,$//')"
+        fi
         printf '}\n'
     } > "$STATUS"
 }
@@ -89,17 +99,17 @@ write_status() {
 log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) | $*"; }
 
 begin_stage() {
-    CURRENT_STAGE="$1"
+    echo "$1" > "$STAGE_FILE"
     CURRENT_SINCE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     write_status running
-    log "=== BEGIN ${CURRENT_STAGE} ==="
+    log "=== BEGIN $(current_stage) ==="
 }
 
 end_stage() {
-    local rc="$1"
-    DONE_STAGES+=("${CURRENT_STAGE}:$([ "$rc" -eq 0 ] && echo ok || echo "failed(${rc})")")
-    write_status "$([ "$rc" -eq 0 ] && echo running || echo degraded)" "${CURRENT_STAGE} exited ${rc}"
-    log "=== END ${CURRENT_STAGE} (exit ${rc}) ==="
+    local rc="$1" st; st="$(current_stage)"
+    DONE_STAGES+=("${st}:$([ "$rc" -eq 0 ] && echo ok || echo "failed(${rc})")")
+    write_status "$([ "$rc" -eq 0 ] && echo running || echo degraded)" "${st} exited ${rc}"
+    log "=== END ${st} (exit ${rc}) ==="
 }
 
 ## A stage that fails must not take the rest of the campaign with it: an overnight run that dies at
@@ -119,7 +129,7 @@ want_stage() { [ "$1" -ge "$CAMPAIGN_FROM" ] && [ "$1" -le "$CAMPAIGN_TO" ]; }
 ## --- Heartbeat --------------------------------------------------------------
 HEARTBEAT_PID=""
 start_heartbeat() {
-    ( while true; do sleep 300; log "heartbeat: still in ${CURRENT_STAGE}"; write_status running; done ) &
+    ( while true; do sleep 300; log "heartbeat: still in $(current_stage)"; write_status running; done ) &
     HEARTBEAT_PID=$!
 }
 cleanup() {
@@ -231,6 +241,6 @@ want_stage 1 && run_stage "1-robustness" stage_robustness
 want_stage 2 && run_stage "2-benchmarks" stage_benchmarks
 want_stage 3 && run_stage "3-summary"    stage_summary
 
-CURRENT_STAGE="done"
+echo "done" > "$STAGE_FILE"
 write_status finished "all requested stages attempted"
 log "campaign finished. Stages: ${DONE_STAGES[*]+"${DONE_STAGES[*]}"}"
