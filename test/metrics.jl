@@ -773,4 +773,120 @@ end
         model = MaxEntropyGraphs.BiCM(MaxEntropyGraphs.corporateclub()); solve_model!(model)
         @test_throws ArgumentError MaxEntropyGraphs.V_motifs(model, 1, 2, layer=:invalid_layer, precomputed=false)
     end
+    @testset "directed bipartite projection (DBiCM)" begin
+        # Directed twin of _planted_bipartite: a WIDE top layer, so three hubs sharing ten partners is
+        # genuinely surprising under a model that reproduces the degrees. With a narrow top layer the
+        # hubs' co-occurrence is exactly what the null model expects and nothing is significant.
+        function _planted_dibipartite()
+            Nb, Nt, hubs, hubdeg = 24, 100, 3, 10
+            g = MaxEntropyGraphs.Graphs.SimpleDiGraph(Nb + Nt)
+            top(j) = Nb + j
+            for b in 1:hubs, j in 1:hubdeg
+                MaxEntropyGraphs.Graphs.add_edge!(g, b, top(j))                       # ⁺ planted
+            end
+            for b in 1:hubs, j in (hubdeg+1):(2hubdeg)
+                MaxEntropyGraphs.Graphs.add_edge!(g, top(j), b)                       # ⁻ planted
+            end
+            for b in (hubs+1):Nb, k in 0:2
+                MaxEntropyGraphs.Graphs.add_edge!(g, b, top(((b * 7 + k * 13) % Nt) + 1))
+                MaxEntropyGraphs.Graphs.add_edge!(g, top(((b * 11 + k * 5) % Nt) + 1), b)
+            end
+            for j in 1:Nt
+                iszero(MaxEntropyGraphs.Graphs.degree(g, top(j))) &&
+                    MaxEntropyGraphs.Graphs.add_edge!(g, hubs + 1 + (j % (Nb - hubs)), top(j))
+            end
+            return g
+        end
+        G = _planted_dibipartite()
+        model = DBiCM(G)
+        MaxEntropyGraphs.solve_model!(model, method=:BFGS)
+        B⁺, B⁻ = MaxEntropyGraphs.biadjacency_matrices(model)
+        N⊥, N⊤ = model.status[:N⊥], model.status[:N⊤]
+
+        @testset "observed counts against brute force" begin
+            # every (layer, kind) closed form is checked against an explicit triple loop
+            for layer in (:bottom, :top), kind in (:out, :in, :path)
+                n = layer === :bottom ? N⊥ : N⊤
+                nshared = layer === :bottom ? N⊤ : N⊥
+                brute = zeros(Int, n, n)
+                for i in 1:n, j in 1:n
+                    i == j && continue
+                    acc = 0
+                    for k in 1:nshared
+                        f1 = kind === :in  ? (layer === :bottom ? B⁻[i,k] : B⁺[k,i]) :
+                                             (layer === :bottom ? B⁺[i,k] : B⁻[k,i])
+                        f2 = kind === :out ? (layer === :bottom ? B⁺[j,k] : B⁻[k,j]) :
+                                             (layer === :bottom ? B⁻[j,k] : B⁺[k,j])
+                        acc += f1 * f2
+                    end
+                    brute[i,j] = acc
+                end
+                @test Matrix(MaxEntropyGraphs.project(B⁺, B⁻; layer=layer, kind=kind, method=:weighted)) == brute
+                @test all(MaxEntropyGraphs.V_motifs(B⁺, B⁻, i, j; layer=layer, kind=kind) == brute[i,j]
+                          for i in 1:n, j in 1:n if i != j)
+                # the three kinds do NOT count over the same index set: :out/:in are symmetric and
+                # count unordered pairs, :path is not and counts ordered ones
+                expected = kind === :path ? sum(brute) : sum(brute[i,j] for i in 1:n for j in (i+1):n)
+                @test MaxEntropyGraphs.V_motifs(B⁺, B⁻; layer=layer, kind=kind) == expected
+            end
+        end
+
+        @testset "the :path kernel is asymmetric and its diagonal is the reciprocated degree" begin
+            P = Matrix(MaxEntropyGraphs.project(B⁺, B⁻; layer=:bottom, kind=:path, method=:weighted))
+            @test P != permutedims(P)
+            # V^path_ij and V^path_ji draw on disjoint entries, so the transpose is the reverse motif
+            @test MaxEntropyGraphs.V_motifs(B⁺, B⁻, 1, 4; layer=:bottom, kind=:path) ==
+                  MaxEntropyGraphs.V_motifs(permutedims(permutedims(B⁻)), permutedims(permutedims(B⁺)), 4, 1; layer=:bottom, kind=:path)
+            @test MaxEntropyGraphs.reciprocated_degree(model, 2) ≈
+                  MaxEntropyGraphs.V_motifs(model, 2, 2; layer=:bottom, kind=:path)
+        end
+
+        @testset "expected counts and the Poisson-binomial parameters" begin
+            for layer in (:bottom, :top), kind in (:out, :in, :path)
+                i, j = 1, 4
+                q = MaxEntropyGraphs.V_PB_parameters(model, i, j; layer=layer, kind=kind)
+                @test length(q) == (layer === :bottom ? N⊤ : N⊥)
+                @test all(0 .<= q .<= 1)
+                # the expectation is the sum of the Poisson-binomial parameters, by construction
+                @test MaxEntropyGraphs.V_motifs(model, i, j; layer=layer, kind=kind) ≈ sum(q)
+            end
+            @test_throws ArgumentError MaxEntropyGraphs.V_motifs(model, 1, 2, kind=:nonsense)
+            @test_throws ArgumentError MaxEntropyGraphs.V_motifs(model, 1, 2, layer=:nonsense)
+            @test_throws ArgumentError MaxEntropyGraphs.project(model, kind=:nonsense)
+            @test_throws ArgumentError MaxEntropyGraphs.project(model, distribution=:nonsense)
+        end
+
+        @testset "significance filter" begin
+            for layer in (:bottom, :top), kind in (:out, :in, :path), dist in (:Poisson, :PoissonBinomial)
+                loose  = MaxEntropyGraphs.project(model; α=0.5,   layer=layer, kind=kind, distribution=dist)
+                strict = MaxEntropyGraphs.project(model; α=0.001, layer=layer, kind=kind, distribution=dist)
+                # :path is asymmetric, so it projects onto a directed graph
+                @test loose isa (kind === :path ? MaxEntropyGraphs.Graphs.SimpleDiGraph :
+                                                  MaxEntropyGraphs.Graphs.SimpleGraph)
+                edgeset(g) = Set((MaxEntropyGraphs.Graphs.src(e), MaxEntropyGraphs.Graphs.dst(e))
+                                 for e in MaxEntropyGraphs.Graphs.edges(g))
+                @test issubset(edgeset(strict), edgeset(loose))
+                @test MaxEntropyGraphs.Graphs.nv(loose) == (layer === :bottom ? N⊥ : N⊤)
+            end
+            # the planted ⁺ structure must survive a strict filter: exactly the three hub pairs
+            @test MaxEntropyGraphs.Graphs.ne(MaxEntropyGraphs.project(model; α=0.01, layer=:bottom, kind=:out)) == 3
+        end
+
+        @testset "Vn delegates to the matching single channel" begin
+            b⁺ = BiCM(nothing; d⊥=model.d⊥_out, d⊤=model.d⊤_in)
+            MaxEntropyGraphs.solve_model!(b⁺, method=:BFGS)
+            for n in 2:4, meth in (:exact, :delta)
+                @test MaxEntropyGraphs.Vn_motifs(model, n, layer=:bottom, kind=:out, method=meth) ≈
+                      MaxEntropyGraphs.Vn_motifs(b⁺, n, layer=:bottom, method=meth)
+                @test MaxEntropyGraphs.Vn_sigma(model, n, layer=:bottom, kind=:out, method=meth) ≈
+                      MaxEntropyGraphs.Vn_sigma(b⁺, n, layer=:bottom, method=meth)
+            end
+            # the Vn family is single-channel; a mixed-direction analogue would need the joint law of a
+            # shared node's in- and out-degree, which is a different (two-dimensional) object
+            @test_throws ArgumentError MaxEntropyGraphs.Vn_motifs(model, 2, kind=:path)
+            @test_throws ArgumentError MaxEntropyGraphs.Vn_motifs(model, 1, kind=:out)
+            z = MaxEntropyGraphs.Vn_zscore(model, 3, layer=:bottom, kind=:out)
+            @test isfinite(z) && z <= 1e-8      # one-sided under a model that fixes the degrees
+        end
+    end
 end

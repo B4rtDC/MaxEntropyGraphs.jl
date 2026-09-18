@@ -79,7 +79,25 @@ correction sqrt(2·sum(σʷ²)) overcounts by √2; Cov(a,w)=⟨w⟩(1−p) conf
 Proposed CReM σʷ validated on the same anchor: Ŵ bit-exact; entrywise variances within
 1.9·SE; total-weight σ ratio 0.9984; Cov(a,w)=⟨w⟩(1−f) within 1.3·SE.
 
-### `bicm_variance.jl` — 73/88 PASS; the 15 failures are the FINDING
+### `dbicm_projection.jl` — ALL PASS (29/29)
+
+Monte-Carlo validation (60 000 samples, fixed seed) of the three directed V-motif kernels under the
+`DBiCM`. The claim tested is that all three are **exactly** Poisson-binomial, so the check goes beyond
+the first two moments and compares the full pmf with `Distributions.PoissonBinomial` (largest deviation
+`4.3e-3`, consistent with Monte-Carlo error at this sample size). Also covered: the `:path` diagonal is
+the reciprocated-partner count; `V^path_ij` and `V^path_ji` are independent, since they draw on disjoint
+entries (measured covariance `0.0`); the totals count over the index sets the docstrings claim
+(unordered pairs for the symmetric kinds, ordered for `:path`); and `reciprocity` matches sampling.
+Channels are sampled directly rather than through `rand(m)`, so the check does not depend on the
+sampler it would otherwise be validating.
+
+### `bicm_variance.jl` — ALL PASS (124/124)
+
+*Previously recorded as 73/88.* That figure predates the `BiCM`'s isolated-vertex guard: this script
+carries its own copy of `_planted_bipartite`, the copy was never given the leftover-attachment repair
+that `test/ensemble_validation.jl`'s copy received, and the constructor has been refusing it — so the
+script errored out before finishing rather than reporting failures. The fixture is repaired here and
+the suite completes.
 - Part 1 (biadjacency σ layer): delta σ of the edge count matches sampling (ratios
   0.9953/0.9987) with NO cross-term (entries independent) → safe to implement.
 - Part 2 (Vn/Λn families): the Saracco closed forms are **asymptotic in the opposite-layer

@@ -124,6 +124,66 @@ true
 [`σₓ`](@ref MaxEntropyGraphs.σₓ) expects for a metric that reads both channels at once — the total
 link count, the reciprocity, or a directed path motif.
 
+## Projection
+
+An undirected bipartite pair has **one** way of sharing a neighbour. A directed pair has three, because
+either link may point either way:
+
+| `kind` | ⊥-pair kernel | shape | symmetry |
+| --- | --- | --- | --- |
+| `:out` | ``\sum_α B^+_{iα} B^+_{jα}`` | ``i → α ← j`` | symmetric |
+| `:in` | ``\sum_α B^-_{iα} B^-_{jα}`` | ``i ← α → j`` | symmetric |
+| `:path` | ``\sum_α B^+_{iα} B^-_{jα}`` | ``i → α → j`` | **asymmetric** |
+
+`kind` is relative to the projected layer: `:out` always means "both members of the pair *send* to the
+shared node". This is forced rather than chosen — `:path` is defined by the pair ordering, so one of the
+three is layer-relative whatever one does — and it is why the model's `channel` selector is spelled
+`:to_top`/`:to_bottom` instead of `:out`/`:in`.
+
+Under the DBiCM all three counts are **exactly** Poisson-binomial, with ``q_α`` the corresponding
+product of two entry probabilities. Every factor is a product of two *distinct* Bernoulli entries, and
+the entries are independent both within a dyad and across ``α`` — including on the diagonal, where
+``V^{path}_{ii}`` counts the ⊤ nodes reciprocally linked to ``i`` and is available as
+[`reciprocated_degree`](@ref MaxEntropyGraphs.reciprocated_degree).
+
+```jldoctest DBiCM_docs
+julia> V = V_motifs(model, 1, 2, layer=:bottom, kind=:path);   # expected i → α → j count
+
+julia> q = MaxEntropyGraphs.V_PB_parameters(model, 1, 2, layer=:bottom, kind=:path);
+
+julia> V ≈ sum(q)          # the expectation is the sum of the Poisson-binomial parameters
+true
+
+```
+
+[`project`](@ref MaxEntropyGraphs.project) turns this into a statistically validated monopartite
+network: observed counts are compared with their distribution under the model, and the upper-tail
+p-values are corrected for multiple testing before thresholding.
+
+```jldoctest DBiCM_docs
+julia> P = project(model, α=0.05, layer=:bottom, kind=:out);
+
+julia> P isa MaxEntropyGraphs.Graphs.SimpleGraph      # symmetric kinds give an undirected projection
+true
+
+julia> project(model, layer=:bottom, kind=:path) isa MaxEntropyGraphs.Graphs.SimpleDiGraph
+true
+
+```
+
+Two things to keep in mind when comparing across kinds:
+
+- **The totals count different index sets.** `:out` and `:in` are symmetric, so they count each
+  *unordered* pair once; `:path` counts every *ordered* pair.
+- **The multiple-testing pools differ in size.** A `:path` projection tests roughly twice as many
+  hypotheses as an `:out` one on the same data, so any correction is correspondingly more conservative.
+
+The higher-order [`Vn_motifs`](@ref MaxEntropyGraphs.Vn_motifs) family (`n` nodes sharing a partner)
+is single-channel, so it takes `kind ∈ (:out, :in)` and delegates to the matching channel. There is no
+`:path` analogue: a mixed-direction higher-order motif needs the joint law of a shared node's in- and
+out-degree, which is a two-dimensional Poisson-multinomial over the four dyad states rather than the
+one-dimensional convolution used here.
+
 ## Model comparison
 ```jldoctest DBiCM_docs
 julia> isfinite(AICc(model))
