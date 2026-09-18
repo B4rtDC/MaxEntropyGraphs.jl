@@ -35,6 +35,19 @@ MaxEntropyGraphs.p⁺(::DBiCM,::Int64,::Int64)
 MaxEntropyGraphs.p⁻(::DBiCM,::Int64,::Int64)
 MaxEntropyGraphs.σₓ(::DBiCM, ::Function)
 MaxEntropyGraphs.reciprocity(::DBiCM)
+MaxEntropyGraphs.biadjacency_matrices
+MaxEntropyGraphs.project(::DBiCM)
+MaxEntropyGraphs.V_motifs(::DBiCM)
+MaxEntropyGraphs.V_motifs(::DBiCM, ::Int, ::Int)
+MaxEntropyGraphs.V_PB_parameters(::DBiCM, ::Int, ::Int)
+MaxEntropyGraphs.reciprocated_degree(::DBiCM, ::Int)
+MaxEntropyGraphs.Vn_motifs(::DBiCM, ::Int)
+MaxEntropyGraphs.Vn_sigma(::DBiCM, ::Int)
+MaxEntropyGraphs.Vn_zscore(::DBiCM, ::Int)
+MaxEntropyGraphs._dbicm_v_accessors
+MaxEntropyGraphs._dbicm_channel_pair
+MaxEntropyGraphs._Vn_delta_mean
+MaxEntropyGraphs._Vn_aggregation_classes
 MaxEntropyGraphs.outdegree(::DBiCM, ::Int)
 MaxEntropyGraphs.indegree(::DBiCM, ::Int)
 MaxEntropyGraphs.degree(::DBiCM, ::Int)

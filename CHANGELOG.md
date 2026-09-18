@@ -185,6 +185,32 @@ constructor change below.
 
 ### Added
 
+- **Directed projection tooling for the `DBiCM`.** An undirected bipartite pair has one way of sharing
+  a neighbour; a directed pair has three, because either link may point either way: `:out` (`i → α ← j`),
+  `:in` (`i ← α → j`) and `:path` (`i → α → j`). The first two are symmetric, the third is not.
+
+  All three are **exactly** Poisson-binomial under the model — every factor is a product of two distinct
+  Bernoulli entries, and the entries are independent within a dyad and across the shared node — so the
+  existing significance pipeline applies with only the vector of per-node probabilities swapped. That
+  includes the diagonal of the `:path` kernel, which counts a node's reciprocally linked partners and is
+  exposed as `reciprocated_degree(m::DBiCM, i)`. Verified against 60 000 samples in
+  `validation/numeric/dbicm_projection.jl`, comparing the **full pmf** rather than only the first two
+  moments (largest deviation `4.3e-3`), and against an explicit triple loop for every observed count.
+
+  `V_motifs`, `V_PB_parameters` and `project` gain `DBiCM` methods taking a `kind`, plus matrix and
+  graph forms and a `biadjacency_matrices` accessor returning the two channels. `project` returns a
+  `SimpleGraph` for the symmetric kinds and a `SimpleDiGraph` for `:path`.
+
+  Two asymmetries are worth knowing and are documented at every relevant call site: the **totals count
+  different index sets** (unordered pairs for `:out`/`:in`, ordered for `:path`), and a `:path`
+  projection tests roughly **twice as many hypotheses**, so any multiple-testing correction is
+  correspondingly more conservative on the same data.
+
+  The higher-order `Vn` family is single-channel, so it takes `kind ∈ (:out, :in)` and delegates to the
+  matching channel; `:path` is refused with a pointer. A mixed-direction higher-order motif would need
+  the joint law of a shared node's in- and out-degree — a two-dimensional Poisson-multinomial over the
+  four dyad states, rather than the one-dimensional convolution used here — and is out of scope.
+
 - **`DBiCM` — a directed bipartite configuration model**, constraining all four degree sequences: the
   out- and in-degrees of both layers. It fills the one gap in the model table — every other model had a
   directed counterpart, so a directed bipartite network could previously only be fitted by discarding
@@ -223,8 +249,7 @@ constructor change below.
   deliberately refused as a `channel`, with a pointer, because they are the projection API's vocabulary
   and would select the opposite matrix under `layer = :top`.
 
-  Directed projection tooling (the three V-motif kinds and their significance filters) follows
-  separately.
+  The directed projection tooling built on this model is described in its own entry above.
 
 - **`BiCM` now rejects degree sequences that no bipartite graph can realise.** `Σd⊥` and `Σd⊤` both count
   the edges of the same graph, so a pair that disagrees has no maximum-likelihood point at all: the ⊥
@@ -283,6 +308,13 @@ constructor change below.
   identities, so neither failure mode can regress silently.
 
 ### Changed
+
+- **`validation/numeric/bicm_variance.jl` had been erroring out instead of reporting.** It carries its
+  own copy of the `_planted_bipartite` fixture, and that copy never received the leftover-attachment
+  repair its twin in `test/ensemble_validation.jl` did — so once the `BiCM` gained its isolated-vertex
+  guard the script was refused its own input and stopped before finishing. The `73/88` verdict recorded
+  in `validation/README.md` predates that. The fixture is repaired and the suite now completes at
+  `124/124`.
 
 - **Doctests run again, and now run on every CI platform.** `docs/make.jl` had `doctest=false`, which
   hid **18 broken examples** across `UBCM`, `DBCM`, `BiCM`, `CReM`, `metrics.jl` and `utils.jl` — and a
