@@ -96,6 +96,7 @@ using MultipleTesting
 G = corporateclub();
 # project the model on its layers
 G_persons, G_organizations = project(G, layer=:bottom, method=:weighted), project(G, layer=:top, method=:weighted);
+nothing
 
 # output
 
@@ -107,10 +108,11 @@ We then define a BiCM, compute its likelihood maximizing parameters, generate a 
 model = BiCM(G); 
 # compute the maximum likelihood parameters
 solve_model!(model); 
-# sample
-S = rand(model, 100);
+# sample (seeded, so the empirical p-values below are reproducible)
+S = rand(model, 100; rng=MaxEntropyGraphs.Xoshiro(161));
 # projected samples
-S_persons, S_organizations = project.(S, layer=:bottom, method=:weighted), project.(S, layer=:bottom, method=:weighted)
+S_persons, S_organizations = project.(S, layer=:bottom, method=:weighted), project.(S, layer=:top, method=:weighted);
+nothing
 
 # output
 
@@ -118,6 +120,8 @@ S_persons, S_organizations = project.(S, layer=:bottom, method=:weighted), proje
 
 For each edge in the original network, we can now compare how its weight compares to the distribution of weights in the random sample and determine their empirical p-values.
 ```jldoctest BiCM_projection_demo_sampling; output = true
+# significance level
+α = 0.05
 # determine the empirical pvalues
 p = zeros(length(edges(G_persons)))
 for (i,e) in enumerate(edges(G_persons))

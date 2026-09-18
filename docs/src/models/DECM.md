@@ -88,11 +88,12 @@ nothing
 # metric: the total weight of the network (a function of the weighted adjacency matrix)
 X = W -> sum(W)
 # delta-method standard deviation under the null model
-σₓ(model, X, layer=:weighted)
+# rounded: the fitted parameters are converged to ~1e-8, so later digits are not determined
+round(σₓ(model, X, layer=:weighted), digits=4)
 
 # output
 
-89.30268766693133
+89.3027
 ```
 
 ```jldoctest DECM_variance; output = false

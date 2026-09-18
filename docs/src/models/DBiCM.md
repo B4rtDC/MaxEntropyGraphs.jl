@@ -1,3 +1,9 @@
+```@meta
+DocTestSetup = quote
+    using MaxEntropyGraphs
+end
+```
+
 # DBiCM
 
 ## Model description

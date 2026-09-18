@@ -88,11 +88,12 @@ nothing
 # metric: the total weight of the network (a function of the weighted adjacency matrix)
 X = W -> sum(W) / 2
 # delta-method standard deviation under the null model
-σₓ(model, X, layer=:weighted)
+# rounded: the fitted parameters are converged to ~1e-8, so later digits are not determined
+round(σₓ(model, X, layer=:weighted), digits=4)
 
 # output
 
-108.64282821918191
+108.6428
 ```
 
 ```jldoctest CReM_variance; output = false

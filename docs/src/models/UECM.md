@@ -84,11 +84,12 @@ nothing
 # metric: the total weight of the network (a function of the weighted adjacency matrix)
 X = W -> sum(W) / 2
 # delta-method standard deviation under the null model
-σₓ(model, X, layer=:weighted)
+# rounded: the fitted parameters are converged to ~1e-8, so later digits are not determined
+round(σₓ(model, X, layer=:weighted), digits=4)
 
 # output
 
-102.7651910420764
+102.7652
 ```
 
 ```jldoctest UECM_variance; output = false
@@ -98,11 +99,12 @@ X = W -> sum(W .^ 2) / 2
 X_expected = X(model.Ŵ)
 X_std = σₓ(model, X, layer=:weighted)
 X_observed = X(Graphs.weights(G))
-z_X = (X_observed - X_expected) / X_std
+# rounded: the fitted parameters are converged to ~1e-8, so later digits are not determined
+z_X = round((X_observed - X_expected) / X_std, digits=4)
 
 # output
 
-1.6936481541084274
+1.6936
 ```
 
 !!! note "Within-dyad covariance"

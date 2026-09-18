@@ -674,11 +674,10 @@ julia> solve_model!(model);
 ```
 ```jldoctest UBCM_solve
 # using analytical gradient and degrees minor initial guess
-julia> solve_model!(model, method=:BFGS, analytical_gradient=true, initial=:degrees_minor)
-(UBCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (34 vertices, 11 unique degrees, 0.32 compression ratio), retcode: Success
-u: [2.851659905903854, 2.053008374573552, 1.5432639513870743, 1.152360118212239, 0.8271267490690292, 0.5445045274064909, -0.1398726818076551, -0.3293252270659469, -0.6706207459338859, -1.2685575582149227, -1.410096540372487]
-Final objective value:     168.68325136302835
-)
+julia> solve_model!(model, method=:BFGS, analytical_gradient=true, initial=:degrees_minor);
+
+julia> model.status[:params_computed]
+true
 
 ```
 

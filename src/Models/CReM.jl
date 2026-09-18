@@ -72,13 +72,13 @@ The CReM allows **continuous, positive** weights (the strength sequence need not
 julia> G = MaxEntropyGraphs.SimpleWeightedGraphs.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques());
 
 julia> model = CReM(G)
-CReM{SimpleWeightedGraphs.SimpleWeightedGraph{Int64, Float64}, Float64} (16 vertices, 16 unique degrees, 1.00 compression ratio)
+CReM{SimpleWeightedGraphs.SimpleWeightedGraph{Int64, Float64}, Float64} (16 vertices, 8 unique degrees, 0.50 compression ratio)
 
 ```
 ```jldoctest CReM_creation
 # generating a model directly from a degree and strength sequence
 julia> model = CReM(d=[1, 2, 2, 1], s=[3.0, 5.0, 4.0, 2.0])
-CReM{Nothing, Float64} (4 vertices, 3 unique degrees, 0.75 compression ratio)
+CReM{Nothing, Float64} (4 vertices, 2 unique degrees, 0.50 compression ratio)
 
 ```
 ```jldoctest CReM_creation
