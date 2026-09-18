@@ -875,11 +875,10 @@ julia> solve_model!(model);
 ```
 ```jldoctest BiCM_solve
 # using analytical gradient and uniform initial guess
-julia> solve_model!(model, method=:BFGS, analytical_gradient=true, initial=:uniform)
-(BiCM{Graphs.SimpleGraphs.SimpleGraph{Int64}, Float64} (25 + 15 vertices, 6 + 6 unique degrees, 0.30 compression ratio), retcode: Success
-u: [1.449571644621672, 0.8231752829683303, 0.34755085972479766, -0.04834480708852856, -0.3984299800917503, -0.7223268299919358, 1.6090554004279671, 1.2614196476197532, 0.9762560461922147, 0.11406188481061938, -0.24499004480426345, -2.2646067641037333]
-Final objective value:     171.15095803718134
-)
+julia> solve_model!(model, method=:BFGS, analytical_gradient=true, initial=:uniform);
+
+julia> model.status[:params_computed]
+true
 
 ```
 """

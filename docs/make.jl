@@ -58,14 +58,20 @@ makedocs(sitename="MaxEntropyGraphs.jl",
                             ],
          doctest=true,
          # Doctests print maximum-likelihood parameters, likelihoods and information criteria, which
-         # are floating-point results of an iterative solve: their last few digits depend on the BLAS,
-         # the platform and the optimiser version, and drift with any of them. Pinning all 17 digits
-         # made the examples fail on machines other than the one they were written on, which is why
+         # are floating-point results of an iterative solve: their last digits depend on the BLAS, the
+         # platform and the optimiser version, and drift with any of them. Pinning all 17 digits made
+         # the examples fail on machines other than the one they were written on, which is why
          # `doctest` had been switched off entirely - leaving 18 genuinely broken examples invisible
-         # for as long as it was off. Comparing the first 8 decimals instead keeps the published
-         # values informative (the full value is still what the page shows) while making the check
-         # portable, so it can run on every CI platform and stay run.
-         doctestfilters=[r"(\d+\.\d{8})\d+" => s"\1"],
+         # for as long as it was off.
+         #
+         # Comparing a fixed number of leading decimals instead makes the check portable. Note the one
+         # way truncation can still bite: two values either side of a digit boundary truncate
+         # differently however close they are (0.39842998 and 0.39842997 came from the same solve on
+         # two platforms). The risk scales with drift / 10^-k, and the drift on these solves is ~1e-9
+         # rather than ULP-level, so k = 5 leaves roughly four orders of margin. Examples whose value
+         # is genuinely uncertain beyond that are rounded at the call site instead, and none print a
+         # whole parameter vector any more - each number there was another chance to straddle.
+         doctestfilters=[r"(\d+\.\d{5})\d+" => s"\1"],
          checkdocs=:exports,   # only require exported symbols in the manual (internal helpers like `softplus` are fine)
          build=joinpath(dirname(@__FILE__), "build")
 )
