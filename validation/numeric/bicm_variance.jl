@@ -89,6 +89,14 @@ function _planted_bipartite()
         j = ((b * 7 + k * 13) % Nt) + 1
         Graphs.add_edge!(g, b, topnode(j))
     end
+    # The patterns above leave part of the top layer untouched, and an isolated vertex has no
+    # determinable layer: `bipartite_map` would put every one of them in ⊥, turning this 24x100 graph
+    # into a 57x67 model. `BiCM` refuses such input, so attach the leftovers deterministically — the
+    # same repair `test/ensemble_validation.jl`'s copy of this fixture already carries. The planted hub
+    # co-occurrence the checks below rely on is untouched.
+    for j in 1:Nt
+        Graphs.degree(g, topnode(j)) == 0 && Graphs.add_edge!(g, hubs + 1 + (j % (Nb - hubs)), topnode(j))
+    end
     return g
 end
 

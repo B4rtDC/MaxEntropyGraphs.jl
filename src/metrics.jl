@@ -2812,9 +2812,10 @@ nodes involve disjoint entry sets, hence are independent:
 The Poisson-binomial pmf of each `U_α` is obtained by direct convolution over the connection
 probabilities, at cost `O(n_{opp}^2)` per unique degree class.
 """
-function _Vn_exact_moments(m::BiCM, n::Int; layer::Symbol=:bottom)
-    own_r, own_f, _, opp_r, opp_f = _Vn_aggregation_classes(m, layer)
-    N = precision(m)
+_Vn_exact_moments(m::BiCM, n::Int; layer::Symbol=:bottom) = _Vn_exact_moments(_Vn_aggregation_classes(m, layer), n, precision(m))
+
+function _Vn_exact_moments(cls::NTuple{5,Any}, n::Int, ::Type{N}) where {N<:AbstractFloat}
+    own_r, own_f, _, opp_r, opp_f = cls
     nopp = sum(opp_f)
     μ, v = zero(N), zero(N)
     pmf = Vector{N}(undef, nopp + 1)
@@ -2854,9 +2855,10 @@ end
 Internal helper: the observed count ``N_{Vn} = \\sum_α \\binom{u_α}{n}`` computed from the observed
 degree sequence of the aggregated (opposite) layer stored in the model (no graph needed).
 """
-function _Vn_observed(m::BiCM, n::Int, layer::Symbol)
-    _, own_f, own_d, _, _ = _Vn_aggregation_classes(m, layer)
-    N = precision(m)
+_Vn_observed(m::BiCM, n::Int, layer::Symbol) = _Vn_observed(_Vn_aggregation_classes(m, layer), n, precision(m))
+
+function _Vn_observed(cls::NTuple{5,Any}, n::Int, ::Type{N}) where {N<:AbstractFloat}
+    _, own_f, own_d, _, _ = cls
     return sum(own_f[β] * (own_d[β] < n ? zero(N) : N(_binomial_poly(N(own_d[β]), n))) for β in eachindex(own_d))
 end
 
@@ -2867,9 +2869,10 @@ Internal helper for the closed-form (`method=:delta`) Vn machinery: return `(u�
 reduced observed degrees `uᵣ` of the aggregated (opposite) layer, their frequencies `fᵣ` and the
 variance of each random degree ``σ^2[U_α] = \\sum_k p_{kα}(1 - p_{kα})`` per reduced class.
 """
-function _Vn_delta_inputs(m::BiCM, layer::Symbol)
-    own_r, own_f, own_d, opp_r, opp_f = _Vn_aggregation_classes(m, layer)
-    N = precision(m)
+_Vn_delta_inputs(m::BiCM, layer::Symbol) = _Vn_delta_inputs(_Vn_aggregation_classes(m, layer), precision(m))
+
+function _Vn_delta_inputs(cls::NTuple{5,Any}, ::Type{N}) where {N<:AbstractFloat}
+    own_r, own_f, own_d, opp_r, opp_f = cls
     s2 = zeros(N, length(own_r))
     for β in eachindex(own_r)
         acc = zero(N)
@@ -2880,6 +2883,41 @@ function _Vn_delta_inputs(m::BiCM, layer::Symbol)
         s2[β] = acc
     end
     return own_d, own_f, s2
+end
+
+
+"""
+    _Vn_delta_mean(cls::NTuple{5,Any}, n::Int, ::Type{N})
+    _Vn_delta_sigma(cls::NTuple{5,Any}, n::Int, ::Type{N})
+
+The Saracco et al. (2015) closed forms for the mean and standard deviation of the `Vn`-motif count,
+taking the reduced-class tuple so that both the `BiCM` and one channel of a `DBiCM` can use them.
+The mean is only available for `n ∈ {2, 3, 4}`; `method = :exact` has no such restriction.
+"""
+function _Vn_delta_mean(cls::NTuple{5,Any}, n::Int, ::Type{N}) where {N<:AbstractFloat}
+    uᵣ, fᵣ, s2 = _Vn_delta_inputs(cls, N)
+    obs = _Vn_observed(cls, n, N)
+    if n == 2
+        shift = sum(fᵣ[β] * s2[β] / 2 for β in eachindex(uᵣ))
+    elseif n == 3
+        shift = sum(fᵣ[β] * s2[β] * (uᵣ[β] - 1) / 2 for β in eachindex(uᵣ))
+    elseif n == 4
+        shift = sum(fᵣ[β] * (3s2[β]^2 + s2[β] * (6uᵣ[β]^2 - 18uᵣ[β] + 11)) / 24 for β in eachindex(uᵣ))
+    else
+        throw(ArgumentError("The closed-form (:delta) expectation is only available for n ∈ {2, 3, 4}, use method=:exact instead"))
+    end
+    return obs + shift
+end
+
+function _Vn_delta_sigma(cls::NTuple{5,Any}, n::Int, ::Type{N}) where {N<:AbstractFloat}
+    uᵣ, fᵣ, s2 = _Vn_delta_inputs(cls, N)
+    acc = zero(N)
+    for β in eachindex(uᵣ)
+        uᵣ[β] < n && continue
+        deriv = _binomial_poly(N(uᵣ[β]), n) * _harmonic_diff(uᵣ[β], n)
+        acc += fᵣ[β] * deriv^2 * s2[β]
+    end
+    return sqrt(acc)
 end
 
 """
@@ -2956,18 +2994,7 @@ function Vn_motifs(m::BiCM, n::Int; layer::Symbol=:bottom, method::Symbol=:exact
     if method == :exact
         return _Vn_exact_moments(m, n; layer=layer)[1]
     elseif method == :delta
-        uᵣ, fᵣ, s2 = _Vn_delta_inputs(m, layer)
-        obs = _Vn_observed(m, n, layer)
-        if n == 2
-            shift = sum(fᵣ[β] * s2[β] / 2 for β in eachindex(uᵣ))
-        elseif n == 3
-            shift = sum(fᵣ[β] * s2[β] * (uᵣ[β] - 1) / 2 for β in eachindex(uᵣ))
-        elseif n == 4
-            shift = sum(fᵣ[β] * (3s2[β]^2 + s2[β] * (6uᵣ[β]^2 - 18uᵣ[β] + 11)) / 24 for β in eachindex(uᵣ))
-        else
-            throw(ArgumentError("The closed-form (:delta) expectation is only available for n ∈ {2, 3, 4}, use method=:exact instead"))
-        end
-        return obs + shift
+        return _Vn_delta_mean(_Vn_aggregation_classes(m, layer), n, precision(m))
     else
         throw(ArgumentError("Invalid method, only :exact and :delta are accepted"))
     end
@@ -2997,15 +3024,7 @@ function Vn_sigma(m::BiCM, n::Int; layer::Symbol=:bottom, method::Symbol=:exact)
     if method == :exact
         return sqrt(_Vn_exact_moments(m, n; layer=layer)[2])
     elseif method == :delta
-        uᵣ, fᵣ, s2 = _Vn_delta_inputs(m, layer)
-        N = precision(m)
-        acc = zero(N)
-        for β in eachindex(uᵣ)
-            uᵣ[β] < n && continue
-            deriv = _binomial_poly(N(uᵣ[β]), n) * _harmonic_diff(uᵣ[β], n)
-            acc += fᵣ[β] * deriv^2 * s2[β]
-        end
-        return sqrt(acc)
+        return _Vn_delta_sigma(_Vn_aggregation_classes(m, layer), n, precision(m))
     else
         throw(ArgumentError("Invalid method, only :exact and :delta are accepted"))
     end
@@ -3140,4 +3159,391 @@ function project(m::BiCM;   α::Float64=0.05, layer::Symbol=:bottom, precomputed
 
     return G
 
+end
+
+##############################################################################################
+# Directed bipartite networks: projection and V-motifs
+#
+# An undirected bipartite pair (i,j) has ONE way of sharing a neighbour α. A directed one has three,
+# because each of the two links can point either way:
+#
+#   kind      ⊥-pair kernel             shape               symmetry
+#   :out      Σ_α B⁺_iα B⁺_jα           i → α ← j           symmetric
+#   :in       Σ_α B⁻_iα B⁻_jα           i ← α → j           symmetric
+#   :path     Σ_α B⁺_iα B⁻_jα           i → α → j           ASYMMETRIC, V^path' = (V^path)ᵀ
+#
+# `kind` is relative to the projected layer: `:out` always means "both members of the pair SEND to the
+# shared node". This is forced rather than chosen, because `:path` is defined by the pair ordering, so
+# one of the three values is layer-relative whatever one does. It is also why the `DBiCM`'s `channel`
+# selector is spelled `:to_top`/`:to_bottom` instead of `:out`/`:in`: under `layer = :top` a relative
+# `:out` is channel `⁻`, so a shared spelling would make the same symbol select opposite matrices.
+#
+# Under the DBiCM all three are exactly Poisson-binomial, because every factor is a product of two
+# DISTINCT Bernoulli entries and the entries are independent across α — proved in
+# validation/symbolic/dbicm.jl, including the `:path` diagonal `V^path_ii`, which counts the ⊤ nodes
+# reciprocally linked to i. So the existing significance pipeline applies unchanged, with only the
+# vector of per-α success probabilities swapped.
+##############################################################################################
+
+"""
+    biadjacency_matrices(G::Graphs.SimpleDiGraph; membership, skipchecks::Bool=false)
+    biadjacency_matrices(m::DBiCM)
+
+Return the pair of biadjacency matrices `(B⁺, B⁻)` of a directed bipartite graph, both `N⊥ × N⊤`:
+`B⁺[i,α] = 1` iff `⊥ᵢ → ⊤α`, and `B⁻[i,α] = 1` iff `⊤α → ⊥ᵢ`.
+
+The layer membership is read off the **undirected skeleton**, since `Graphs.bipartite_map` traverses
+`outneighbors` only and mis-partitions directed input. The `DBiCM` method uses the model's own stored
+layers instead, so it works for a model built from degree sequences alone.
+"""
+function biadjacency_matrices(G::Graphs.SimpleDiGraph;
+                              membership::Vector = Graphs.bipartite_map(Graphs.SimpleGraph(G)),
+                              skipchecks::Bool = false)
+    if !skipchecks
+        length(membership) == Graphs.nv(G) || throw(ArgumentError("The graph is not bipartite"))
+    end
+    ⊥nodes, ⊤nodes = findall(membership .== 1), findall(membership .== 2)
+    A = Graphs.adjacency_matrix(G)
+    return A[⊥nodes, ⊤nodes], permutedims(A[⊤nodes, ⊥nodes])
+end
+
+function biadjacency_matrices(m::DBiCM)
+    isnothing(m.G) && throw(ArgumentError("The model does not hold a graph; pass the matrices explicitly"))
+    A = Graphs.adjacency_matrix(m.G)
+    return A[m.⊥nodes, m.⊤nodes], permutedims(A[m.⊤nodes, m.⊥nodes])
+end
+
+"""
+    _dbicm_v_accessors(m::DBiCM, layer::Symbol, kind::Symbol)
+
+The two per-entry probability functions whose product defines a V-motif of the requested `kind`, plus
+the number of shared nodes summed over. Both are called as `f(pair_index, shared_index)`.
+"""
+function _dbicm_v_accessors(m::DBiCM, layer::Symbol, kind::Symbol)
+    kind ∈ (:out, :in, :path) || throw(ArgumentError("The kind must be :out (both send to the shared node), :in (both receive from it) or :path (a directed two-step), got $(kind)"))
+    if layer ∈ (:bottom, :⊥)
+        send    = (i, α) -> p⁺(m, i, α)      # ⊥ᵢ → ⊤α
+        receive = (i, α) -> p⁻(m, i, α)      # ⊥ᵢ ← ⊤α
+        n = m.status[:N⊤]::Int
+        kind === :out && return (send, send, n)
+        kind === :in  && return (receive, receive, n)
+        return (send, receive, n)            # :path  i → α → j
+    elseif layer ∈ (:top, :⊤)
+        send    = (α, k) -> p⁻(m, k, α)      # ⊤α → ⊥ₖ
+        receive = (α, k) -> p⁺(m, k, α)      # ⊤α ← ⊥ₖ
+        n = m.status[:N⊥]::Int
+        kind === :out && return (send, send, n)
+        kind === :in  && return (receive, receive, n)
+        return (send, receive, n)            # :path  α → k → β
+    else
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] or [:top, :⊤]."))
+    end
+end
+
+"""
+    _dbicm_channel_pair(B⁺, B⁻, layer::Symbol, kind::Symbol)
+
+The ordered pair of matrices whose product gives the projection of the requested `kind`, oriented so
+that the projection is `M₁ * M₂` with rows and columns both indexed by the projected layer.
+"""
+function _dbicm_channel_pair(B⁺::AbstractMatrix, B⁻::AbstractMatrix, layer::Symbol, kind::Symbol)
+    kind ∈ (:out, :in, :path) || throw(ArgumentError("The kind must be :out, :in or :path, got $(kind)"))
+    if layer ∈ (:bottom, :⊥)
+        kind === :out && return (B⁺, permutedims(B⁺))
+        kind === :in  && return (B⁻, permutedims(B⁻))
+        return (B⁺, permutedims(B⁻))                       # i → α → j
+    elseif layer ∈ (:top, :⊤)
+        kind === :out && return (permutedims(B⁻), B⁻)
+        kind === :in  && return (permutedims(B⁺), B⁺)
+        return (permutedims(B⁻), B⁺)                       # α → k → β
+    else
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] or [:top, :⊤]."))
+    end
+end
+
+"""
+    project(B⁺::AbstractMatrix, B⁻::AbstractMatrix; layer=:bottom, kind=:out, method=:simple)
+
+Project a directed bipartite network, given as its two biadjacency matrices, onto one of its layers.
+
+`kind` selects which of the three directed V-motifs is counted (`:out`, `:in`, `:path`; see
+[`V_motifs`](@ref)). `method` is `:simple` for a binary projection or `:weighted` to keep the motif
+counts. The diagonal is always zeroed: for `:path` it is not a projected edge but the count of
+reciprocally linked partners, available through [`reciprocated_degree`](@ref).
+"""
+function project(B⁺::T, B⁻::T; layer::Symbol=:bottom, kind::Symbol=:out, method::Symbol=:simple) where {T<:AbstractMatrix}
+    size(B⁺) == size(B⁻) || throw(DimensionMismatch("The two biadjacency matrices must have the same size, got $(size(B⁺)) and $(size(B⁻))"))
+    if method == :simple
+        finish = M -> map(x -> !iszero(x), M)
+    elseif method == :weighted
+        finish = identity
+    else
+        throw(ArgumentError("The method $(method) is not yet implemented."))
+    end
+    M₁, M₂ = _dbicm_channel_pair(B⁺, B⁻, layer, kind)
+    Aproj = M₁ * M₂
+    Aproj[diagind(Aproj)] .= zero(eltype(Aproj))
+    issparse(Aproj) && dropzeros!(Aproj)
+    return finish(Aproj)
+end
+
+"""
+    project(G::Graphs.SimpleDiGraph; membership, layer=:bottom, kind=:out, method=:simple, skipchecks=false)
+
+Project a directed bipartite graph onto one of its layers. See the matrix method for the arguments.
+"""
+function project(G::Graphs.SimpleDiGraph;
+                 membership::Vector = Graphs.bipartite_map(Graphs.SimpleGraph(G)),
+                 layer::Symbol=:bottom, kind::Symbol=:out, method::Symbol=:simple, skipchecks::Bool=false)
+    B⁺, B⁻ = biadjacency_matrices(G; membership=membership, skipchecks=skipchecks)
+    return project(B⁺, B⁻; layer=layer, kind=kind, method=method)
+end
+
+"""
+    V_motifs(B⁺::AbstractMatrix, B⁻::AbstractMatrix; layer=:bottom, kind=:out)
+
+Total number of directed V-motifs of the requested `kind` in a directed bipartite network.
+
+**The three kinds do not count over the same index set.** `:out` and `:in` are symmetric in the pair,
+so they count each **unordered** pair `i < j` once; `:path` is not, so it counts every **ordered** pair
+`i ≠ j`. Comparing totals across kinds without allowing for that is a mistake.
+"""
+function V_motifs(B⁺::T, B⁻::T; layer::Symbol=:bottom, kind::Symbol=:out) where {T<:AbstractMatrix}
+    size(B⁺) == size(B⁻) || throw(DimensionMismatch("The two biadjacency matrices must have the same size, got $(size(B⁺)) and $(size(B⁻))"))
+    kind ∈ (:out, :in, :path) || throw(ArgumentError("The kind must be :out, :in or :path, got $(kind)"))
+    bottom = layer ∈ (:bottom, :⊥)
+    bottom || layer ∈ (:top, :⊤) || throw(ArgumentError("The layer must be one of [:bottom, :⊥] or [:top, :⊤]."))
+    # marginals along the SHARED layer; a V-motif sums over the shared node
+    dims = bottom ? 1 : 2
+    if kind === :path
+        # ordered pairs i ≠ j: Σ_α (Σ_i first)(Σ_j second) − Σ_{i,α} first·second
+        first, second = bottom ? (B⁺, B⁻) : (B⁻, B⁺)
+        return dot(vec(sum(first, dims=dims)), vec(sum(second, dims=dims))) - sum(first .* second)
+    else
+        # symmetric kinds reduce to the existing closed form on a single channel
+        M = (kind === :out) == bottom ? B⁺ : B⁻
+        return _half_gram_offdiag(vec(sum(M, dims=dims)), M)
+    end
+end
+
+"""
+    V_motifs(B⁺::AbstractMatrix, B⁻::AbstractMatrix, i::Int, j::Int; layer=:bottom, kind=:out)
+
+Number of directed V-motifs of the requested `kind` between nodes `i` and `j` of `layer` (layer-local
+indices). For `kind = :path` the order matters: the motif counted is `i → shared → j`.
+"""
+function V_motifs(B⁺::T, B⁻::T, i::Int, j::Int; layer::Symbol=:bottom, kind::Symbol=:out) where {T<:AbstractMatrix}
+    size(B⁺) == size(B⁻) || throw(DimensionMismatch("The two biadjacency matrices must have the same size, got $(size(B⁺)) and $(size(B⁻))"))
+    M₁, M₂ = _dbicm_channel_pair(B⁺, B⁻, layer, kind)
+    return dot(view(M₁, i, :), view(M₂, :, j))
+end
+
+"""
+    V_PB_parameters(m::DBiCM, i::Int, j::Int; layer=:bottom, kind=:out)
+
+The vector of per-shared-node success probabilities `q_α` whose Poisson-binomial distribution governs
+the directed V-motif count between `i` and `j`.
+
+Each `q_α` is a product of two **distinct** Bernoulli entries of the model, which are independent — of
+each other and across `α` — so the Poisson-binomial law is exact, for all three kinds and including the
+`:path` diagonal `i == j`.
+"""
+function V_PB_parameters(m::DBiCM, i::Int, j::Int; layer::Symbol=:bottom, kind::Symbol=:out)
+    m.status[:params_computed] || throw(ArgumentError("The parameters must be computed for `m` first, see `solve_model!`"))
+    fa, fb, n = _dbicm_v_accessors(m, layer, kind)
+    return [fa(i, s) * fb(j, s) for s in 1:n]
+end
+
+"""
+    V_motifs(m::DBiCM, i::Int, j::Int; layer=:bottom, kind=:out)
+
+Expected number of directed V-motifs of the requested `kind` between nodes `i` and `j` of `layer` under
+the DBiCM model `m`.
+"""
+function V_motifs(m::DBiCM, i::Int, j::Int; layer::Symbol=:bottom, kind::Symbol=:out)
+    m.status[:params_computed] || throw(ArgumentError("The parameters must be computed for `m` first, see `solve_model!`"))
+    fa, fb, n = _dbicm_v_accessors(m, layer, kind)
+    res = zero(precision(m))
+    @inbounds for s in 1:n
+        res += fa(i, s) * fb(j, s)
+    end
+    return res
+end
+
+"""
+    V_motifs(m::DBiCM; layer=:bottom, kind=:out)
+
+Expected total number of directed V-motifs of the requested `kind` under the DBiCM model `m`, counted
+over the same index set as the matrix method (unordered pairs for `:out`/`:in`, ordered for `:path`).
+"""
+function V_motifs(m::DBiCM; layer::Symbol=:bottom, kind::Symbol=:out)
+    m.status[:params_computed] || throw(ArgumentError("The parameters must be computed for `m` first, see `solve_model!`"))
+    n_pairs = (layer ∈ (:bottom, :⊥)) ? m.status[:N⊥]::Int : m.status[:N⊤]::Int
+    res = zero(precision(m))
+    if kind === :path
+        @inbounds for i in 1:n_pairs, j in 1:n_pairs
+            i == j && continue
+            res += V_motifs(m, i, j; layer=layer, kind=kind)
+        end
+    else
+        @inbounds for i in 1:n_pairs, j in (i+1):n_pairs
+            res += V_motifs(m, i, j; layer=layer, kind=kind)
+        end
+    end
+    return res
+end
+
+"""
+    reciprocated_degree(m::DBiCM, i::Int)
+
+Expected number of ⊤ nodes that node `i` of the ⊥ layer both points to and receives from, under the
+DBiCM model `m` (layer-local index). This is the diagonal of the `:path` projection, `Σ_α p⁺_iα p⁻_iα`,
+which is exact because `B⁺_iα` and `B⁻_iα` are independent.
+"""
+function reciprocated_degree(m::DBiCM, i::Int)
+    m.status[:params_computed] || throw(ArgumentError("The parameters have not been computed yet"))
+    res = zero(precision(m))
+    @inbounds for α in 1:m.status[:N⊤]::Int
+        res += p⁺(m, i, α) * p⁻(m, i, α)
+    end
+    return res
+end
+
+"""
+    project(m::DBiCM; α=0.05, layer=:bottom, kind=:out, distribution=:Poisson, adjustment=BenjaminiHochberg(), multithreaded=false)
+
+Statistically validated monopartite projection of a directed bipartite network onto one of its layers,
+under the DBiCM null model `m`.
+
+For every observed pair the count of directed V-motifs of the requested `kind` is compared with its
+distribution under the model — exactly Poisson-binomial, or the Poisson approximation — and the
+resulting upper-tail p-values are corrected for multiple testing before thresholding at `α`.
+
+`:out` and `:in` are symmetric, so only unordered pairs are tested and the result is a `SimpleGraph`;
+`:path` is not, so every ordered pair is tested and the result is a `SimpleDiGraph`. Note that `:path`
+therefore tests roughly twice as many hypotheses, which makes any multiple-testing correction
+correspondingly more conservative on the same data.
+"""
+function project(m::DBiCM; α::Float64=0.05, layer::Symbol=:bottom, kind::Symbol=:out,
+                 distribution::Symbol=:Poisson,
+                 adjustment::MultipleTesting.PValueAdjustment=MultipleTesting.BenjaminiHochberg(),
+                 multithreaded::Bool=false)
+    m.status[:params_computed] || throw(ArgumentError("The parameters must be computed for `m` first, see `solve_model!`"))
+    distribution ∈ (:Poisson, :PoissonBinomial) || throw(ArgumentError("The distribution must be :Poisson or :PoissonBinomial, got $(distribution)"))
+    kind ∈ (:out, :in, :path) || throw(ArgumentError("The kind must be :out, :in or :path, got $(kind)"))
+    directed = kind === :path
+
+    B⁺, B⁻ = biadjacency_matrices(m)
+    V_obs = project(B⁺, B⁻; layer=layer, kind=kind, method=:weighted)
+    # the symmetric kinds test each unordered pair once; :path tests every ordered pair
+    directed || (V_obs = triu!(V_obs))
+    rows, cols = findnz(sparse(V_obs))
+
+    pvals = zeros(precision(m), length(rows))
+    _pval = function (k)
+        i, j = rows[k], cols[k]
+        obs = V_obs[i, j]
+        if distribution == :Poisson
+            return 1 - cdf(Poisson(V_motifs(m, i, j; layer=layer, kind=kind)), obs - 1)
+        else
+            return 1 - cdf(PoissonBinomial(V_PB_parameters(m, i, j; layer=layer, kind=kind)), obs - 1)
+        end
+    end
+    if multithreaded
+        Threads.@threads for k in eachindex(pvals)
+            @inbounds pvals[k] = _pval(k)
+        end
+    else
+        for k in eachindex(pvals)
+            @inbounds pvals[k] = _pval(k)
+        end
+    end
+    # the cdf can overshoot 1 by a machine epsilon, which would make a p-value negative
+    pvals = max.(pvals, 0.0)
+    sig = MultipleTesting.adjust(pvals, adjustment) .< α
+
+    edge_iter = (Graphs.SimpleEdge(e[1], e[2]) for e in zip(rows[sig], cols[sig]))
+    G = directed ? Graphs.SimpleDiGraphFromIterator(edge_iter) : Graphs.SimpleGraphFromIterator(edge_iter)
+    n = (layer ∈ (:bottom, :⊥)) ? m.status[:N⊥]::Int : m.status[:N⊤]::Int
+    while Graphs.nv(G) < n
+        Graphs.add_vertex!(G)
+    end
+    return G
+end
+
+"""
+    _Vn_aggregation_classes(m::DBiCM, layer::Symbol, kind::Symbol)
+
+The reduced-class ingredients of the `Vn` machinery for one channel of a DBiCM, in the same
+`(own_r, own_f, own_d, opp_r, opp_f)` order the `BiCM` method returns — "own" being the layer that is
+aggregated over, i.e. the one opposite to `layer`.
+
+`Vn` counts `n` nodes of `layer` sharing a partner **in the same direction**, so it is a single-channel
+quantity and `kind` is restricted to `:out` and `:in`. There is no `:path` family: a mixed-direction
+higher-order motif needs the joint law of a shared node's in- and out-degree, which is a
+two-dimensional Poisson-multinomial over the four dyad states rather than the one-dimensional
+convolution used here.
+"""
+function _Vn_aggregation_classes(m::DBiCM, layer::Symbol, kind::Symbol)
+    kind ∈ (:out, :in) || throw(ArgumentError("The Vn family is single-channel, so `kind` must be :out or :in; `:path` has no Vn analogue (see the docstring)."))
+    if layer ∈ (:bottom, :⊥)
+        # n ⊥ nodes all sending to a shared ⊤ node -> channel ⁺; all receiving -> channel ⁻
+        return kind === :out ? (m.x⊤ᵣ_in,  m.f⊤_in,  m.d⊤ᵣ_in,  m.x⊥ᵣ_out, m.f⊥_out) :
+                               (m.x⊤ᵣ_out, m.f⊤_out, m.d⊤ᵣ_out, m.x⊥ᵣ_in,  m.f⊥_in)
+    elseif layer ∈ (:top, :⊤)
+        return kind === :out ? (m.x⊥ᵣ_in,  m.f⊥_in,  m.d⊥ᵣ_in,  m.x⊤ᵣ_out, m.f⊤_out) :
+                               (m.x⊥ᵣ_out, m.f⊥_out, m.d⊥ᵣ_out, m.x⊤ᵣ_in,  m.f⊤_in)
+    else
+        throw(ArgumentError("The layer must be one of [:bottom, :⊥] or [:top, :⊤]."))
+    end
+end
+
+"""
+    Vn_motifs(m::DBiCM, n::Int; layer=:bottom, kind=:out, method=:exact)
+
+Expected number of `Vn`-motifs (`n` nodes of `layer` sharing a partner, all in the same direction)
+under the DBiCM model `m`. See [`_Vn_aggregation_classes`](@ref MaxEntropyGraphs._Vn_aggregation_classes)
+for why `kind` cannot be `:path`.
+"""
+function Vn_motifs(m::DBiCM, n::Int; layer::Symbol=:bottom, kind::Symbol=:out, method::Symbol=:exact)
+    m.status[:params_computed] || throw(ArgumentError("The parameters must be computed for `m` first, see `solve_model!`"))
+    n ≥ 2 || throw(ArgumentError("The motif order must be at least 2, got $(n)"))
+    cls = _Vn_aggregation_classes(m, layer, kind)
+    if method == :exact
+        return _Vn_exact_moments(cls, n, precision(m))[1]
+    elseif method == :delta
+        return _Vn_delta_mean(cls, n, precision(m))
+    else
+        throw(ArgumentError("The method must be :exact or :delta, got $(method)"))
+    end
+end
+
+"""
+    Vn_sigma(m::DBiCM, n::Int; layer=:bottom, kind=:out, method=:exact)
+
+Standard deviation of the `Vn`-motif count under the DBiCM model `m`.
+"""
+function Vn_sigma(m::DBiCM, n::Int; layer::Symbol=:bottom, kind::Symbol=:out, method::Symbol=:exact)
+    m.status[:params_computed] || throw(ArgumentError("The parameters must be computed for `m` first, see `solve_model!`"))
+    n ≥ 2 || throw(ArgumentError("The motif order must be at least 2, got $(n)"))
+    cls = _Vn_aggregation_classes(m, layer, kind)
+    if method == :exact
+        return sqrt(_Vn_exact_moments(cls, n, precision(m))[2])
+    elseif method == :delta
+        return _Vn_delta_sigma(cls, n, precision(m))
+    else
+        throw(ArgumentError("The method must be :exact or :delta, got $(method)"))
+    end
+end
+
+"""
+    Vn_zscore(m::DBiCM, n::Int; layer=:bottom, kind=:out, method=:exact)
+
+z-score of the observed `Vn`-motif count against its distribution under the DBiCM model `m`.
+"""
+function Vn_zscore(m::DBiCM, n::Int; layer::Symbol=:bottom, kind::Symbol=:out, method::Symbol=:exact)
+    cls = _Vn_aggregation_classes(m, layer, kind)
+    obs = _Vn_observed(cls, n, precision(m))
+    return (obs - Vn_motifs(m, n; layer=layer, kind=kind, method=method)) /
+           Vn_sigma(m, n; layer=layer, kind=kind, method=method)
 end
