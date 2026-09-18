@@ -46,14 +46,18 @@ using MultipleTesting
 # define the network
 G = corporateclub();
 # project the model on its layers
-G_persons, G_organizations = project(G, layer=:bottom, method=:weighted), project(G, layer=:top, method=:weighted);</code></pre><p>We then define a BiCM, compute its likelihood maximizing parameters, generate a sample and the projections of the sample</p><pre><code class="language-julia hljs"># generate a BiCM from the corporate club network
+G_persons, G_organizations = project(G, layer=:bottom, method=:weighted), project(G, layer=:top, method=:weighted);
+nothing</code></pre><p>We then define a BiCM, compute its likelihood maximizing parameters, generate a sample and the projections of the sample</p><pre><code class="language-julia hljs"># generate a BiCM from the corporate club network
 model = BiCM(G); 
 # compute the maximum likelihood parameters
 solve_model!(model); 
-# sample
-S = rand(model, 100);
+# sample (seeded, so the empirical p-values below are reproducible)
+S = rand(model, 100; rng=MaxEntropyGraphs.Xoshiro(161));
 # projected samples
-S_persons, S_organizations = project.(S, layer=:bottom, method=:weighted), project.(S, layer=:bottom, method=:weighted)</code></pre><p>For each edge in the original network, we can now compare how its weight compares to the distribution of weights in the random sample and determine their empirical p-values.</p><pre><code class="language-julia hljs"># determine the empirical pvalues
+S_persons, S_organizations = project.(S, layer=:bottom, method=:weighted), project.(S, layer=:top, method=:weighted);
+nothing</code></pre><p>For each edge in the original network, we can now compare how its weight compares to the distribution of weights in the random sample and determine their empirical p-values.</p><pre><code class="language-julia hljs"># significance level
+α = 0.05
+# determine the empirical pvalues
 p = zeros(length(edges(G_persons)))
 for (i,e) in enumerate(edges(G_persons))
     e_w   = e.weight
@@ -66,4 +70,4 @@ p_corrected = adjust(p, BenjaminiHochberg())
 filter(x -&gt; x[1] &lt; α, collect(zip(p_corrected, edges(G_persons))))
 
 # output
-Tuple{Float64, SimpleWeightedGraphs.SimpleWeightedEdge{Int64, Int64}}[]</code></pre><p>We come to the conclusion that there are no statistically significant edges in the projected network. This is the same conclusions that was obtained by using <code>project(model)</code> directly.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../exact/">« Analytical</a><a class="docs-footer-nextpage" href="../performance/">Performance and scalability »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Thursday 17 September 2026 16:04">Thursday 17 September 2026</span>. Using Julia version 1.10.12.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+Tuple{Float64, SimpleWeightedGraphs.SimpleWeightedEdge{Int64, Int64}}[]</code></pre><p>We come to the conclusion that there are no statistically significant edges in the projected network. This is the same conclusions that was obtained by using <code>project(model)</code> directly.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../exact/">« Analytical</a><a class="docs-footer-nextpage" href="../performance/">Performance and scalability »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Friday 18 September 2026 14:54">Friday 18 September 2026</span>. Using Julia version 1.10.12.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
