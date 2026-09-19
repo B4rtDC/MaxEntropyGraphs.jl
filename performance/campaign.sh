@@ -72,6 +72,12 @@ STAGE_FILE="$(pwd)/.campaign_stage"
 CURRENT_SINCE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "-" > "$STAGE_FILE"
 current_stage() { cat "$STAGE_FILE" 2>/dev/null || echo "-"; }
+DONE_FILE="$(pwd)/.campaign_done"
+: > "$DONE_FILE"
+completed_json() {
+    [ -s "$DONE_FILE" ] || { printf '[]'; return; }
+    printf '[%s]' "$(sed 's/.*/"&"/' "$DONE_FILE" | paste -sd, -)"
+}
 STARTED="$CURRENT_SINCE"
 declare -a DONE_STAGES=()
 
@@ -87,11 +93,7 @@ write_status() {
         printf '  "stage_since": "%s",\n' "$CURRENT_SINCE"
         printf '  "state": "%s",\n' "$state"
         printf '  "detail": "%s",\n' "$detail"
-        if [ "${#DONE_STAGES[@]}" -eq 0 ]; then
-            printf '  "completed": []\n'
-        else
-            printf '  "completed": [%s]\n' "$(printf '"%s",' "${DONE_STAGES[@]}" | sed 's/,$//')"
-        fi
+        printf '  "completed": %s\n' "$(completed_json)"
         printf '}\n'
     } > "$STATUS"
 }
@@ -108,6 +110,9 @@ begin_stage() {
 end_stage() {
     local rc="$1" st; st="$(current_stage)"
     DONE_STAGES+=("${st}:$([ "$rc" -eq 0 ] && echo ok || echo "failed(${rc})")")
+    # Mirrored to a file for the same reason the stage is: the heartbeat subshell carries its own
+    # fork-time copy of this array and would otherwise blank the field on its next write.
+    printf '%s\n' "${DONE_STAGES[@]}" > "$DONE_FILE"
     write_status "$([ "$rc" -eq 0 ] && echo running || echo degraded)" "${st} exited ${rc}"
     log "=== END ${st} (exit ${rc}) ==="
 }

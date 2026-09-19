@@ -73,6 +73,7 @@ performance/benchmark.log
 performance/campaign_*.log
 performance/campaign_status.json
 performance/.campaign_stage
+performance/.campaign_done
 performance/campaign_provenance.json
 performance/campaign_report.md
 # performance is a separate environment; don't track its lockfiles

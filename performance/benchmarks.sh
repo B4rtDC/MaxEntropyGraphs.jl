@@ -61,8 +61,23 @@ fi
 
 ## --- Python environment (uv, cross-platform) --------------------------------
 if [ "${SKIP_PYTHON:-0}" != "1" ]; then
-    echo "$(date) - creating uv virtual environment (.venv) and installing NEMtropy"
-    uv venv --python 3.12 .venv
+    # `uv venv` REFUSES to write into an existing .venv (uv >= 0.8 or so): it exits non-zero with
+    # "A virtual environment already exists". Under `set -e` that killed the whole suite on its
+    # first command, which is invisible on a fresh clone and bites every re-run. Create it only
+    # when it is missing; the `uv pip install` below still runs every time, so a stale environment
+    # is brought back to the pins in requirements.txt either way.
+    # BENCH_RECREATE_VENV=1 forces a clean rebuild.
+    if [ "${BENCH_RECREATE_VENV:-0}" = "1" ] && [ -d .venv ]; then
+        echo "$(date) - BENCH_RECREATE_VENV=1: removing the existing .venv"
+        rm -rf .venv
+    fi
+    if [ -d .venv ]; then
+        echo "$(date) - reusing the existing uv virtual environment (.venv)"
+    else
+        echo "$(date) - creating uv virtual environment (.venv)"
+        uv venv --python 3.12 .venv
+    fi
+    echo "$(date) - installing the pinned Python dependencies (NEMtropy, NuMeTriS)"
     uv pip install --python .venv -r requirements.txt
     # shellcheck disable=SC1091
     source .venv/bin/activate
