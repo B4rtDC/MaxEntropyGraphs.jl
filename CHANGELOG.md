@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## v0.8.1
+
+A patch release: solver robustness on the default path, and the harness that measures it.
+No result changes on inputs that already solved, and no API changes.
 
 ### Fixed
 
