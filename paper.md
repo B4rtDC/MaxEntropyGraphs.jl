@@ -16,7 +16,7 @@ authors:
 affiliations:
   - name: Royal Military Academy, Brussels, Belgium
     index: 1
-date: 17 July 2026
+date: 20 September 2026
 bibliography: paper.bib
 ---
 
@@ -37,7 +37,9 @@ randomized graphs from the resulting ensemble. For every model it also computes
 ensemble averages and the standard deviations of network metrics analytically,
 using automatic differentiation, so that significance can be assessed without
 sampling. It further performs motif-based analysis and extracts statistically
-validated projections of bipartite networks. All graphs
+validated projections of bipartite networks, in the directed case across all
+three distinct V-motifs, for which we are not aware of another implementation.
+All graphs
 are standard objects from the Julia graph ecosystem [@graphs2021], so models
 integrate directly with existing tooling. The currently supported models are the
 Undirected, Directed, Bipartite and Directed Bipartite Binary Configuration
@@ -111,7 +113,12 @@ degree/strength and average-nearest-neighbour-degree metrics, the topological an
 weighted reciprocity together with the reciprocal degree and strength sequences,
 three- and four-node subgraph (motif) counts with their weighted fluxes and
 intensities, the bipartite motif families, and statistically validated bipartite
-projections. Performance-oriented choices (preallocated buffers, `@simd` and
+projections. The directed bipartite model is a useful special case: its
+Hamiltonian contains no term coupling the two link channels, so the model
+factorizes *exactly* into two independent bipartite models, one per direction of
+travel, and its three directed V-motif counts remain exactly Poisson-binomial.
+This is what makes the directed projection tractable rather than merely
+approximable. Performance-oriented choices (preallocated buffers, `@simd` and
 `@inbounds` inner loops, multithreaded sampling and projection, and a
 `PrecompileTools` workload that accelerates first use) are documented in the
 package manual, which also contains installation instructions, per-model guides,
@@ -202,15 +209,15 @@ up to a global gauge (rescaling the out- and in-fitnesses by a reciprocal consta
 leaves every dyadic probability, and hence the likelihood, unchanged) and the two
 solvers settle in different gauges. The gauge-invariant dyadic connection
 probabilities, which are what the models actually predict, agree to
-$\sim\!10^{-8}$ on the *rhesus macaques* network. On the constraints, `NuMeTriS`
-reproduces its imposed sequences to $\sim\!10^{-8}$, in line with a solver
-tolerance that is set on the constraint residual itself, whereas
-`MaxEntropyGraphs.jl`'s default fixed-point tolerance is set on the parameter
-increment, so at its default of $10^{-8}$ it reproduces the binary sequences to
-$\sim\!10^{-7}$ but the weighted sequences of the two-step models only to
-$\sim\!10^{-5}$. Tightening that tolerance to $10^{-12}$ brings all sequences to
-$\sim\!10^{-9}$, confirming that the residual reflects the stopping rule rather
-than a different optimum. After aligning the deterministic counting conventions of
+$\sim\!10^{-9}$ on the *rhesus macaques* network. On the constraints, `NuMeTriS`
+reproduces its imposed sequences to between $\sim\!10^{-9}$ and
+$\sim\!10^{-8}$, and `MaxEntropyGraphs.jl` to $\sim\!10^{-7}$ at its default
+tolerance of $10^{-8}$. The gap is a stopping rule, not a different optimum:
+tightening the tolerance to $10^{-12}$ brings every sequence to between
+$\sim\!10^{-12}$ and $\sim\!10^{-11}$, comfortably past `NuMeTriS`. On these
+two-step models the tolerance is applied to the *relative* constraint residual,
+so it carries the same meaning across networks whose weights differ by orders of
+magnitude. After aligning the deterministic counting conventions of
 the two packages, the empirical triadic motif counts agree exactly and the triadic
 fluxes to machine precision. Beyond parity, `MaxEntropyGraphs.jl` evaluates the *exact* expected
 motif and flux spectra under these models from the dyadic probabilities (within
@@ -244,7 +251,8 @@ scales: model creation time (left) and median parameter-computation time
 # AI usage disclosure
 
 During the preparation of this submission, the author used generative AI
-assistance, specifically Anthropic's Claude models (Opus 4.8 and Fable 5), in
+assistance, specifically Anthropic's Claude models (Opus 4.8, Fable 5 and
+Opus 5), in
 three places: to help draft and edit the manuscript text, to refactor and
 modernize parts of the
 codebase, and to prepare benchmarking, validation and testing scaffolding. The
@@ -253,7 +261,7 @@ and its interfaces, and the interpretation of all results are the author's own.
 
 Every AI-assisted contribution was validated for correctness and efficiency
 before being accepted, and the means of validation are part of the repository
-rather than a claim made only here. Code is covered by a test suite of over 1700
+rather than a claim made only here. Code is covered by a test suite of over 2300
 tests that runs on every supported Julia version across Linux, macOS and Windows.
 The per-dyad moments underlying the analytical variances are derived symbolically
 and checked against Monte-Carlo sampling in a dedicated validation suite, a fast
