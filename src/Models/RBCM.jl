@@ -603,10 +603,12 @@ Compute the likelihood maximising parameters of the RBCM model `m`.
 - `analytical_gradient::Bool`: set the use the analytical gradient instead of the one generated with autodiff (defaults to `false`)
 
 !!! note
-    The fixed-point method (with Anderson acceleration) is stable for the RBCM on typical networks.
     On *degenerate* inputs — in particular fully reciprocal networks (k→ = k← = 0 everywhere), where only
-    the γ-channel is identified — the accelerated fixed point can overshoot to non-finite values; use a
-    gradient-based method (e.g. `method=:BFGS`) in that case.
+    the γ-channel is identified — the Anderson accelerator overshoots to non-finite values on its first
+    attempt. That is no longer fatal: the solver retries down a ladder of shorter accelerator memories
+    (see `_anderson_memory_ladder`), and on `taro_exchange()` it then converges in 13 iterations. The
+    same ladder covers the accelerator's ordinary ill-conditioning on denser networks, which used to
+    throw out of `solve_model!` on roughly one dense graph in five.
 
 # Examples
 ```jldoctest RBCM_solve
@@ -654,7 +656,10 @@ function solve_model!(m::RBCM;  # common settings
         # define fixed point function
         FP_model! = (θ::Vector) -> RBCM_reduced_iter!(θ, m.dᵣ_out, m.dᵣ_in, m.dᵣ_rec, m.f, m.dᵣ_out_nz, m.dᵣ_in_nz, m.dᵣ_rec_nz, x_buffer, y_buffer, z_buffer, G_buffer, m.status[:d_unique])
         # obtain solution
-        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        # Anderson's least-squares breaks on denser inputs even though this model has no gauge
+        # freedom; the ladder keeps less history until it stops breaking. See
+        # `_anderson_memory_ladder` for the measurements.
+        sol = _anderson_memory_ladder(FP_model!, θ₀; ftol=ftol, maxiters=maxiters, verbose=verbose)
         if NLsolve.converged(sol)
             if verbose
                 @info "Fixed point iteration converged after $(sol.iterations) iterations"

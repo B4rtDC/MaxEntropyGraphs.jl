@@ -808,7 +808,10 @@ function solve_model!(m::DBCM;  # common settings
         # define fixed point function
         FP_model! = (θ::Vector) -> DBCM_reduced_iter!(θ, m.dᵣ_out, m.dᵣ_in, m.f, m.dᵣ_out_nz, m.dᵣ_in_nz, x_buffer, y_buffer, G_buffer, m.status[:d_unique])
         # obtain solution
-        sol = NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
+        # Anderson's least-squares breaks on denser inputs even though this model has no gauge
+        # freedom; the ladder keeps less history until it stops breaking. See
+        # `_anderson_memory_ladder` for the measurements.
+        sol = _anderson_memory_ladder(FP_model!, θ₀; ftol=ftol, maxiters=maxiters, verbose=verbose)
         if NLsolve.converged(sol)
             if verbose 
                 @info "Fixed point iteration converged after $(sol.iterations) iterations"

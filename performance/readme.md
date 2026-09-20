@@ -3,7 +3,7 @@
 This folder lets a third party reproduce the performance and accuracy claims for
 `MaxEntropyGraphs.jl`, comparing it against two Python packages: `NEMtropy` and `NuMeTriS`.
 
-All nine models are benchmarked, each against the Python package that implements it:
+All ten models are benchmarked, each against the Python package that implements it:
 
 | Model | Comparator | Model string in the comparator |
 | --- | --- | --- |
@@ -16,6 +16,23 @@ All nine models are benchmarked, each against the Python package that implements
 | `RBCM` | `NuMeTriS` | `RBCM` |
 | `DCReM` | `NuMeTriS` | `DBCM+CReMa` |
 | `CRWCM` | `NuMeTriS` | `RBCM+CRWCM` |
+| `DBiCM` | `NEMtropy` | two `BipartiteGraph` fits, one per link channel |
+
+No Python package implements a directed bipartite configuration model, so the `DBiCM` has no direct
+comparator. It has an exact one anyway. The directed bipartite Hamiltonian carries no term coupling
+its two link channels, so the model factorises *exactly* into two `BiCM`s, on `(d⊥_out, d⊤_in)` and
+`(d⊥_in, d⊤_out)`. Timing one `DBiCM` solve against two independent NEMtropy `BipartiteGraph` fits
+is therefore a like-for-like comparison rather than a courtesy, and the accuracy side of it doubles
+as an external check of the separation result: if the two channels disagreed with two separate BiCM
+fits, the factorisation would be wrong. Measured on `DBiCM_small`, the expected sequences agree to
+`4.6e-8` (channel ⁺) and `1.5e-8` (channel ⁻), which is each implementation's own constraint
+residual.
+
+One asymmetry to know when reading those numbers: NEMtropy infers its node set from the edge list,
+so a vertex with no link in a given channel is simply absent from that fit, while the `DBiCM` keeps
+every vertex and assigns it `p = 0`. On `DBiCM_small`, 5 of the 25 bottom vertices have zero
+in-degree, so the `⁻` comparison runs over 20 rows, not 25. `accuracy_comparison.jl` restricts the
+comparison to the live vertices for exactly this reason.
 
 `NuMeTriS` is the reference implementation accompanying Di Vece et al., so it is the natural
 comparator for the three reciprocity-aware models. Its model names differ from ours (see the table
@@ -79,7 +96,7 @@ It is controlled by environment variables:
 | `BENCH_CORES` | `4` | Core budget applied **fairly to both implementations**. Creation + parameter computation are single-threaded compute in both libraries, so this caps Julia's BLAS threads and Python's `OMP`/`OPENBLAS`/`MKL`/`NUMBA` threads to the same number (a same-core comparison); it also sets Julia's thread count and the NEMtropy sampler's `cpu_n`. Recorded as `system_info.bench_cores`/`blas_num_threads`. Run at `1` and `4` to show the comparison is fair either way. |
 | `BENCH_MAX_SCALE` | `large` | Caps the problem size: `small` \| `medium` \| `large`. `medium` drops the largest problem of every model, which is what makes a full run long, so it is a good tractable run (a bit over an hour at `BENCH_CORES=12`). |
 | `BENCH_MIN_SCALE` | `small` | Skips the problems *below* it, so a run can target only what is missing: `BENCH_MIN_SCALE=large BENCH_MAX_SCALE=large` re-runs just the large problems without redoing small/medium. |
-| `BENCH_MODELS` | all nine | Space-separated subset of `UBCM BiCM DBCM UECM DECM CReM RBCM DCReM CRWCM`; only the listed models are benchmarked and plotted. |
+| `BENCH_MODELS` | all ten | Space-separated subset of `UBCM BiCM DBiCM DBCM UECM DECM CReM RBCM DCReM CRWCM`; only the listed models are benchmarked and plotted. |
 | `BENCH_JOB_TIMEOUT` | `0` (off) | Per-job wall-clock budget in seconds for every generated Python benchmark job. A job over budget has its **whole process group** killed (`run_with_timeout.sh`, SIGTERM then SIGKILL, taking numba threads and multiprocessing children with it), the event is appended to `benchmarks/timeouts.log`, and the run continues with the next job. A killed job saves no results, so it is simply absent from the plots; check `timeouts.log` to see what was cut. |
 | `BENCH_QUICK` | `0` | Back-compat alias: `1` is equivalent to `BENCH_MAX_SCALE=small` (karate-scale smoke test). |
 | `BENCH_SKIP_PROJECTION` | `0` | `1` skips the (slow) BiCM projection benchmark. This is the single most expensive thing in the suite by a wide margin: at the large scale one of NEMtropy's eight projection variants alone measured 489 s per round over 30 rounds (~4 h), and the projection accounts for most of a full run's wall-clock. Setting this to `1` takes a full run from most of a day down to a few hours. |
@@ -199,7 +216,12 @@ from the fitted parameters, which is valid because the reconstruction is gauge-i
   networks; and the `RBCM`/`DCReM`/`CRWCM` inputs are tiled from the last of these. All of these are
   regenerated rather than committed (the on-disk `UBCM_large.csv` alone is ~94 MB).
   `BiCM_medium`/`BiCM_large` are required input edge lists that cannot be regenerated, so **those two
-  CSVs are tracked in git** (`data/BiCM_medium.csv`, `data/BiCM_large.csv`).
+  CSVs are tracked in git** (`data/BiCM_medium.csv`, `data/BiCM_large.csv`). The three `DBiCM`
+  problems are **synthetic** networks generated from a fixed seed by `DBiCM_benchmarks.jl` and are
+  not presented as empirical data: no public directed bipartite benchmark network ships with the
+  package, and what these instances are for is scale. Their two channels are given deliberately
+  different densities (`p⁻ = 0.6 p⁺`), since a model that quietly treated the two channels as one
+  would look perfectly healthy on a symmetric instance.
   Note that the seeded graphs are reproducible for a *fixed* Graphs.jl: the compat bound here allows
   any 1.x, so a future change to its generator or RNG would alter `UBCM_medium`/`UBCM_large`. Pin
   Graphs.jl exactly if you need to reproduce the published numbers bit-for-bit.

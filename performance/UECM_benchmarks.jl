@@ -52,9 +52,9 @@ function tiled_rhesus(k::Int)
     return SWG.SimpleWeightedGraph(SWG.SimpleWeightedDiGraph(sources, targets, weights)) # symmetrise
 end
 
-name_graphs = [("UECM_small",  SWG.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques()), Dict(:include_fixed_point => false, :include_BFGS => true, :include_newton => true)),
-               ("UECM_medium", tiled_rhesus(8),                                         Dict(:include_fixed_point => false, :include_BFGS => true, :include_newton => true)),
-               ("UECM_large",  tiled_rhesus(32),                                        Dict(:include_fixed_point => false, :include_BFGS => true, :include_newton => false))]
+name_graphs = [("UECM_small",  SWG.SimpleWeightedGraph(MaxEntropyGraphs.rhesus_macaques()), Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => true)),
+               ("UECM_medium", tiled_rhesus(8),                                         Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => true)),
+               ("UECM_large",  tiled_rhesus(32),                                        Dict(:include_fixed_point => true, :include_BFGS => true, :include_newton => false))]
 
 # Scale limiter: BENCH_MAX_SCALE=small|medium|large (default large) caps the problem size, and
 # BENCH_MIN_SCALE (default small) skips the smaller problems, so a run can target only what is

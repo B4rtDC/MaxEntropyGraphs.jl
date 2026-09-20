@@ -922,9 +922,9 @@ function solve_model!(m::BiCM;  # common settings
         # define fixed point function
         FP_model! = (θ::Vector) -> BiCM_reduced_iter!(θ, m.d⊥ᵣ, m.d⊤ᵣ, m.f⊥, m.f⊤, m.d⊥ᵣ_nz, m.d⊤ᵣ_nz, x_buffer, y_buffer, G_buffer, m.status[:d⊥_unique]);
         # Obtain the solution. The map is gauge-equivariant, which makes Anderson's least-squares
-        # rank-deficient along the gauge direction; `_gauge_fixedpoint_ladder` steps the memory down
+        # rank-deficient along the gauge direction; `_anderson_memory_ladder` steps the memory down
         # until it stops producing NaN. Full derivation and the measurements are on that helper.
-        sol = _gauge_fixedpoint_ladder(FP_model!, θ₀; ftol=ftol, maxiters=maxiters, verbose=verbose)
+        sol = _anderson_memory_ladder(FP_model!, θ₀; ftol=ftol, maxiters=maxiters, verbose=verbose)
         if NLsolve.converged(sol)
             if verbose 
             @info "Fixed point iteration converged after $(sol.iterations) iterations"

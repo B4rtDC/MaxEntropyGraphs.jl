@@ -52,6 +52,16 @@ function tiled_rhesus_directed(k::Int)
     return SWG.SimpleWeightedDiGraph(sources, targets, weights)
 end
 
+# `:include_fixed_point => false` is deliberate, and is NOT the pre-v0.8.0 "the fixed point does not
+# work" reason: since PR #18 it is the most accurate and cheapest path on a well-posed network.
+# The reason is this fixture. `rhesus_macaques()` carries one node with `s = k` (all its weights are
+# 1), a runaway constraint whose maximum-likelihood optimum sits at an infinite parameter, and the
+# tiled medium/large graphs inherit it. The fixed point still gets there (residual 9e-10) but needs
+# more than the 1000 iterations this harness pins for a matched comparison against NEMtropy's
+# max_steps=1000; at the DECM's own default of 10_000 it converges. Benchmarking it at a budget it
+# cannot finish in would time a non-converging solver, which the harness does not do anywhere else
+# either (cf. the omitted UBCM_large quasi-Newton row). The DECM fixed point's speed is measured in
+# performance/robustness/ instead, on corpora without runaway constraints.
 name_graphs = [("DECM_small",  MaxEntropyGraphs.rhesus_macaques(), Dict(:include_fixed_point => false, :include_BFGS => true, :include_newton => true)),
                ("DECM_medium", tiled_rhesus_directed(8),           Dict(:include_fixed_point => false, :include_BFGS => true, :include_newton => true)),
                ("DECM_large",  tiled_rhesus_directed(32),          Dict(:include_fixed_point => false, :include_BFGS => true, :include_newton => false))]

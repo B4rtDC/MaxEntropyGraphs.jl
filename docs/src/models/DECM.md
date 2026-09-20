@@ -37,7 +37,11 @@ solve_model!(model)
 
 !!! note
 
-    Contrary to the purely binary models, the fixed-point recipe is very unstable for the DECM and should not be used [[1]](#1). The default solver is therefore `BFGS`; `Newton` is also available (and typically the fastest, cf. [[1]](#1)) but is more sensitive to the initial guess. Because the likelihood is only defined on the feasible region ``e^{-\beta^{out}_i - \beta^{in}_j} < 1``, the DECM uses a `BackTracking` line search that keeps the iterates inside that region (as does the UECM).
+    The classical Picard fixed-point recipe for the DECM is unusable [[1]](#1), and measurably so: from a cold start it converged on **none** of 150 random weighted digraphs. Since v0.8.0 `:fixedpoint` is not that recipe but block coordinate ascent, which solves each block exactly and is unconditionally well posed. On 71 well-posed digraphs it converges on all of them, as does `BFGS`, but to a median constraint residual of ``1.5\cdot10^{-9}`` against ``3.1\cdot10^{-8}`` and at a fraction of the cost: on a 150-vertex weighted digraph, ``9.9\cdot10^{-9}`` in 0.19 s against ``1.7\cdot10^{-6}`` in 593 s.
+
+    The default is still `BFGS`, because it degrades more gracefully on the inputs the fixed point cannot solve. When a **runaway** constraint is present (``k = 0``, ``k = N-1`` or ``s_i = k_i``) the optimum sits at an infinite parameter and no solver can settle at a finite tolerance; there `BFGS` reaches 78 of 79 against the fixed point's 22. On a well-posed network, prefer `method = :fixedpoint`.
+
+    `Newton` is also available (and typically the fastest, cf. [[1]](#1)) but is more sensitive to the initial guess, and it is the only method that receives the gauge-fixing term the DECM's singular Hessian requires. `LBFGS` is not recommended: it needs on the order of 7 000 iterations from `:strengths` and up to 16 000 from `:uniform`, which is why this model's `maxiters` defaults to 10 000. Because the likelihood is only defined on the feasible region ``e^{-\beta^{out}_i - \beta^{in}_j} < 1``, the DECM uses a `BackTracking` line search that keeps the iterates inside that region (as does the UECM).
 
 ## Expected adjacency and weights
 ```julia

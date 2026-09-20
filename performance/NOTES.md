@@ -232,6 +232,55 @@ Conventions:
 - Decision: keep. Rerun cost after fixes: R1 (three weighted Julia larges) 9 min, R2 (UBCM Julia +
   split Python) ~2 h 40 m, zero kills.
 
+### EXP-016  Full v0.8.0 campaign and the solver-robustness harness
+
+- Date: 2026-09-18/20, same box and toolchain as EXP-015 on purpose (M4 Max `beast`, Julia
+  1.12.6, CPython 3.12.13, BENCH_CORES=12), so every delta is the package rather than the machine.
+  Driven by the new `campaign.sh --detach`: preflight, robustness, benchmarks, summary, with a
+  status file and a heartbeat so a two-day run can be read from another machine.
+- Preflight green at `aa4af7b`'s parent: suite 2362/2362, all 19 validation scripts ALL PASS, both
+  environments resolved from no manifest.
+- **Speed is unchanged**: ratios 0.95-1.05 nearly everywhere against EXP-015. That is the result
+  for the paper. The v0.8.0 correctness work cost nothing.
+- One timeout, and it is the same one as EXP-015: NEMtropy `decm_exp` quasinewton at N=512. It
+  reproduces rather than being new. NEMtropy's UBCM_large quasinewton *did* finish this time
+  (95.0 s median over 30 rounds) and still does not converge, so the omitted row stands.
+
+**Three things the campaign found that the campaign could not itself measure.**
+
+1. **The harness never benchmarked the UECM/DECM fixed point.** `include_fixed_point` defaulted to
+   `false` for both models *and* was overridden to `false` per graph in each driver. Correct when
+   written (the method converged on none of 150 networks); never flipped after PR #18. So the
+   refresh measured nothing of v0.8.0's largest speed change. UECM now enabled: it is the fastest
+   solver at medium (0.50 ms against 1.46 ms for BFGS-AG) and large (0.43 ms against 1.45 ms), and
+   slower at small (2.6 ms). The three UECM problems are tilings of one rhesus network, so they
+   multiply multiplicities without adding distinct `(d, s)` pairs and the reduced problems are all
+   of similar size; the differences are iteration counts, not scale. DECM stays out, because its
+   fixture carries a runaway `s = k` node and the fixed point needs more than the matched
+   1000-iteration budget there (it reaches 9e-10 at the model's own default of 10 000).
+
+2. **A "sampling regression" that was not one.** UECM/DECM sampling came out 1.5-2.5x slower than
+   EXP-015 while all 14 other sampling benchmarks sat at 0.96-1.03. Checked against v0.7.0 in a
+   worktree: the fits are identical to every digit (edges 68.7, mean weight 9.402, max `yiyj`
+   0.973854) and `rand(m,100)` takes 0.0029 s against 0.0027 s. A clean re-run of the same
+   benchmark gives 0.000319 s against EXP-015's 0.000304 s, ratio 1.05. The campaign's own cells
+   were the outlier, measured after 3.5 h of continuous load. **Lesson: a single campaign's
+   sampling numbers are not trustworthy to better than about 2x; re-measure a suspicious cell on a
+   cold machine before believing it.**
+
+3. **The default `:fixedpoint` threw on one dense graph in five** for UBCM, DBCM and RBCM. Found by
+   the new `robustness/` sweep, which is the axis `performance/` does not cover: it pins
+   `initial = :degrees` everywhere. 34 of 147 well-posed graphs failed from the shipped defaults,
+   as `IsFiniteException` (30) and `SingularException` (4) raised out of a dependency, never a
+   timeout. Density-driven: 0/120 at `p = 0.10`, 13 at 0.20, 51 at 0.35, 63 at 0.55, which is why
+   sparse real networks and both demo graphs never showed it. All 34 cured by shorter Anderson
+   memory (33 at `m = 2`), i.e. the BiCM's ladder, so the BiCM's exact gauge degeneracy is
+   sufficient but **not necessary** for that failure. Fixed in `aa4af7b`; every cell of the sweep
+   is now 100%.
+
+- Decision: keep. The figures are regenerated from this campaign. `robustness/` is the home for
+  the convergence tables that `validation/*.md` quotes, which were previously unreproducible.
+
 <!-- Template:
 ### EXP-NNN  <short title>
 - Hypothesis:

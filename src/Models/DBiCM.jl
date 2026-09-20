@@ -496,7 +496,7 @@ function _solve_dbicm_channel(m::DBiCM, ch::Symbol, θ_ch::Vector{N}, method::Sy
         # Each channel carries exactly ONE gauge direction, which is the regime the ladder is measured
         # on. Solving both channels jointly would make the accelerator's least-squares rank-deficient
         # by two — an untested regime, and the reason this model does not do that.
-        sol = _gauge_fixedpoint_ladder(FP_model!, θ_ch; ftol=ftol, maxiters=maxiters, verbose=verbose)
+        sol = _anderson_memory_ladder(FP_model!, θ_ch; ftol=ftol, maxiters=maxiters, verbose=verbose)
         NLsolve.converged(sol) || throw(ConvergenceError(method, nothing, c.name))
         verbose && @info "Fixed point iteration converged after $(sol.iterations) iterations (channel $(c.name))"
         return sol.zero, sol

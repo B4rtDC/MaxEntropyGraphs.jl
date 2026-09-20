@@ -256,11 +256,17 @@ end
 
 
 """
-    _gauge_fixedpoint_ladder(FP!, θ₀; ftol, maxiters, verbose=false)
+    _anderson_memory_ladder(FP!, θ₀; ftol, maxiters, verbose=false, damped_fallback=false)
 
 Run `NLsolve.fixedpoint` on the Anderson-accelerated map `FP!`, retrying down a ladder of shorter
-memories (default → `m=2` → `m=0`) whenever the accelerator produces non-finite values. Returns the
-`NLsolve` solution object. Shared by the bipartite models, whose maps are gauge-equivariant.
+memories (default → `m=2` → `m=0`) whenever the accelerator fails on its own internal linear
+algebra. Returns the `NLsolve` solution object. Shared by every model whose `:fixedpoint` path is
+Anderson-accelerated: `UBCM`, `DBCM`, `RBCM`, `BiCM` and `DBiCM`.
+
+Two distinct failures land here, and the ladder answers both. The accelerator's least-squares can
+emit `NaN` (NLsolve reports `IsFiniteException`) or be reported outright singular
+(`SingularException`); both are caught, because both were measured, and both are
+cured by keeping less history.
 
 WHY: a bipartite fixed-point map is *gauge-equivariant*. With `g = (1…1, -1…-1)` over the live
 entries, `G(θ + c·g) = G(θ) + c·g` exactly — the shift leaves every product `xᵢ·yⱼ` alone and
@@ -286,19 +292,42 @@ slow) and 158/183 for the accelerated path alone.
 A model with `n` independent gauge directions makes the least-squares rank-deficient by `n`, which
 is a *different* regime from the one measured above. The `DBiCM` therefore solves its two channels
 separately, so that each call here sees exactly one gauge direction.
+
+The gauge is sufficient but **not necessary**. `UBCM`, `DBCM` and `RBCM` have no gauge freedom at
+all, and their maps still break the accelerator's least-squares on denser inputs: measured over 147
+well-posed random undirected graphs from the shipped default `(:fixedpoint, :degrees)`, the plain
+accelerated path failed on **34** — 30 `IsFiniteException` and 4 `SingularException`, never a
+timeout — and **all 34** were rescued by a shorter memory (33 at `m=2`, 1 at Picard). The failure
+rate tracks density rather than size: 0 of 120 at `p = 0.10`, 13 at `p = 0.20`, 51 at `p = 0.35`,
+63 at `p = 0.55`. So the ladder is the remedy for ill-conditioning of that least-squares generally,
+and the gauge is just the one case where the rank deficiency is exact and provable.
+
+`damped_fallback=true` appends one further rung, `m=5, beta=0.5`. That is the `UBCM`'s pre-existing
+remedy for a *different* problem — `exp` overflow at very large scale, first seen on a 250k-node
+graph — and it is kept as a last resort there rather than dropped, even though damping is measurably
+the wrong answer to the rank-deficiency above (148/183 against 158/183 for doing nothing at all).
 """
-function _gauge_fixedpoint_ladder(FP!, θ₀::Vector; ftol::Real, maxiters::Int, verbose::Bool=false)
+_anderson_broke(e) = e isa NLsolve.IsFiniteException || e isa SingularException
+
+function _anderson_memory_ladder(FP!, θ₀::Vector; ftol::Real, maxiters::Int,
+                                 verbose::Bool=false, damped_fallback::Bool=false)
     return try
         NLsolve.fixedpoint(FP!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters)
     catch e
-        e isa NLsolve.IsFiniteException || rethrow()
-        verbose && @info "Anderson acceleration produced non-finite values (its least-squares is rank-deficient along the gauge direction); retrying with a shorter memory (m=2)"
+        _anderson_broke(e) || rethrow()
+        verbose && @info "Anderson acceleration failed on its own least-squares ($(nameof(typeof(e)))); retrying with a shorter memory (m=2)"
         try
             NLsolve.fixedpoint(FP!, θ₀, method=:anderson, m=2, ftol=ftol, iterations=maxiters)
         catch e2
-            e2 isa NLsolve.IsFiniteException || rethrow()
-            verbose && @info "still non-finite; falling back to un-accelerated Picard iteration (m=0), which has no least-squares to go singular"
-            NLsolve.fixedpoint(FP!, θ₀, method=:anderson, m=0, ftol=ftol, iterations=maxiters)
+            _anderson_broke(e2) || rethrow()
+            verbose && @info "still failing; falling back to un-accelerated Picard iteration (m=0), which has no least-squares to go singular"
+            try
+                NLsolve.fixedpoint(FP!, θ₀, method=:anderson, m=0, ftol=ftol, iterations=maxiters)
+            catch e3
+                (damped_fallback && _anderson_broke(e3)) || rethrow()
+                verbose && @info "Picard also failed; last resort, damped mixing (m=5, beta=0.5)"
+                NLsolve.fixedpoint(FP!, θ₀, method=:anderson, m=5, beta=0.5, ftol=ftol, iterations=maxiters)
+            end
         end
     end
 end

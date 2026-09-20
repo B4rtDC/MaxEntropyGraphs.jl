@@ -736,12 +736,12 @@ function test_create_UECM(G)
 end
 
 """
-    test_solve_UECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+    test_solve_UECM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
 
 Benchmark solving the UECM for the given weighted, undirected graph `G` (settings matched to the Python side).
 The fixed point recipe is unstable for the UECM, so it is excluded by default.
 """
-function test_solve_UECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+function test_solve_UECM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
     model = UECM(G)
     solve_model!(model, method=:BFGS)
     suite = BenchmarkGroup()
@@ -905,12 +905,12 @@ function test_create_DECM(G)
 end
 
 """
-    test_solve_DECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+    test_solve_DECM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
 
 Benchmark solving the DECM for the given weighted, directed graph `G` (settings matched to the Python side).
 The fixed point recipe is unstable for the DECM, so it is excluded by default.
 """
-function test_solve_DECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+function test_solve_DECM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
     model = DECM(G)
     solve_model!(model, method=:BFGS)
     suite = BenchmarkGroup()
@@ -1591,5 +1591,225 @@ function generate_NuMeTriS_python(name::String, model::String)
 
     @info "Python (NuMeTriS) script for $(name) generated."
 
+    return
+end
+
+##################################################
+# Helper functions for DBiCM benchmarking (directed bipartite)
+##################################################
+#
+# No Python package implements a directed bipartite configuration model, so there is no direct
+# comparator. There is an exact one available anyway: the DBiCM's Hamiltonian carries no term
+# coupling its two link channels, so the model factorises *exactly* into two BiCMs, on
+# (d⊥_out, d⊤_in) and (d⊥_in, d⊤_out). Benchmarking it against two independent NEMtropy
+# BipartiteGraph solves is therefore a fair like-for-like comparison rather than a courtesy, and
+# it doubles as an external numerical check of the separation result: if the two channels of the
+# DBiCM did not agree with two separate BiCM fits, the factorisation would be wrong.
+
+"""
+    test_create_DBiCM(G)
+
+Benchmark the creation of the DBiCM model for the given directed bipartite graph `G`.
+"""
+function test_create_DBiCM(G)
+    b = @benchmarkable DBiCM($(G))
+    tune!(b)
+    res = run(b)
+    return Dict("name" => "test_create_DBiCM", "stats" => res)
+end
+
+"""
+    test_solve_DBiCM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
+
+Benchmark solving the DBiCM for `G`. The labels mirror the BiCM ones so the two are directly
+comparable in the plots: a DBiCM solve should cost about two BiCM solves of the same size, which
+is the practical content of the channel-separation result.
+"""
+function test_solve_DBiCM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
+    model = DBiCM(G)
+    solve_model!(model)
+    suite = BenchmarkGroup()
+    if include_fixed_point
+        suite["test_solve_DBiCM[two_bicm-FP]"] =          @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:degrees, maxiters=1000, g_tol=1e-8, ftol=1e-8)
+    end
+    if include_BFGS
+        suite["test_solve_DBiCM[two_bicm-QN-BFGS-AG]"] =  @benchmarkable solve_model!($(model), method=:BFGS, initial=:degrees, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=true)
+        suite["test_solve_DBiCM[two_bicm-QN-BFGS-ADF]"] = @benchmarkable solve_model!($(model), method=:BFGS, initial=:degrees, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+    end
+    if include_LBFGS
+        suite["test_solve_DBiCM[two_bicm-QN-LBFGS-AG]"] = @benchmarkable solve_model!($(model), method=:LBFGS, initial=:degrees, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=true)
+    end
+    if include_newton
+        # As for the BiCM, Newton is benchmarked through ForwardDiff: the :AutoZygote default is
+        # wrapped as a nested-HVP SecondOrder that is both slower and, with Symbolics loaded,
+        # unsafe.
+        suite["test_solve_DBiCM[two_bicm-Newton-ADF]"] =  @benchmarkable solve_model!($(model), method=:Newton, initial=:degrees, maxiters=1000, g_tol=1e-8, ftol=1e-8, analytical_gradient=false, AD_method=:AutoForwardDiff)
+    end
+    tune!(suite)
+    res = run(suite)
+    return Dict("name" => "test_solve_DBiCM", "stats" => res)
+end
+
+"""
+    test_solve_DBiCM_one_directional(G)
+
+Benchmark solving a DBiCM whose reverse channel carries no links at all. A purely one-directional
+bipartite network is probably the most common directed bipartite input in the wild, and it is the
+case the empty-channel short circuit exists for: the dead channel's optimum is `θ ≡ Inf`, `p ≡ 0`,
+so it is written directly instead of iterating a map that would evaluate `-log(0/0)`. The measured
+cost of that solve is therefore roughly *half* a two-channel solve, which is the point.
+"""
+function test_solve_DBiCM_one_directional(G)
+    model = DBiCM(G)
+    solve_model!(model)
+    b = @benchmarkable solve_model!($(model), method=:fixedpoint, initial=:degrees, maxiters=1000, g_tol=1e-8, ftol=1e-8)
+    tune!(b)
+    res = run(b)
+    return Dict("name" => "test_solve_DBiCM_one_directional", "stats" => res)
+end
+
+"""
+    test_project_DBiCM(G)
+
+Benchmark the validated directed projection across both layers, all three V-motif kinds and both
+null distributions. `:path` is the expensive one by construction: it is asymmetric, so the p-value
+loop runs over every *ordered* pair rather than each unordered pair once, roughly twice the work.
+"""
+function test_project_DBiCM(G)
+    m = DBiCM(G)
+    solve_model!(m)
+    set_Ĝ!(m)
+    suite = BenchmarkGroup()
+    for layer in [:bottom, :top]
+        for kind in [:out, :in, :path]
+            for distribution in [:Poisson, :PoissonBinomial]
+                for multithreaded in [true, false]
+                    suite["test_project_DBiCM[two_bicm-$(layer)-$(kind)-$(distribution)-$(multithreaded)]"] =
+                        @benchmarkable project($(m); layer=$(layer), kind=$(kind), distribution=$(distribution), multithreaded=$(multithreaded))
+                end
+            end
+        end
+    end
+    tune!(suite)
+    res = run(suite)
+    return Dict("name" => "test_project_DBiCM", "stats" => res)
+end
+
+"""
+    test_sample_DBiCM(G, n::Int)
+
+Benchmark drawing `n` samples from the DBiCM ensemble for `G`, seeded for reproducibility.
+"""
+function test_sample_DBiCM(G, n::Int)
+    model = DBiCM(G)
+    solve_model!(model)
+    b = @benchmarkable rand($(model), $(n); rng = MaxEntropyGraphs.Xoshiro(161))
+    tune!(b)
+    res = run(b)
+    return Dict("name" => "test_sample_DBiCM", "stats" => res)
+end
+
+DBiCM_python_template = """
+# run in folder as:
+# pytest {{scriptname}}.py --benchmark-save={{scriptname}} --benchmark-min-rounds=30 --benchmark-warmup-iterations=2 --benchmark-save-data --benchmark-storage='{{outfolder}}'
+#
+# No Python package implements a directed bipartite configuration model. The comparator here is the
+# exact decomposition instead: a DBiCM is two BiCMs, one per link channel, so the reference is two
+# independent NEMtropy BipartiteGraph fits. The Julia side writes one bipartite edge list per
+# channel, both in (bottom, top) orientation, so NEMtropy sees two ordinary bipartite problems.
+
+import numpy as np
+import networkx as nx
+from NEMtropy import BipartiteGraph
+import pytest
+import csv
+import os
+import json
+
+PLUS_PATH  = '{{plusfile}}'
+MINUS_PATH = '{{minusfile}}'
+
+def load_csv_file(filepath):
+    with open(filepath, 'r') as csvfile:
+        for row in csv.reader(csvfile):
+            yield tuple(map(int, row))
+
+## -------------- ##
+## Objects to use ##
+## -------------- ##
+EDGES_PLUS  = [t for t in load_csv_file(PLUS_PATH)]
+EDGES_MINUS = [t for t in load_csv_file(MINUS_PATH)]
+
+# tol / max_steps matched to the Julia side (g_tol=1e-8 / maxiters=1000).
+M_PLUS  = BipartiteGraph(edgelist=EDGES_PLUS)
+M_PLUS.solve_tool(method="fixed-point", initial_guess="degrees", tol=1e-8, eps=1e-8, max_steps=1000)
+M_MINUS = BipartiteGraph(edgelist=EDGES_MINUS)
+M_MINUS.solve_tool(method="fixed-point", initial_guess="degrees", tol=1e-8, eps=1e-8, max_steps=1000)
+
+## Accuracy dump: the observed and expected degree sequences of BOTH channels. The Julia side
+## compares each implementation against its own observed sequences, so no node-ordering alignment
+## is needed. Best effort, and loud rather than silent when it misses.
+try:
+    _acc = '{{accfolder}}'
+    os.makedirs(_acc, exist_ok=True)
+    _dump = {}
+    for _tag, _M in (("plus", M_PLUS), ("minus", M_MINUS)):
+        for _key in ("rows_deg", "cols_deg"):
+            if hasattr(_M, _key):
+                _dump[_tag + "_" + _key] = [float(_v) for _v in getattr(_M, _key)]
+        _avg = _M.get_bicm_matrix() if hasattr(_M, "get_bicm_matrix") else getattr(_M, "avg_mat", None)
+        if _avg is not None:
+            _avg = np.asarray(_avg, dtype=float)
+            _dump[_tag + "_expected_dseq_rows"] = [float(_v) for _v in _avg.sum(axis=1)]
+            _dump[_tag + "_expected_dseq_cols"] = [float(_v) for _v in _avg.sum(axis=0)]
+    with open(os.path.join(_acc, '{{scriptname}}_nemtropy.json'), 'w') as _f:
+        json.dump(_dump, _f)
+except Exception as _e:
+    print("WARNING: could not dump NEMtropy DBiCM accuracy data: " + repr(_e))
+
+## ---------------------- ##
+## Functions to benchmark ##
+## ---------------------- ##
+def create_DBiCM(edges_plus, edges_minus):
+    # The directed bipartite equivalent of model creation: one bipartite object per channel.
+    return BipartiteGraph(edgelist=edges_plus), BipartiteGraph(edgelist=edges_minus)
+
+def solve_DBiCM(m_plus, m_minus, method, initial_guess):
+    m_plus.solve_tool(method=method, initial_guess=initial_guess, tol=1e-8, eps=1e-8, max_steps=1000)
+    m_minus.solve_tool(method=method, initial_guess=initial_guess, tol=1e-8, eps=1e-8, max_steps=1000)
+
+## ---------------------- ##
+## Pytest benchmark tests ##
+## ---------------------- ##
+def test_create_DBiCM(benchmark):
+    benchmark(create_DBiCM, EDGES_PLUS, EDGES_MINUS)
+
+@pytest.mark.parametrize("method,initial_guess", [
+    ("newton",      "degrees"),
+    ("quasinewton", "degrees"),
+    ("fixed-point", "degrees"),
+])
+def test_solve_DBiCM(benchmark, method, initial_guess):
+    benchmark(solve_DBiCM, M_PLUS, M_MINUS, method, initial_guess)
+
+"""
+
+"""
+    generate_DBiCM_python(name::String, n::Int)
+
+Generate the python script that benchmarks two NEMtropy BiCM solves against one DBiCM solve.
+"""
+function generate_DBiCM_python(name::String, n::Int)
+    out = replace(DBiCM_python_template,
+                  "{{scriptname}}" => name,
+                  "{{outfolder}}"  => joinpath(@__DIR__, "benchmarks"),
+                  "{{accfolder}}"  => joinpath(@__DIR__, "accuracy"),
+                  "{{plusfile}}"   => joinpath(@__DIR__, "data", "$(name)_plus.csv"),
+                  "{{minusfile}}"  => joinpath(@__DIR__, "data", "$(name)_minus.csv"),
+                  "{{n}}" => n)
+    open(joinpath(@__DIR__, "$(name).py"), "w") do f
+        write(f, out)
+    end
+    @info "Python script for $(name) generated."
     return
 end
