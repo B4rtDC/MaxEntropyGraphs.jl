@@ -710,17 +710,13 @@ function solve_model!(m::UBCM;  # common settings
         G_buffer = zeros(N,length(m.dᵣ)); # buffer for G(x)
         # define fixed point function
         FP_model! = (θ::Vector) -> UBCM_reduced_iter!(θ, m.dᵣ, m.f, x_buffer, G_buffer);
-        # obtain solution. Undamped Anderson can diverge on large, ill-scaled problems (its
-        # internal least-squares then emits NaN and NLsolve throws IsFiniteException; first
-        # seen on a 250k-node graph): retry once with damped mixing, which trades a few extra
-        # iterations on well-behaved problems for stability on the hard ones.
-        sol = try
-            NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, ftol=ftol, iterations=maxiters);
-        catch e
-            e isa NLsolve.IsFiniteException || rethrow()
-            verbose && @info "Anderson acceleration diverged to non-finite values; retrying with damped mixing (beta=0.5)"
-            NLsolve.fixedpoint(FP_model!, θ₀, method=:anderson, m=5, beta=0.5, ftol=ftol, iterations=maxiters);
-        end
+        # Anderson's least-squares breaks on denser inputs: measured over 147 well-posed random
+        # graphs from this exact default, the plain accelerated path failed on 34 (30
+        # IsFiniteException, 4 SingularException), and all 34 were rescued by keeping less
+        # history. The ladder steps the memory down; `damped_fallback` keeps this model's older
+        # remedy for its separate large-scale `exp` overflow problem as a final rung.
+        sol = _anderson_memory_ladder(FP_model!, θ₀; ftol=ftol, maxiters=maxiters,
+                                      verbose=verbose, damped_fallback=true)
         if NLsolve.converged(sol)
             if verbose 
                 @info "Fixed point iteration converged after $(sol.iterations) iterations"

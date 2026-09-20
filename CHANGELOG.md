@@ -1,5 +1,73 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`UBCM`, `DBCM` and `RBCM`: the default `:fixedpoint` solve threw on roughly one dense graph in
+  five.** Measured over 147 well-posed random undirected graphs from the shipped defaults
+  (`method = :fixedpoint`, `initial = :degrees`), `solve_model!` failed on **34** of them — 30
+  `NLsolve.IsFiniteException` and 4 `LinearAlgebra.SingularException`, raised out of a dependency
+  rather than wrapped as a `ConvergenceError`, and never once a failure to converge in time. The
+  rate tracks density rather than size: 0 of 120 at `p = 0.10`, 13 at `p = 0.20`, 51 at `p = 0.35`
+  and 63 at `p = 0.55`. Sparse networks, and both shipped demo networks, were unaffected, which is
+  why this survived ordinary use.
+
+  The cause is the Anderson accelerator's internal least-squares, and it is the same failure the
+  `BiCM` was given a memory ladder for in v0.8.0 — but the `BiCM`'s exact gauge degeneracy turns
+  out to be *sufficient, not necessary*. These three models have no gauge freedom at all and still
+  break it. All 34 failures are cured by keeping less history (33 at `m = 2`, one at plain Picard),
+  so `_gauge_fixedpoint_ladder` is generalised and renamed **`_anderson_memory_ladder`**, now also
+  catching `SingularException`, and `UBCM`, `DBCM` and `RBCM` route through it. The `UBCM` keeps
+  its damped `m = 5, beta = 0.5` retry as a final rung, since that answers a different problem
+  (`exp` overflow at 250k nodes).
+
+  After the change every cell of the sweep is 100 %: UBCM 147/147 from *every* initial guess
+  (`:chung_lu` was 138/147), DBCM 148/148 (`:chung_lu` was 114/148), RBCM 150/150. The density
+  sweep goes to 120/120/120/119, and the single remaining case is a clean `ConvergenceError`
+  rather than a thrown dependency exception.
+
+- **`RBCM`: fully reciprocal networks now solve with the default method.** On a degenerate input
+  such as `taro_exchange()` (k→ = k← = 0 everywhere, so only the γ channel is identified) the
+  accelerator still overshoots on its first attempt, but the ladder retries and converges in 13
+  iterations to a `6·10⁻⁸` residual. The docstring no longer tells users to reach for `:BFGS`, and
+  the test that asserted `solve_model!` *throws* there now asserts that it fits.
+
+- The harness never benchmarked the `UECM` or `DECM` fixed point (`include_fixed_point` defaulted
+  to `false` for both, and each driver overrode it to `false` per graph). That was correct before
+  v0.8.0, when the method converged on none of 150 networks, but it meant the v0.8.0 benchmark
+  refresh measured nothing of the change. The `UECM` fixed point is now benchmarked and is the
+  fastest solver on the two larger problems (0.50 ms against 1.46 ms for BFGS at medium, 0.43 ms
+  against 1.45 ms at large). The `DECM`'s is still excluded, but the reason is now written down:
+  its fixture carries a runaway `s = k` constraint and it needs more than the harness's matched
+  1000-iteration budget.
+
+### Added
+
+- **`performance/robustness/`** — the harness behind the convergence tables. The measurements in
+  `validation/*.md` and in the v0.8.0 changelog came from one-off scripts that were never
+  committed, so they could be read but not reproduced. It sweeps model × method × initial guess,
+  which `performance/` does not (it pins `initial = :degrees` everywhere), and reproduces both
+  published anchors exactly: the BiCM ladder (`plain 158/183` … `ladder 183/183` at 4551
+  iterations) and the UECM/DECM cold start (98/100 and 71/71).
+
+- **`performance/campaign.sh`** — one detachable driver for a full benchmark campaign
+  (`./campaign.sh --detach`), with a preflight that resolves both environments from no manifest,
+  per-stage checkpointing, and a status file readable from another machine.
+
+- The `DBiCM` is benchmarked, against two NEMtropy `BipartiteGraph` solves — the decomposition the
+  model is built on. Their expected sequences agree to `4.6·10⁻⁸` and `1.5·10⁻⁸`, which is an
+  external check of the channel-separation result.
+
+### Fixed (tooling)
+
+- `performance/Project.toml` pinned `MaxEntropyGraphs = "0.7"`, so a fresh clone died on the first
+  command of the benchmark instructions. Third recurrence of the same class of blocker.
+- `benchmarks.sh` called `uv venv` unconditionally; current `uv` refuses an existing `.venv` and
+  the script runs under `set -euo pipefail`, so every re-run died immediately.
+- `BiCM_plots.jl` matched its input files with a bare `occursin("BiCM", …)`, which also matches
+  `DBiCM_*.json`; the paper's BiCM figure would have been plotted from directed-bipartite data.
+
 ## v0.8.0
 
 Adds the `DBiCM`, a directed bipartite configuration model, and with it the last missing directed

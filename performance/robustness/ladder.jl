@@ -1,6 +1,6 @@
 # The BiCM Anderson-ladder study.
 #
-# This is the experiment behind `_gauge_fixedpoint_ladder` and behind the tables in
+# This is the experiment behind `_anderson_memory_ladder` and behind the tables in
 # validation/bicm_uecm_solver_geometry.md. It is separate from `sweep.jl` because it compares
 # *internal* fixed-point strategies rather than the public API: the point is which accelerator
 # setting to ship, not how the shipped solver behaves.
@@ -95,7 +95,7 @@ function run_strategy(m, strategy; ftol = 1e-8, maxiters = 1000)
             θp = copy(θ₀); θp .-= (dot(gv, θp) / gn) .* gv
             fp(proj!, θp)
         elseif strategy === :ladder
-            MEG._gauge_fixedpoint_ladder(FP!, copy(θ₀); ftol = ftol, maxiters = maxiters)
+            MEG._anderson_memory_ladder(FP!, copy(θ₀); ftol = ftol, maxiters = maxiters)
         else
             throw(ArgumentError("unknown strategy $(strategy)"))
         end

@@ -493,10 +493,18 @@
                 @test all(iszero, model.zᵣ[model.dᵣ_rec .== 0])
                 @test isapprox(MaxEntropyGraphs.reciprocated_degree(model), model.d_rec, rtol=1e-6)
             end
-            # degenerate fully reciprocal network: accelerated fixed point can overshoot, gradient methods work
+            # Degenerate fully reciprocal network (k→ = k← = 0 everywhere, so only the γ channel
+            # is identified). The default accelerator still overshoots to non-finite values here,
+            # but that is no longer fatal: `_anderson_memory_ladder` retries with a shorter memory
+            # and converges in 13 iterations. Before the ladder was extended to this model, the
+            # default `solve_model!` threw.
             @testset "fully reciprocal network" begin
                 model = MaxEntropyGraphs.RBCM(MaxEntropyGraphs.taro_exchange())
-                @test_throws Exception MaxEntropyGraphs.solve_model!(model) # anderson overshoots to non-finite values
+                MaxEntropyGraphs.solve_model!(model)
+                @test MaxEntropyGraphs.constraint_residual(model) < 1e-6
+                @test isapprox(MaxEntropyGraphs.reciprocated_degree(model), model.d_rec, rtol=1e-6)
+                @test isapprox(MaxEntropyGraphs.nonreciprocated_outdegree(model), model.d_out, rtol=1e-6)
+                @test isapprox(MaxEntropyGraphs.nonreciprocated_indegree(model),  model.d_in,  rtol=1e-6)
                 model = MaxEntropyGraphs.RBCM(MaxEntropyGraphs.taro_exchange())
                 MaxEntropyGraphs.solve_model!(model, method=:BFGS)
                 @test isapprox(MaxEntropyGraphs.reciprocated_degree(model), model.d_rec, rtol=1e-6)

@@ -22,7 +22,7 @@ module MaxEntropyGraphs
     import OptimizationOptimJL
     import ForwardDiff, ReverseDiff, Zygote
     import NLsolve
-    import LinearAlgebra: issymmetric, diagind, dot, triu!, mul!, BLAS
+    import LinearAlgebra: issymmetric, diagind, dot, triu!, mul!, BLAS, SingularException
     import SparseArrays: dropzeros!, issparse, findnz, SparseMatrixCSC, sparse
     #import NaNMath # returns a NaN instead of a DomainError for some functions. The solver(s) will use the NaN within the error control routines to reject the out of bounds step.
 
