@@ -736,12 +736,12 @@ function test_create_UECM(G)
 end
 
 """
-    test_solve_UECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+    test_solve_UECM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
 
 Benchmark solving the UECM for the given weighted, undirected graph `G` (settings matched to the Python side).
 The fixed point recipe is unstable for the UECM, so it is excluded by default.
 """
-function test_solve_UECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+function test_solve_UECM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
     model = UECM(G)
     solve_model!(model, method=:BFGS)
     suite = BenchmarkGroup()
@@ -905,12 +905,12 @@ function test_create_DECM(G)
 end
 
 """
-    test_solve_DECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+    test_solve_DECM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
 
 Benchmark solving the DECM for the given weighted, directed graph `G` (settings matched to the Python side).
 The fixed point recipe is unstable for the DECM, so it is excluded by default.
 """
-function test_solve_DECM(G; include_fixed_point=false, include_BFGS=true, include_LBFGS=false, include_newton=true)
+function test_solve_DECM(G; include_fixed_point=true, include_BFGS=true, include_LBFGS=false, include_newton=true)
     model = DECM(G)
     solve_model!(model, method=:BFGS)
     suite = BenchmarkGroup()
